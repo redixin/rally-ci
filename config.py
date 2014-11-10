@@ -16,6 +16,12 @@ class Config(object):
     scripts = {}
     job_templates = {}
     projects = {}
+    drivers = {}
+
+    def load_drivers(self, drivers):
+        for driver in drivers:
+            self._assert_new_item("driver", driver, self.drivers)
+            self.drivers[driver["name"]] = driver
 
     def load_scripts(self, scripts):
         for script in scripts:
@@ -44,6 +50,7 @@ class Config(object):
         data = yaml.safe_load(open(fname, "rb"))
         self.stream = data.get("stream", {})
         self.logs = data.get("logs", {})
+        self.load_drivers(data.get("drivers", []))
         self.load_scripts(data.get("scripts", []))
         self.load_job_templates(data.get("job-templates", []))
         self.load_projects(data.get("projects", []))
