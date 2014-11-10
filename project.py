@@ -10,9 +10,14 @@ class Job(object):
         self.event = event
         self.config = config
         self.logger = logger
+        self.errors = []
+        self.name = job["name"]
 
-        driver = __import__(job["driver"]).Driver
-        self.driver = driver(job["name"], *job["driver-args"])
+        print config.drivers
+        print job["driver"]
+        driver_conf = config.drivers[job["driver"]]
+        driver = __import__(driver_conf["driver"]).Driver
+        self.driver = driver(driver_conf, job["name"], *job["driver-args"])
         self.driver.build(logger.stdout(job, "build.txt.gz"))
 
     def run_script(self, script, event, stdout):
@@ -24,19 +29,21 @@ class Job(object):
                 for key in arg.split('.'):
                     value = value[key]
                 cmd += " %s" % value
-            self.driver.run(cmd, stdout, stdin=open(script["path"], "rb"))
+            return self.driver.run(cmd, stdout, stdin=open(script["path"], "rb"))
         else:
             for cmd in script["commands"]:
-                self.driver.run(cmd, stdout)
+                return self.driver.run(cmd, stdout)
 
     def run(self):
 
         stdout = self.logger.stdout(self.job)
         for build_script in self.job.get("build-scripts", []):
-            self.run_script(self.config.scripts[build_script], self.event, stdout)
+            self.build_error = self.run_script(
+                    self.config.scripts[build_script], self.event, stdout)
         for test_cmd in self.job.get("test-commands", []):
-            self.driver.run(test_cmd, stdout)
+            self.errors.append(self.driver.run(test_cmd, stdout))
         self.driver.cleanup()
+        self.error = any(self.errors)
 
 
 class Project(object):
@@ -45,11 +52,14 @@ class Project(object):
         self.project = project
         self.event = event
         self.config = config
+        self.jobs = []
         logger = self.config.logs["driver"]
-        self.logger = __import__(logger).Driver(self.config.logs)
-        self.logger.mkdir(self.event)
+        self.logger = __import__(logger).Driver(self.config.logs, self.event)
 
     def run_jobs(self):
         for job_config in self.project["jobs"]:
             job = Job(job_config, self.event, self.config, self.logger)
+            LOG.debug("Running job: %s (Project: %s)" % (job.name, self.project["name"]))
             job.run()
+            self.jobs.append(job)
+        self.logger.publish_summary(self.jobs)
