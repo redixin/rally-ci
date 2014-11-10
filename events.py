@@ -2,6 +2,8 @@
 import subprocess
 import json
 
+from project import Project
+
 from log import logging
 LOG = logging.getLogger(__name__)
 
@@ -49,48 +51,14 @@ class EventHandler(object):
         self.handlers = {
                 "patchset-created": self._handle_patchset_created,
         }
-    
-    def run_script(self, driver, script, event, stdout):
-        interpreter = script.get("interpreter")
-        if interpreter:
-            cmd = interpreter
-            for arg in script["args"]:
-                value = dict(event)
-                for key in arg.split('.'):
-                    value = value[key]
-                cmd += " %s" % value
-            driver.run(cmd, stdout, stdin=open(script["path"], "rb"))
-        else:
-            for cmd in script["commands"]:
-                driver.run(cmd, stdout)
-
-    def run_job(self, job, event, logger):
-        driver = __import__(job["driver"]).Driver
-        driver = driver(job["name"], *job["driver-args"])
-        driver.build(logger.stdout(job, "build.txt.gz"))
-        stdout = logger.stdout(job)
-        for build_script in job.get("build-scripts", []):
-            self.run_script(driver, self.config.scripts[build_script],
-                            event, stdout)
-        for test_cmd in job.get("test-commands", []):
-            driver.run(test_cmd, stdout)
-        driver.cleanup()
-        return
-        d = docker.Docker(job["name"], **job["deploy"]["args"])
-
-    def process_project(self, project, event):
-        logger = self.config.logs["driver"]
-        logger = __import__(logger).Driver(self.config.logs)
-        logger.mkdir(event)
-        for job in project["jobs"]:
-            self.run_job(job, event, logger)
 
     def _handle_patchset_created(self, event):
         LOG.debug("Patchset created")
-        project = self.config.projects.get(event["change"]["project"])
-        if project:
+        project_config = self.config.projects.get(event["change"]["project"])
+        if project_config:
             LOG.debug("Handling patchset %s" % event["change"]["id"])
-            self.process_project(project, event)
+            project = Project(project_config, event, self.config)
+            project.run_jobs()
         else:
             LOG.debug("Unknown project '%s'" % event["change"]["project"])
 

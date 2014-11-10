@@ -57,7 +57,9 @@ class Config(object):
     def load_dir(self, d):
         for dpath, dnames, fnames in os.walk(d):
             for fname in fnames:
-                self.load_file(os.path.join(dpath, fname))
+                filename = os.path.join(dpath, fname)
+                LOG.debug("Loading configuration: %s" % filename)
+                self.load_file(filename)
 
     def load(self, dirs):
         for d in dirs:
@@ -67,11 +69,3 @@ class Config(object):
                 self.load_dir(d)
             else:
                 LOG.warning("Unable to load config from: %s" % d)
-
-
-if __name__ == "__main__":
-    c = Config()
-    c.load(["/etc/rallyci/", "~/code/rally-ci/etc/rallyci"])
-    print json.dumps(c.projects, indent=4)
-    print json.dumps(c.job_templates, indent=4)
-    print json.dumps(c.scripts, indent=4)
