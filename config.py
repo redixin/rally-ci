@@ -17,6 +17,7 @@ class Config(object):
     job_templates = {}
     projects = {}
     drivers = {}
+    glob = {}
 
     def load_drivers(self, drivers):
         for driver in drivers:
@@ -50,6 +51,7 @@ class Config(object):
         data = yaml.safe_load(open(fname, "rb"))
         self.stream = data.get("stream", {})
         self.logs = data.get("logs", {})
+        self.glob.update(data.get("global", {}))
         self.load_drivers(data.get("drivers", []))
         self.load_scripts(data.get("scripts", []))
         self.load_job_templates(data.get("job-templates", []))

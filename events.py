@@ -1,5 +1,6 @@
 
 import subprocess
+import re
 import json
 
 from project import Project
@@ -50,17 +51,32 @@ class EventHandler(object):
         self.listener = EventListener(**config.stream)
         self.handlers = {
                 "patchset-created": self._handle_patchset_created,
+                "comment-added": self._handle_comment_added,
         }
+        self.recheck_regexp = self.config.glob.get("recheck-regexp")
+        if self.recheck_regexp:
+            self.recheck_regexp = re.compile(self.recheck_regexp, re.MULTILINE)
 
-    def _handle_patchset_created(self, event):
-        LOG.debug("Patchset created")
+    def run_job(self, event):
         project_config = self.config.projects.get(event["change"]["project"])
         if project_config:
-            LOG.debug("Handling patchset %s" % event["change"]["id"])
+            LOG.debug("Running jobs for patchset %s" % event["change"]["id"])
             project = Project(project_config, event, self.config)
             project.run_jobs()
         else:
             LOG.debug("Unknown project '%s'" % event["change"]["project"])
+
+    def _handle_patchset_created(self, event):
+        LOG.debug("Patchset created")
+        return self.run_job(event)
+
+    def _handle_comment_added(self, event):
+        if not self.recheck_regexp:
+            return
+        m = self.recheck_regexp.search(event["comment"])
+        if m:
+            LOG.debug("Recheck requested")
+            return self.run_job(event)
 
     def loop(self):
         for event in self.listener.events():

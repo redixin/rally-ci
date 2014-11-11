@@ -1,6 +1,5 @@
 
 * job timeout
-* recheck
 * validate event values
 * validate config
 * track time taken by job
