@@ -1,4 +1,5 @@
 
+import threading
 import subprocess
 import re
 import json
@@ -47,6 +48,7 @@ class EventListener(object):
 
 class EventHandler(object):
     def __init__(self, config):
+        self.threads = {}
         self.config = config
         self.listener = EventListener(**config.stream)
         self.handlers = {
@@ -60,9 +62,16 @@ class EventHandler(object):
     def run_job(self, event):
         project_config = self.config.projects.get(event["change"]["project"])
         if project_config:
+            project_name = project_config["name"]
+            if project_name in self.threads:
+                LOG.debug("Job for project %s is already running" % project_name)
             LOG.debug("Running jobs for patchset %s" % event["change"]["id"])
             project = Project(project_config, event, self.config)
-            project.run_jobs()
+            project.init_jobs()
+            t = threading.Thread(target=project.run_jobs)
+            t.start()
+            self.threads[project_config["name"]] = t
+            LOG.debug("Starting thread %r" % t)
         else:
             LOG.debug("Unknown project '%s'" % event["change"]["project"])
 
@@ -78,8 +87,18 @@ class EventHandler(object):
             LOG.debug("Recheck requested")
             return self.run_job(event)
 
+    def _join_threads(self):
+        completed = []
+        for project, t in self.threads.items():
+            if not t.isAlive():
+                t.join()
+                completed.append(project)
+        for project in completed:
+            del(self.threads[project])
+
     def loop(self):
         for event in self.listener.events():
+            self._join_threads()
             handler = self.handlers.get(event["type"])
             if handler:
                 handler(event)

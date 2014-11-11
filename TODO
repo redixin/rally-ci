@@ -3,4 +3,3 @@
 * validate event values
 * validate config
 * track time taken by job
-* run jobs in parallel

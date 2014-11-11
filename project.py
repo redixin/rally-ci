@@ -1,4 +1,6 @@
 
+import threading
+
 from log import logging
 LOG = logging.getLogger(__name__)
 
@@ -12,9 +14,6 @@ class Job(object):
         self.logger = logger
         self.errors = []
         self.name = job["name"]
-
-        print config.drivers
-        print job["driver"]
         driver_conf = config.drivers[job["driver"]]
         driver = __import__(driver_conf["driver"]).Driver
         self.driver = driver(driver_conf, job["name"], *job["driver-args"])
@@ -35,7 +34,6 @@ class Job(object):
                 return self.driver.run(cmd, stdout)
 
     def run(self):
-
         stdout = self.logger.stdout(self.job)
         for build_script in self.job.get("build-scripts", []):
             self.build_error = self.run_script(
@@ -56,10 +54,19 @@ class Project(object):
         logger = self.config.logs["driver"]
         self.logger = __import__(logger).Driver(self.config.logs, self.event)
 
-    def run_jobs(self):
+    def init_jobs(self):
         for job_config in self.project["jobs"]:
+            LOG.debug("Initializing job: %s (Project: %s)" % (job_config["name"], self.project["name"]))
             job = Job(job_config, self.event, self.config, self.logger)
-            LOG.debug("Running job: %s (Project: %s)" % (job.name, self.project["name"]))
-            job.run()
             self.jobs.append(job)
+
+    def run_jobs(self):
+        threads = []
+        for job in self.jobs:
+            LOG.debug("Running job: %s (Project: %s)" % (job.name, self.project["name"]))
+            t = threading.Thread(target=job.run)
+            t.start()
+            threads.append(t)
+        for t in threads:
+            t.join()
         self.logger.publish_summary(self.jobs)
