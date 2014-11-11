@@ -1,8 +1,15 @@
 
+import time
 import threading
 
 from log import logging
 LOG = logging.getLogger(__name__)
+
+INTERVALS = [1, 60, 3600, 86400]
+NAMES = [('s', 's'),
+         ('m', 'm'),
+         ('h',   'h'),
+         ('day',    'days')]
 
 
 class Job(object):
@@ -19,6 +26,17 @@ class Job(object):
         self.driver = driver(driver_conf, job["name"], *job["driver-args"])
         self.driver.build(logger.stdout(job, "build.txt.gz"))
 
+    @property
+    def human_time(self):
+        result = []
+        seconds = self.seconds
+        for i in range(len(NAMES)-1, -1, -1):
+            a = seconds // INTERVALS[i]
+            if a > 0:
+                result.append( (a, NAMES[i][1 % a]) )
+                seconds -= a * INTERVALS[i]
+        return ' '.join(''.join(str(x) for x in r) for r in result)
+
     def run_script(self, script, event, stdout):
         interpreter = script.get("interpreter")
         if interpreter:
@@ -34,6 +52,7 @@ class Job(object):
                 return self.driver.run(cmd, stdout)
 
     def run(self):
+        start = time.time()
         stdout = self.logger.stdout(self.job)
         for build_script in self.job.get("build-scripts", []):
             self.build_error = self.run_script(
@@ -41,6 +60,7 @@ class Job(object):
         for test_cmd in self.job.get("test-commands", []):
             self.errors.append(self.driver.run(test_cmd, stdout))
         self.driver.cleanup()
+        self.seconds = int(time.time() - start)
         self.error = any(self.errors)
 
 
