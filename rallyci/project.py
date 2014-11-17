@@ -2,7 +2,7 @@
 import time
 import threading
 
-from log import logging
+import logging
 LOG = logging.getLogger(__name__)
 
 INTERVALS = [1, 60, 3600, 86400]

@@ -4,7 +4,7 @@ import os, sys
 import json
 import yaml
 
-from log import logging
+import logging
 LOG = logging.getLogger(__name__)
 
 
@@ -13,11 +13,15 @@ class ConfigError(Exception):
 
 
 class Config(object):
-    scripts = {}
-    job_templates = {}
-    projects = {}
-    drivers = {}
-    glob = {}
+
+    def __init__(self):
+        self.scripts = {}
+        self.job_templates = {}
+        self.projects = {}
+        self.drivers = {}
+        self.stream = {}
+        self.logs = {}
+        self.glob = {}
 
     def load_drivers(self, drivers):
         for driver in drivers:
@@ -49,8 +53,8 @@ class Config(object):
 
     def load_file(self, fname):
         data = yaml.safe_load(open(fname, "rb"))
-        self.stream = data.get("stream", {})
-        self.logs = data.get("logs", {})
+        self.stream.update(data.get("stream", {}))
+        self.logs.update(data.get("logs", {}))
         self.glob.update(data.get("global", {}))
         self.load_drivers(data.get("drivers", []))
         self.load_scripts(data.get("scripts", []))

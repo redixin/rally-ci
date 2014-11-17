@@ -5,7 +5,7 @@ import re
 
 from mako.template import Template
 
-from log import logging
+import logging
 LOG = logging.getLogger(__name__)
 
 

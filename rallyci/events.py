@@ -6,7 +6,7 @@ import json
 
 from project import Project
 
-from log import logging
+import logging
 LOG = logging.getLogger(__name__)
 
 

@@ -65,7 +65,7 @@ import logging
 
 import paramiko
 
-from log import logging
+import logging
 LOG = logging.getLogger(__name__)
 
 STDOUT = 1
