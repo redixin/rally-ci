@@ -5,7 +5,7 @@ from rallyci import project
 
 class JobTestCase(unittest.TestCase):
 
-    @mock.patch("rallyci.project.__import__", create=True)
+    @mock.patch("rallyci.project.importlib.import_module", create=True)
     @mock.patch("rallyci.project.Job.__init__", return_value=None)
     def test_human_time(self, m_init, m_import):
         job = project.Job()

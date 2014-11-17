@@ -1,6 +1,7 @@
 
 import time
 import threading
+import importlib
 
 import logging
 LOG = logging.getLogger(__name__)
@@ -22,7 +23,7 @@ class Job(object):
         self.errors = []
         self.name = job["name"]
         driver_conf = config.drivers[job["driver"]]
-        driver = __import__(driver_conf["driver"]).Driver
+        driver = importlib.import_module(driver_conf["driver"]).Driver
         self.driver = driver(driver_conf, job["name"], *job["driver-args"])
         self.driver.build(logger.stdout(job, "build.txt.gz"))
 
@@ -72,7 +73,7 @@ class Project(object):
         self.config = config
         self.jobs = []
         logger = self.config.logs["driver"]
-        self.logger = __import__(logger).Driver(self.config.logs, self.event)
+        self.logger = importlib.import_module(logger).Driver(self.config.logs, self.event)
 
     def init_jobs(self):
         for job_config in self.project["jobs"]:
