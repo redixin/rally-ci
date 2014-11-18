@@ -2,23 +2,25 @@
 import random, string
 import sys, subprocess
 import sshutils
+import os.path
 
 import logging
 LOG = logging.getLogger(__name__)
 
 class Driver(object):
 
-    def __init__(self, config, job_name, dockerfilepath):
-        self.name = job_name
-        self.dockerfilepath = dockerfilepath
-        self.config = config
-        self.tag = "rallyci:" + dockerfilepath.replace('/', '_')
+    def __init__(self, host, user, port=22, **kwargs):
+        self.config = kwargs
         self.number = 0
-        self.current = self.tag
         self.names = []
-        self.ssh = sshutils.SSH(config["ssh-user"],
-                                config["ssh-host"],
-                                port=config.get("ssh-port", 22))
+        self.ssh = sshutils.SSH(user, host, port)
+
+    def setup(self, dockerfilepath):
+        tag = dockerfilepath.replace('/', '_')
+        tag = tag.replace('~', '_')
+        self.tag = "rallyci:" + tag
+        self.dockerfilepath = os.path.expanduser(dockerfilepath)
+        self.current = self.tag
 
     def _run(self, cmd, stdout, stdin=None):
         LOG.debug("Running cmd: %r" % cmd)

@@ -1,7 +1,7 @@
 
 import time
 import threading
-import importlib
+import os.path
 
 import logging
 LOG = logging.getLogger(__name__)
@@ -15,17 +15,20 @@ NAMES = [('s', 's'),
 
 class Job(object):
 
-    def __init__(self, job, event, config, logger):
-        self.job = job
-        self.event = event
+    def __init__(self, config, event, project_config, logger, driver):
         self.config = config
+        self.event = event
+        self.project_config = project_config
         self.logger = logger
         self.errors = []
-        self.name = job["name"]
-        driver_conf = config.drivers[job["driver"]]
-        driver = importlib.import_module(driver_conf["driver"]).Driver
-        self.driver = driver(driver_conf, job["name"], *job["driver-args"])
-        self.driver.build(logger.stdout(job, "build.txt.gz"))
+        self.error = True
+        self.seconds = 0
+        self.name = config["name"]
+        self.driver = driver
+        stdout = logger.stdout(config, "build.txt.gz")
+        LOG.debug("Got stdout %r" % stdout)
+        self.driver.build(stdout)
+        LOG.debug("inited")
 
     @property
     def human_time(self):
@@ -47,44 +50,55 @@ class Job(object):
                 for key in arg.split('.'):
                     value = value[key]
                 cmd += " %s" % value
-            return self.driver.run(cmd, stdout, stdin=open(script["path"], "rb"))
+            path = script["path"]
+            if path.startswith("~"):
+                path = os.path.expanduser(path)
+            return self.driver.run(cmd, stdout, stdin=open(path, "rb"))
         else:
             for cmd in script["commands"]:
                 return self.driver.run(cmd, stdout)
 
     def run(self):
         start = time.time()
-        stdout = self.logger.stdout(self.job)
-        for build_script in self.job.get("build-scripts", []):
+        stdout = self.logger.stdout(self.config)
+        for build_script in self.config.get("build-scripts", []):
             self.build_error = self.run_script(
-                    self.config.scripts[build_script], self.event, stdout)
-        for test_cmd in self.job.get("test-commands", []):
+                    self.project_config.scripts[build_script], self.event, stdout)
+        for test_cmd in self.config.get("test-commands", []):
             self.errors.append(self.driver.run(test_cmd, stdout))
         self.driver.cleanup()
         self.seconds = int(time.time() - start)
         self.error = any(self.errors)
 
 
-class Project(object):
+class CR(object):
 
-    def __init__(self, project, event, config):
+    def __init__(self, project, event, config, logger, drivers):
+        self.drivers = drivers
         self.project = project
         self.event = event
         self.config = config
+        self.logger = logger
         self.jobs = []
-        logger = self.config.logs["driver"]
-        self.logger = importlib.import_module(logger).Driver(self.config.logs, self.event)
-
-    def init_jobs(self):
-        for job_config in self.project["jobs"]:
-            LOG.debug("Initializing job: %s (Project: %s)" % (job_config["name"], self.project["name"]))
-            job = Job(job_config, self.event, self.config, self.logger)
-            self.jobs.append(job)
 
     def run_jobs(self):
         threads = []
+        for job_config in self.project["jobs"]:
+            LOG.debug("Initializing job: %s (Project: %s)" % (job_config["name"], self.project["name"]))
+            driver_conf = self.config.drivers[job_config["driver"]]
+            driver_class = self.drivers[driver_conf["driver"]].Driver
+            LOG.debug("Initializing driver %r with args %r" % (driver_class, driver_conf))
+            driver = driver_class(**driver_conf)
+            LOG.debug("Setting up driver with args %r" % (job_config["driver-args"]))
+            driver.setup(**job_config["driver-args"])
+            LOG.debug("Driver configured.")
+            job = Job(job_config, self.event, self.config, self.logger, driver)
+            LOG.debug("Job initialized.")
+            self.jobs.append(job)
+            LOG.debug("Job appended")
+        LOG.debug("Starting jobs")
         for job in self.jobs:
-            LOG.debug("Running job: %s (Project: %s)" % (job.name, self.project["name"]))
+            LOG.debug("Starting job: %s (Project: %s)" % (job.name, self.project["name"]))
             t = threading.Thread(target=job.run)
             t.start()
             threads.append(t)
