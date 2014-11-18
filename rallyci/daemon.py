@@ -3,8 +3,10 @@
 import log
 import config
 import events
+import sys
 
 cfg = config.Config()
-cfg.load(["/etc/rally-ci/", "etc/rally-ci"])
+config_file = sys.argv[1]
+cfg.load_file(config_file)
 handler = events.EventHandler(cfg)
 handler.loop()
