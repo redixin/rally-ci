@@ -11,7 +11,7 @@ LOG = logging.getLogger(__name__)
 
 def mkdir(path):
     try:
-        os.mkdir(path)
+        os.makedirs(path)
     except OSError as e:
         if e.errno != errno.EEXIST:
             raise
