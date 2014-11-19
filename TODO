@@ -1,6 +1,5 @@
 
 * job timeout
-* track time taken by job
 * publish results on gerrit
 * validate event values
 * validate config
