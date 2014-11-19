@@ -26,9 +26,7 @@ class Job(object):
         self.name = config["name"]
         self.driver = driver
         stdout = logger.stdout(config, "build.txt.gz")
-        LOG.debug("Got stdout %r" % stdout)
         self.driver.build(stdout)
-        LOG.debug("inited")
 
     @property
     def human_time(self):
@@ -63,7 +61,8 @@ class Job(object):
         stdout = self.logger.stdout(self.config)
         for build_script in self.config.get("build-scripts", []):
             self.build_error = self.run_script(
-                    self.project_config.scripts[build_script], self.event, stdout)
+                    self.project_config.scripts[build_script],
+                    self.event, stdout)
         for test_cmd in self.config.get("test-commands", []):
             self.errors.append(self.driver.run(test_cmd, stdout))
         self.driver.cleanup()
@@ -84,24 +83,17 @@ class CR(object):
     def run_jobs(self):
         threads = []
         for job_config in self.project["jobs"]:
-            LOG.debug("Initializing job: %s (Project: %s)" % (job_config["name"], self.project["name"]))
             driver_conf = self.config.drivers[job_config["driver"]]
             driver_class = self.drivers[driver_conf["driver"]].Driver
-            LOG.debug("Initializing driver %r with args %r" % (driver_class, driver_conf))
             driver = driver_class(**driver_conf)
-            LOG.debug("Setting up driver with args %r" % (job_config["driver-args"]))
             driver.setup(**job_config["driver-args"])
-            LOG.debug("Driver configured.")
             job = Job(job_config, self.event, self.config, self.logger, driver)
-            LOG.debug("Job initialized.")
             self.jobs.append(job)
-            LOG.debug("Job appended")
-        LOG.debug("Starting jobs")
-        for job in self.jobs:
-            LOG.debug("Starting job: %s (Project: %s)" % (job.name, self.project["name"]))
             t = threading.Thread(target=job.run)
+            LOG.debug("Starting job %s" % job_config["name"])
             t.start()
             threads.append(t)
         for t in threads:
             t.join()
+        LOG.info("Completed jobs for %s" % event["change"]["id"])
         self.logger.publish_summary(self.jobs)

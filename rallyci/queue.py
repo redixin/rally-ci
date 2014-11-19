@@ -19,25 +19,26 @@ class Handler(object):
 
     def run(self):
         while True:
-            LOG.debug("Getting CR from queue")
             try:
+                LOG.debug("Getting CR from queue")
                 cr = self.queue.get(timeout=1)
             except Queue.Empty:
                 self.join_threads()
 
-            LOG.debug("Got CR")
 
             if cr is None:
                 LOG.info("No more CRs in queue. Exiting.")
                 self.queue.task_done()
                 break
 
-            cid = cr.event["change"]["id"]
+            cid = "%s/%s" % (cr.event["change"]["id"],
+                             cr.event["patchSet"]["number"])
             if cid in self.threads:
-                LOG.info("Task for CI %s is already running." % cid)
+                LOG.info("Task for change %s already running." % cid)
                 self.queue.task_done()
                 continue
 
+            LOG.debug("Starting jobs for %s" % cid)
             t = threading.Thread(target=cr.run_jobs)
             self.threads[cid] = t
             t.start()
