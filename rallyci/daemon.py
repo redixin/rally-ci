@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 
-import log
+import log  # noqa
 import config
 import events
 import sys
+
 
 def run():
     cfg = config.Config()

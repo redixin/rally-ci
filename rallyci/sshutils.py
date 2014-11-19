@@ -65,11 +65,11 @@ import logging
 
 import paramiko
 
-import logging
 LOG = logging.getLogger(__name__)
 
 STDOUT = 1
 STDERR = 2
+
 
 class SSHError(Exception):
     pass
@@ -120,7 +120,8 @@ class SSH(object):
         try:
             self._client = paramiko.SSHClient()
             self._client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            LOG.debug("Connecting %s@%s port %s" % (self.user, self.host, self.port))
+            LOG.debug("Connecting %s@%s port %s" % (self.user, self.host,
+                                                    self.port))
             self._client.connect(self.host, username=self.user,
                                  port=self.port, pkey=self.pkey,
                                  key_filename=self.key_filename,

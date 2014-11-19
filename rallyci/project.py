@@ -10,8 +10,8 @@ LOG = logging.getLogger(__name__)
 INTERVALS = [1, 60, 3600, 86400]
 NAMES = [('s', 's'),
          ('m', 'm'),
-         ('h',   'h'),
-         ('day',    'days')]
+         ('h', 'h'),
+         ('day', 'days')]
 
 
 class Job(object):
@@ -33,10 +33,10 @@ class Job(object):
     def human_time(self):
         result = []
         seconds = self.seconds
-        for i in range(len(NAMES)-1, -1, -1):
+        for i in range(len(NAMES) - 1, -1, -1):
             a = seconds // INTERVALS[i]
             if a > 0:
-                result.append( (a, NAMES[i][1 % a]) )
+                result.append((a, NAMES[i][1 % a]))
                 seconds -= a * INTERVALS[i]
         return ' '.join(''.join(str(x) for x in r) for r in result)
 
@@ -53,7 +53,7 @@ class Job(object):
             if path:
                 if path.startswith("~"):
                     path = os.path.expanduser(path)
-                    stdin=open(path, "rb")
+                    stdin = open(path, "rb")
             else:
                 stdin = StringIO.StringIO(script["data"])
             return self.driver.run(cmd, stdout, stdin=stdin)

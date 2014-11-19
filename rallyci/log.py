@@ -11,47 +11,48 @@ class ThreadNameFilter(logging.Filter):
 
 
 LOGGING = {
-        'version': 1,
-        'disable_existing_loggers': False,
-        'formatters': {
-            'standard': {
-                'format': '%(thread_name)s: %(asctime)s %(name)s:%(levelname)s: %(message)s '
-                '(%(filename)s:%(lineno)d)',
-                'datefmt': "%Y-%m-%d %H:%M:%S",
-                }
-        },
-        'filters': {
-            'ThreadNameFilter': {
-                '()': ThreadNameFilter,
-            },
-        },
-        'handlers': {
-            'console': {
-                'level': 'DEBUG',
-                'formatter': 'standard',
-                'filters': ['ThreadNameFilter'],
-                'class': 'logging.StreamHandler',
-                },
-            'rotate_file': {
-                'filters': ['ThreadNameFilter'],
-                'level': 'DEBUG',
-                'formatter': 'standard',
-                'class': 'logging.handlers.RotatingFileHandler',
-                'filename': '/var/log/rally-ci/daemon.log',
-                'encoding': 'utf-8',
-                'maxBytes': 10000000,
-                'backupCount': 128,
-                }
-        },
-        'loggers': {
-            '': {
-                'handlers': ['console', 'rotate_file'],
-                'level': 'DEBUG',
-                },
-            'paramiko': {
-                'level': 'WARNING',
-                },
-            }
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "standard": {
+            "format": "%(thread_name)s: %(asctime)s %(name)s:"
+                      "%(levelname)s: %(message)s "
+                      "(%(filename)s:%(lineno)d)",
+            "datefmt": "%Y-%m-%d %H:%M:%S",
         }
+    },
+    "filters": {
+        "ThreadNameFilter": {
+            "()": ThreadNameFilter,
+        },
+    },
+    "handlers": {
+        "console": {
+            "level": "DEBUG",
+            "formatter": "standard",
+            "filters": ["ThreadNameFilter"],
+            "class": "logging.StreamHandler",
+        },
+        "rotate_file": {
+            "filters": ["ThreadNameFilter"],
+            "level": "DEBUG",
+            "formatter": "standard",
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": "/var/log/rally-ci/daemon.log",
+            "encoding": "utf-8",
+            "maxBytes": 10000000,
+            "backupCount": 128,
+        }
+    },
+    "loggers": {
+        "": {
+            "handlers": ["console", "rotate_file"],
+            "level": "DEBUG",
+        },
+        "paramiko": {
+            "level": "WARNING",
+        },
+    }
+}
 
 logging.config.dictConfig(LOGGING)

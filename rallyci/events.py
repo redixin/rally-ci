@@ -66,15 +66,15 @@ class EventHandler(object):
         if self.recheck_regexp:
             self.recheck_regexp = re.compile(self.recheck_regexp, re.MULTILINE)
         for driver_name, driver_conf in self.config.drivers.items():
-            driver_module = driver_conf["driver"]
-            self.drivers[driver_module] = importlib.import_module(driver_module)
+            driver = driver_conf["driver"]
+            self.drivers[driver] = importlib.import_module(driver)
 
     def enqueue_job(self, event):
         project_config = self.config.projects.get(event["change"]["project"])
         if project_config:
 
             cr = CR(project_config, event, self.config, self.drivers)
-            LOG.info("Enqueue jobs for project %s" % event["change"]["project"])
+            LOG.info("Enqueue jobs (project %s)" % event["change"]["project"])
             self.queue.put(cr)
         else:
             LOG.debug("Unknown project '%s'" % event["change"]["project"])

@@ -1,11 +1,12 @@
 
-import random, string
-import sys, subprocess
+import random
+import string
 import sshutils
 import os.path
 
 import logging
 LOG = logging.getLogger(__name__)
+
 
 class Driver(object):
 
@@ -16,8 +17,8 @@ class Driver(object):
         self.ssh = sshutils.SSH(user, host, port)
 
     def setup(self, dockerfilepath):
-        tag = dockerfilepath.replace('/', '_')
-        tag = tag.replace('~', '_')
+        tag = dockerfilepath.replace("/", "_")
+        tag = tag.replace("~", "_")
         self.tag = "rallyci:" + tag
         self.dockerfilepath = os.path.expanduser(dockerfilepath)
         self.current = self.tag
@@ -44,11 +45,11 @@ class Driver(object):
         LOG.debug("Running command %r" % command)
         returncode = self._run(command, stdout, stdin=stdin)
         LOG.debug("Exit status: %d" % returncode)
-        status, self.current, stderr = self.ssh.execute("docker commit %s" % name)
+        status, self.current, err = self.ssh.execute("docker commit %s" % name)
         self.current = self.current.strip()
         return returncode
 
     def cleanup(self):
         for name in self.names:
-            subprocess.check_output(["docker", "rm", name])
-        subprocess.check_output(["docker", "rmi", self.current])
+            self.ssh.run("docker rm %s" % name)
+        self.ssh.run("docker rmi %s" % self.current)

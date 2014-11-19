@@ -3,6 +3,7 @@ import mock
 
 from rallyci import project
 
+
 class JobTestCase(unittest.TestCase):
 
     @mock.patch("rallyci.project.Job.__init__", return_value=None)

@@ -1,7 +1,7 @@
 
 import gzip
-import os, errno
-import re
+import os
+import errno
 
 from mako.template import Template
 
@@ -31,7 +31,7 @@ class Driver(object):
             if not os.access(filename, os.F_OK | os.R_OK):
                 fails.append(filename)
         if fails:
-            return "Fancynginx: unable to open template(s) %s" % ','.join(fails)
+            return "Fancynginx: can't open template(s) %s" % ','.join(fails)
 
     def __init__(self, config, event):
         """Constructor.
@@ -48,7 +48,8 @@ class Driver(object):
         mkdir(self.cr_dir)
         header = os.path.join(self.cr_dir, self.config["header-filename"])
         self.render(header, "cr-template", event=self.event)
-        self.ps_dir = os.path.join(self.cr_dir, self.event["patchSet"]["number"])
+        self.ps_dir = os.path.join(self.cr_dir,
+                                   self.event["patchSet"]["number"])
         mkdir(self.ps_dir)
         header = os.path.join(self.ps_dir, self.config["header-filename"])
         self.render(header, "ps-template", event=self.event)
