@@ -105,15 +105,20 @@ class EventHandler(object):
         handler = Handler(self.queue)
         thread = threading.Thread(target=handler.run)
         thread.start()
-        for event in self.listener.events():
-            self._join_threads()
-            handler = self.handlers.get(event["type"])
-            if handler:
-                handler(event)
-            else:
-                LOG.debug("Unknown event: %s" % event["type"])
+        try:
+            for event in self.listener.events():
+                self._join_threads()
+                handler = self.handlers.get(event["type"])
+                if handler:
+                    handler(event)
+                else:
+                    LOG.debug("Unknown event: %s" % event["type"])
+        except KeyboardInterrupt:
+            LOG.info("Exiting.")
+        except:
+            LOG.error("Exception during stream handling.", exc_info=True)
         LOG.info("Stream finished. Finalizing queue.")
         self.queue.put(None)
         self.queue.join()
-#        thread.join()
+        thread.join()
         LOG.info("All done. Exiting loop")
