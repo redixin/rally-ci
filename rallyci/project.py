@@ -57,6 +57,11 @@ class Job(object):
                 return self.driver.run(cmd, stdout)
 
     def run(self):
+        job_id = "%s-%s-%s" % (self.event["change"]["id"],
+                               self.event["patchSet"]["number"],
+                               self.name)
+        threading.currentThread().setName(job_id)
+        LOG.info("Started thread for job %s" % job_id)
         start = time.time()
         stdout = self.publisher.stdout(self.config)
         for build_script in self.config.get("build-scripts", []):
@@ -82,6 +87,9 @@ class CR(object):
 
     def run_jobs(self):
         threads = []
+        change_full_id = "%s-%s" % (self.event["change"]["id"],
+                                    self.event["patchSet"]["number"])
+        threading.currentThread().setName(change_full_id)
         for job_config in self.project["jobs"]:
             driver_conf = self.config.drivers[job_config["driver"]]
             driver_class = self.drivers[driver_conf["driver"]].Driver
@@ -90,7 +98,6 @@ class CR(object):
             job = Job(job_config, self.event, self.config, self.publisher, driver)
             self.jobs.append(job)
             t = threading.Thread(target=job.run)
-            LOG.debug("Starting job %s" % job_config["name"])
             t.start()
             threads.append(t)
         for t in threads:
