@@ -91,22 +91,12 @@ class EventHandler(object):
             LOG.debug("Recheck requested")
             return self.enqueue_job(event)
 
-    def _join_threads(self):
-        completed = []
-        for project, t in self.threads.items():
-            if not t.isAlive():
-                t.join()
-                completed.append(project)
-        for project in completed:
-            del(self.threads[project])
-
     def loop(self):
         handler = Handler(self.queue)
         thread = threading.Thread(target=handler.run)
         thread.start()
         try:
             for event in self.listener.events():
-                self._join_threads()
                 handler = self.handlers.get(event["type"])
                 if handler:
                     handler(event)
@@ -119,5 +109,5 @@ class EventHandler(object):
         LOG.info("Stream finished. Finalizing queue.")
         self.queue.put(None)
         self.queue.join()
-        #thread.join()
+        thread.join()
         LOG.info("All done. Exiting loop")

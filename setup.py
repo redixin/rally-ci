@@ -5,5 +5,5 @@ setup(
         version = "0.1.dev",
         packages = ["rallyci"],
         install_requires = ["mako", "pyyaml"],
-        entry_points = {"console_scripts": ["rallyci = rallyci.daemon"]}
+        entry_points = {"console_scripts": ["rallyci = rallyci.daemon:run"]}
 )
