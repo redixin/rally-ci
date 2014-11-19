@@ -72,7 +72,7 @@ class Config(object):
         self.load_projects(data.get("projects", []))
 
     def get_publisher(self, event):
-        return self.publisher_class.Driver(self.publisher, event)
+        return self.publisher_class(self.publisher, event)
 
     def _assert_new_item(self, item_name, item, items):
         if item["name"] in items:

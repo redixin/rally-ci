@@ -73,8 +73,7 @@ class EventHandler(object):
         project_config = self.config.projects.get(event["change"]["project"])
         if project_config:
 
-
-            cr = CR(project_config, event, self.config, logger, self.drivers)
+            cr = CR(project_config, event, self.config, self.drivers)
             LOG.info("Enqueue jobs for project %s" % event["change"]["project"])
             self.queue.put(cr)
         else:
@@ -120,5 +119,5 @@ class EventHandler(object):
         LOG.info("Stream finished. Finalizing queue.")
         self.queue.put(None)
         self.queue.join()
-        thread.join()
+        #thread.join()
         LOG.info("All done. Exiting loop")

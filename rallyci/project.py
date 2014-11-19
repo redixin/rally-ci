@@ -94,7 +94,7 @@ class CR(object):
         change_full_id = "%s-%s" % (self.event["change"]["id"],
                                     self.event["patchSet"]["number"])
         threading.currentThread().setName(change_full_id)
-        publisher = self.config.get_publisher()
+        publisher = self.config.get_publisher(self.event)
         for job_config in self.project["jobs"]:
 
             driver_conf = self.config.drivers[job_config["driver"]]
