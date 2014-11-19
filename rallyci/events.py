@@ -72,8 +72,8 @@ class EventHandler(object):
     def enqueue_job(self, event):
         project_config = self.config.projects.get(event["change"]["project"])
         if project_config:
-            logger = self.config.logs["driver"]
-            logger = importlib.import_module(logger).Driver(self.config.logs, event)
+            logger = self.config.publisher["driver"]
+            logger = importlib.import_module(logger).Driver(self.config.publisher, event)
             cr = CR(project_config, event, self.config, logger, self.drivers)
             LOG.info("Enqueue jobs for project %s" % event["change"]["project"])
             self.queue.put(cr)

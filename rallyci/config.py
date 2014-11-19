@@ -21,7 +21,7 @@ class Config(object):
         self.drivers = {}
         self.stream = {}
         self.daemon = {}
-        self.logs = {}
+        self.publisher = {}
         self.glob = {}
 
     def load_drivers(self, drivers):
@@ -55,7 +55,7 @@ class Config(object):
     def load_file(self, fname):
         data = yaml.safe_load(open(fname, "rb"))
         self.stream.update(data.get("stream", {}))
-        self.logs.update(data.get("logs", {}))
+        self.publisher.update(data.get("publisher", {}))
         self.glob.update(data.get("global", {}))
         self.daemon.update(data.get("daemon", {}))
         self.load_drivers(data.get("drivers", []))

@@ -15,17 +15,17 @@ NAMES = [('s', 's'),
 
 class Job(object):
 
-    def __init__(self, config, event, project_config, logger, driver):
+    def __init__(self, config, event, project_config, publisher, driver):
         self.config = config
         self.event = event
         self.project_config = project_config
-        self.logger = logger
+        self.publisher = publisher
         self.errors = []
         self.error = True
         self.seconds = 0
         self.name = config["name"]
         self.driver = driver
-        stdout = logger.stdout(config, "build.txt.gz")
+        stdout = publisher.stdout(config, "build.txt.gz")
         self.driver.build(stdout)
 
     @property
@@ -58,7 +58,7 @@ class Job(object):
 
     def run(self):
         start = time.time()
-        stdout = self.logger.stdout(self.config)
+        stdout = self.publisher.stdout(self.config)
         for build_script in self.config.get("build-scripts", []):
             self.build_error = self.run_script(
                     self.project_config.scripts[build_script],
@@ -72,12 +72,12 @@ class Job(object):
 
 class CR(object):
 
-    def __init__(self, project, event, config, logger, drivers):
+    def __init__(self, project, event, config, publisher, drivers):
         self.drivers = drivers
         self.project = project
         self.event = event
         self.config = config
-        self.logger = logger
+        self.publisher = publisher
         self.jobs = []
 
     def run_jobs(self):
@@ -87,7 +87,7 @@ class CR(object):
             driver_class = self.drivers[driver_conf["driver"]].Driver
             driver = driver_class(**driver_conf)
             driver.setup(**job_config["driver-args"])
-            job = Job(job_config, self.event, self.config, self.logger, driver)
+            job = Job(job_config, self.event, self.config, self.publisher, driver)
             self.jobs.append(job)
             t = threading.Thread(target=job.run)
             LOG.debug("Starting job %s" % job_config["name"])
@@ -96,4 +96,4 @@ class CR(object):
         for t in threads:
             t.join()
         LOG.info("Completed jobs for %s" % self.event["change"]["id"])
-        self.logger.publish_summary(self.jobs)
+        self.publisher.publish_summary(self.jobs)
