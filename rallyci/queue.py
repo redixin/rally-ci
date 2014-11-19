@@ -16,6 +16,7 @@ class Handler(object):
             if block or not t.is_alive():
                 LOG.debug("Joining thread %r" % t)
                 t.join()
+                del(self.threads[cid])
 
     def run(self):
         while True:

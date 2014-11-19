@@ -20,6 +20,7 @@ class Config(object):
         self.projects = {}
         self.drivers = {}
         self.stream = {}
+        self.daemon = {}
         self.logs = {}
         self.glob = {}
 
@@ -56,6 +57,7 @@ class Config(object):
         self.stream.update(data.get("stream", {}))
         self.logs.update(data.get("logs", {}))
         self.glob.update(data.get("global", {}))
+        self.daemon.update(data.get("daemon", {}))
         self.load_drivers(data.get("drivers", []))
         self.load_scripts(data.get("scripts", []))
         self.load_job_templates(data.get("job-templates", []))

@@ -95,5 +95,5 @@ class CR(object):
             threads.append(t)
         for t in threads:
             t.join()
-        LOG.info("Completed jobs for %s" % event["change"]["id"])
+        LOG.info("Completed jobs for %s" % self.event["change"]["id"])
         self.logger.publish_summary(self.jobs)
