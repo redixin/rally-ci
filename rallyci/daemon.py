@@ -8,5 +8,6 @@ import sys
 cfg = config.Config()
 config_file = sys.argv[1]
 cfg.load_file(config_file)
+cfg.init()
 handler = events.EventHandler(cfg)
 handler.loop()

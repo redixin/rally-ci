@@ -3,6 +3,7 @@ import os, sys
 
 import json
 import yaml
+import importlib
 
 import logging
 LOG = logging.getLogger(__name__)
@@ -23,6 +24,13 @@ class Config(object):
         self.daemon = {}
         self.publisher = {}
         self.glob = {}
+
+    def init(self):
+        self.publisher_class = importlib.import_module(
+                self.publisher["driver"]).Driver
+        error = self.publisher_class.check_config(self.publisher)
+        if error:
+            raise ConfigError(error)
 
     def load_drivers(self, drivers):
         for driver in drivers:
@@ -62,6 +70,9 @@ class Config(object):
         self.load_scripts(data.get("scripts", []))
         self.load_job_templates(data.get("job-templates", []))
         self.load_projects(data.get("projects", []))
+
+    def get_publisher(self, event):
+        return self.publisher_class.Driver(self.publisher, event)
 
     def _assert_new_item(self, item_name, item, items):
         if item["name"] in items:

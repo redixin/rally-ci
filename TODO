@@ -1,5 +1,5 @@
 
-* add publisher configuration checking
+* add drivers configuration checking
 * job timeout
 * publish results on gerrit
 * validate event values

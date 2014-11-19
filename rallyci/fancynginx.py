@@ -21,10 +21,22 @@ def mkdir(path):
 class Driver(object):
     """Job results publisher."""
 
+    @staticmethod
+    def check_config(config):
+        tpls = ["cr-template", "ps-template",
+                "job-template", "summary-template"]
+        fails = []
+        for tpl in tpls:
+            filename = config[tpl]
+            if not os.access(filename, os.F_OK | os.R_OK):
+                fails.append(filename)
+        if fails:
+            return "Fancynginx: unable to open template(s) %s" % ','.join(fails)
+
     def __init__(self, config, event):
         """Constructor.
 
-        Config is global config object.
+        :param config: publisher config section
         """
         self.config = config
         self.event = event

@@ -82,12 +82,11 @@ class Job(object):
 
 class CR(object):
 
-    def __init__(self, project, event, config, publisher, drivers):
+    def __init__(self, project, event, config, drivers):
         self.drivers = drivers
         self.project = project
         self.event = event
         self.config = config
-        self.publisher = publisher
         self.jobs = []
 
     def run_jobs(self):
@@ -95,12 +94,15 @@ class CR(object):
         change_full_id = "%s-%s" % (self.event["change"]["id"],
                                     self.event["patchSet"]["number"])
         threading.currentThread().setName(change_full_id)
+        publisher = self.config.get_publisher()
         for job_config in self.project["jobs"]:
+
             driver_conf = self.config.drivers[job_config["driver"]]
             driver_class = self.drivers[driver_conf["driver"]].Driver
             driver = driver_class(**driver_conf)
+
             driver.setup(**job_config["driver-args"])
-            job = Job(job_config, self.event, self.config, self.publisher, driver)
+            job = Job(job_config, self.event, self.config, publisher, driver)
             self.jobs.append(job)
             t = threading.Thread(target=job.run)
             t.start()
@@ -108,4 +110,4 @@ class CR(object):
         for t in threads:
             t.join()
         LOG.info("Completed jobs for %s" % self.event["change"]["id"])
-        self.publisher.publish_summary(self.jobs)
+        publisher.publish_summary(self.jobs)
