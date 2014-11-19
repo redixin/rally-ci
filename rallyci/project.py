@@ -2,6 +2,7 @@
 import time
 import threading
 import os.path
+import StringIO
 
 import logging
 LOG = logging.getLogger(__name__)
@@ -48,10 +49,14 @@ class Job(object):
                 for key in arg.split('.'):
                     value = value[key]
                 cmd += " %s" % value
-            path = script["path"]
-            if path.startswith("~"):
-                path = os.path.expanduser(path)
-            return self.driver.run(cmd, stdout, stdin=open(path, "rb"))
+            path = script.get("path")
+            if path:
+                if path.startswith("~"):
+                    path = os.path.expanduser(path)
+                    stdin=open(path, "rb")
+            else:
+                stdin = StringIO.StringIO(script["data"])
+            return self.driver.run(cmd, stdout, stdin=stdin)
         else:
             for cmd in script["commands"]:
                 return self.driver.run(cmd, stdout)
