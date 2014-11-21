@@ -33,13 +33,16 @@ class Driver(object):
         LOG.debug("Building image %r" % cmd)
         return self._run(cmd, stdout)
 
-    def run(self, cmd, stdout, stdin=None):
+    def run(self, cmd, stdout, stdin=None, env=None):
 
         name = "".join(random.sample(string.letters, 12))
         self.names.append(name)
         command = ["docker", "run", "--name", name]
         if stdin:
             command += ["-i"]
+        if env:
+            for k, v in env.items():
+                command += ["-e", "\"%s=%s\"" % (k, v)]
         command += [self.current]
         command += cmd.split(" ")
         LOG.debug("Running command %r" % command)

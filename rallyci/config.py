@@ -22,6 +22,7 @@ class Config(object):
         self.stream = {}
         self.daemon = {}
         self.publisher = {}
+        self.environments = []
         self.glob = {}
 
     def init(self):
@@ -65,6 +66,7 @@ class Config(object):
         self.publisher.update(data.get("publisher", {}))
         self.glob.update(data.get("global", {}))
         self.daemon.update(data.get("daemon", {}))
+        self.environments += (data.get("environments", []))
         self.load_drivers(data.get("drivers", []))
         self.load_scripts(data.get("scripts", []))
         self.load_job_templates(data.get("job-templates", []))
