@@ -117,6 +117,7 @@ class VM(object):
         self.ssh.run("virsh create /tmp/%s.xml" % self.name)
 
     def cleanup(self):
+        self.ssh.run("virsh destroy %s" % self.name)
         for v in self.volumes:
             v.cleanup()
 

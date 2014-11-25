@@ -16,10 +16,12 @@ NAMES = [('s', 's'),
 
 class Job(object):
 
-    def __init__(self, config, event, project_config, publisher, driver):
+    def __init__(self, config, event, global_config, publisher, driver):
+        self.envs = []
+        self.env = {}
         self.config = config
         self.event = event
-        self.project_config = project_config
+        self.global_config = global_config
         self.publisher = publisher
         self.errors = []
         self.error = True
@@ -40,6 +42,13 @@ class Job(object):
                 seconds -= a * INTERVALS[i]
         return ' '.join(''.join(str(x) for x in r) for r in result)
 
+    def prepare_environment(self, env_name):
+        LOG.debug("Preparing env: %s" % env_name)
+        env = self.global_config.get_env(env_name)
+        env.build()
+        self.env.update(env.env)
+        self.envs.append(env)
+
     def run_script(self, script, event, stdout):
         interpreter = script.get("interpreter")
         if interpreter:
@@ -56,10 +65,10 @@ class Job(object):
                     stdin = open(path, "rb")
             else:
                 stdin = StringIO.StringIO(script["data"])
-            return self.driver.run(cmd, stdout, stdin=stdin)
+            return self.driver.run(cmd, stdout, stdin=stdin, env=self.env)
         else:
             for cmd in script["commands"]:
-                return self.driver.run(cmd, stdout)
+                return self.driver.run(cmd, stdout, env=self.env)
 
     def run(self):
         job_id = "%s-%s-%s" % (self.event["change"]["id"],
@@ -68,16 +77,25 @@ class Job(object):
         threading.currentThread().setName(job_id)
         LOG.info("Started thread for job %s" % job_id)
         start = time.time()
+
+        for env_name in self.config.get("environments", []):
+            self.prepare_environment(env_name)
+
         stdout = self.publisher.stdout(self.config)
+
         for build_script in self.config.get("build-scripts", []):
             self.build_error = self.run_script(
-                    self.project_config.scripts[build_script],
+                    self.global_config.scripts[build_script],
                     self.event, stdout)
+
         for test_cmd in self.config.get("test-commands", []):
-            self.errors.append(self.driver.run(test_cmd, stdout))
+            self.errors.append(self.driver.run(test_cmd, stdout, env=self.env))
         self.driver.cleanup()
         self.seconds = int(time.time() - start)
         self.error = any(self.errors)
+
+        for env in getattr(self, "envs", []):
+            env.cleanup()
 
 
 class CR(object):

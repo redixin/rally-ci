@@ -7,7 +7,7 @@ import json
 import Queue
 import importlib
 
-from rallyci.project import CR
+from rallyci.job import CR
 from rallyci.queue import Handler
 
 import logging

@@ -15,37 +15,40 @@ class ConfigError(Exception):
 class Config(object):
 
     def __init__(self):
-        self.scripts = {}
-        self.job_templates = {}
-        self.projects = {}
-        self.drivers = {}
         self.stream = {}
         self.daemon = {}
         self.publisher = {}
-        self.environments = []
         self.glob = {}
+        self.env_drivers = {}
+        self.projects = {}
 
     def init(self):
+        self._init_publishers()
+        self._init_environments()
+
+    def _init_publishers(self):
         self.publisher_class = importlib.import_module(
                 self.publisher["driver"]).Driver
         error = self.publisher_class.check_config(self.publisher)
         if error:
             raise ConfigError(error)
 
-    def load_drivers(self, drivers):
-        for driver in drivers:
-            self._assert_new_item("driver", driver, self.drivers)
-            self.drivers[driver["name"]] = driver
+    def _init_environments(self):
+        for name, env in self.environments.items():
+            drv = env["driver"]
+            if drv not in self.env_drivers:
+                self.env_drivers[drv] = importlib.import_module(drv)
 
-    def load_scripts(self, scripts):
-        for script in scripts:
-            self._assert_new_item("script", script, self.scripts)
-            self.scripts[script["name"]] = script
-
-    def load_job_templates(self, job_templates):
-        for jt in job_templates:
-            self._assert_new_item("job-template", jt, self.job_templates)
-            self.job_templates[jt["name"]] = jt
+    def load_items(self, name, items):
+        if not hasattr(self, name):
+            setattr(self, name, {})
+        target = getattr(self, name)
+        for item in items:
+            if name in target:
+                msg = "Duplicate %s %s" % item_name, item["name"]
+                LOG.error(msg)
+                raise ConfigError(msg)
+            target[item["name"]] = item
 
     def load_projects(self, projects):
         for project in projects:
@@ -66,11 +69,15 @@ class Config(object):
         self.publisher.update(data.get("publisher", {}))
         self.glob.update(data.get("global", {}))
         self.daemon.update(data.get("daemon", {}))
-        self.environments += (data.get("environments", []))
-        self.load_drivers(data.get("drivers", []))
-        self.load_scripts(data.get("scripts", []))
-        self.load_job_templates(data.get("job-templates", []))
+        self.load_items("environments", data.get("environments", []))
+        self.load_items("drivers", data.get("drivers", []))
+        self.load_items("scripts", data.get("scripts", []))
+        self.load_items("job_templates", data.get("job-templates", []))
         self.load_projects(data.get("projects", []))
+
+    def get_env(self, env_name):
+        env = self.environments[env_name]
+        return self.env_drivers[env["driver"]].Env(self, env)
 
     def get_publisher(self, event):
         return self.publisher_class(self.publisher, event)
