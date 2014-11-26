@@ -156,16 +156,3 @@ class LVM(object):
     def cleanup(self):
         cmd = "lvremove -f /dev/%s/%s" % (self.vg, self.name)
         self.ssh.run(cmd)
-
-
-if __name__ == "__main__":
-    from rallyci import config
-    import log
-    conf = config.Config()
-    conf.load_file("../config/config.yaml")
-    conf.init()
-    c = conf.environments[0]
-    e = Env(conf, c)
-    e.build()
-    print e.env
-    e.cleanup()
