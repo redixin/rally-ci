@@ -98,10 +98,12 @@ class VM(object):
                     self.xml.target(dev="vd%s" % string.lowercase[num],
                                     bus="virtio")
             for net in self.config["networks"]:
+                net = net.split(" ")
                 with self.xml.interface(type="bridge"):
-                    self.xml.source(bridge=net)
+                    self.xml.source(bridge=net[0])
                     self.xml.model(type="virtio")
-                    self.xml.mac(address=self._get_rnd_mac())
+                    mac = self._get_rnd_mac() if len(net) < 2 else net[1]
+                    self.xml.mac(address=mac)
 
     def get_ip(self, timeout=120):
         e = ~self.xml
