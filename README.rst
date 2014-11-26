@@ -66,14 +66,15 @@ List of commands to be executed
 
 
 
-Nginx sample config
-###################
+Nginx
+#####
 
-        location / {
-                fancyindex on;
-        }
-        location ~ \.txt\.gz$ {
-                add_header Content-type text/plain;
-                add_header Content-encoding gzip;
-        }
+Sample config::
 
+    location / {
+            fancyindex on;
+    }
+    location ~ \.txt\.gz$ {
+            add_header Content-type text/plain;
+            add_header Content-encoding gzip;
+    }
