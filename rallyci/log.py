@@ -52,6 +52,9 @@ LOGGING = {
         "paramiko": {
             "level": "WARNING",
         },
+        "rallyci.virsh": {
+            "level": "DEBUG",
+        },
     }
 }
 

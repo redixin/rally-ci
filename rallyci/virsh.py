@@ -8,10 +8,12 @@ import random
 import string
 import logging
 import time
+import threading
 
 LOG = logging.getLogger(__name__)
 PREFIX = "rci_"
-
+LOCK = threading.Lock()
+SEMS = {}
 
 def get_rnd_name(length=10):
     return PREFIX + "".join(random.sample(string.letters, length))
@@ -20,22 +22,34 @@ def get_rnd_name(length=10):
 class Env(object):
 
     def __init__(self, global_config, config, **kwargs):
-        self.env = {}
+        self.env = config.get("export", {})
         self.vms = []
         self.global_config = global_config
         self.config = config
+        self.name = config["name"]
         self.kwargs = kwargs
 
     def build(self):
-        for vm_conf in self.config["create-vms"]:
-            vm = VM(self.global_config, vm_conf)
-            vm.build()
-            ip_env_var = vm_conf.get("ip_env_var")
-            if ip_env_var:
-                self.env[ip_env_var] = vm.get_ip()
-            self.vms.append(vm)
+        with LOCK:
+            if self.name not in SEMS:
+                SEMS[self.name] = threading.Semaphore(self.config["max_threads"])
+        LOG.debug(SEMS)
+        SEMS[self.name].acquire()
+        LOG.debug("acquired %r" % SEMS[self.name])
+        try:
+            for vm_conf in self.config["create-vms"]:
+                vm = VM(self.global_config, vm_conf)
+                vm.build()
+                ip_env_var = vm_conf.get("ip_env_var")
+                if ip_env_var:
+                    self.env[ip_env_var] = vm.get_ip()
+                self.vms.append(vm)
+        except:
+            SEMS[self.name].release()
+            raise
 
     def cleanup(self):
+        SEMS[self.name].release()
         for vm in self.vms:
             vm.cleanup()
 

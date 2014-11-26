@@ -1,4 +1,5 @@
 
+* limit number of active jobs
 * use paramiko in EventListener
 * add drivers configuration checking
 * job timeout
