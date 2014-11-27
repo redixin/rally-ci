@@ -1,6 +1,8 @@
 
 import base
 
+import logging
+LOG = logging.getLogger(__name__)
 
 class Runner(base.Runner):
 
@@ -14,4 +16,7 @@ class Runner(base.Runner):
         pass
 
     def run(self, cmd, stdout_handler, stdin=None, env=None):
-        pass
+        stdout_handler((1, "line1\n"))
+        stdout_handler((1, "line2\n"))
+        stdout_handler((2, "err1\n"))
+        stdout_handler((1, "line3\n"))

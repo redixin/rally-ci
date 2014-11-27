@@ -47,14 +47,25 @@ class Job(object):
         self.env.update(env.env)
         self.envs.append(env)
 
-    def run_script(self, script, event):
+    def run_script(self, script):
         LOG.debug("Running script %r" % script)
+        name = script["name"]
+
+        def stdout_callback(line):
+            for p in self.publishers:
+                # kinda dirty hack: stream_name = file_name
+                # so file name will be actually directory/file
+                p.publish_line(os.path.join(self.name, name), line)
+
         cmd = script["interpreter"]
-        for arg in script["args"]:
-            value = dict(event)
-            for key in arg.split('.'):
-                value = value[key]
-            cmd += " %s" % value
+
+        if "args" in script:
+            for arg in script["args"]:
+                value = dict(self.event)
+                for key in arg.split('.'):
+                    value = value[key]
+                cmd += " %s" % value
+
         path = script.get("path")
         if path:
             if path.startswith("~"):
@@ -62,7 +73,7 @@ class Job(object):
             stdin = open(path, "rb")
         else:
             stdin = StringIO.StringIO(script["data"])
-        return self.runner.run(cmd, lambda x: x, stdin=stdin, env=self.env)
+        return self.runner.run(cmd, stdout_callback, stdin=stdin, env=self.env)
 
     def run(self):
         job_id = "%s-%s-%s" % (self.event["change"]["id"],
@@ -75,13 +86,9 @@ class Job(object):
         for env_name in self.job_config.get("environments", []):
             self.prepare_environment(env_name)
 
-        for build_script in self.job_config.get("build-scripts", []):
-            self.build_error = self.run_script(
-                    self.config.scripts[build_script],
-                    self.event)
-
-        for test_cmd in self.job_config.get("test-commands", []):
-            self.errors.append(self.runner.run(test_cmd, lambda x: x, env=self.env))
+        for script in ("build-scripts", "test-scripts"):
+            for s in self.job_config.get(script, []):
+                self.errors.append(self.run_script(self.config.scripts[s]))
 
         self.runner.cleanup()
         self.seconds = int(time.time() - start)

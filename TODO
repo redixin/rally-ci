@@ -1,11 +1,8 @@
 
 * voting/non-voting jobs
-* refator fancynginx publisher according to new API
 * add ability to incude config file
 * limit number of active jobs
 * use paramiko in EventListener
-* add drivers configuration checking
 * job timeout
-* publish results on gerrit
 * validate event values
 * validate config

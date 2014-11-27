@@ -4,20 +4,20 @@ stream:
   module: rallyci.streams.fake
   path: tests/functional/gerrit-sample-stream.json
 
-
 publishers:
-  - module: rallyci.publishers.fake
-    arg1: ARG_1
-
+  - module: rallyci.publishers.fancynginx
+    dir: /tmp/rally-ci/
+    header-filename: .head.html
+    header-template: templates/ps.html
+    job-template: templates/job.html
+    summary-template: templates/summary.html
 
 global:
   recheck-regexp: ^recheck rally$
 
-
 runners:
   - name: test
     module: rallyci.runners.fake
-
 
 environments:
   - name: test
@@ -40,6 +40,17 @@ scripts:
       - patchSet.ref
     path: tests/functional/test_script_2.sh
 
+  - name: pep8
+    interpreter: /bin/bash -xe -s
+    data: "tox -epep8"
+
+  - name: py27
+    interpreter: /bin/bash -xe -s
+    data: "tox -epy27"
+
+  - name: cli
+    interpreter: /bin/bash -xe -s
+    data: "tox -ecli"
 
 projects:
   - name: stackforge/rally
@@ -50,14 +61,13 @@ projects:
         test_arg: 42
 
     jobs:
-
       - name: job1
-        test-commands: ["echo JOB_1_CMD"]
+        test-scripts: ["pep8"]
 
       - name: job2
-        test-commands: ["echo JOB_2_CMD"]
+        test-scripts: ["py27"]
 
       - name: job3
         environments: ["test"]
         build-scripts: ["test1"]
-        test-commands: ["echo JOB_3_CMD"]
+        test-scripts: ["cli"]
