@@ -16,13 +16,14 @@ NAMES = [('s', 's'),
 
 class Job(object):
 
-    def __init__(self, config, event, global_config, publisher, driver):
+    def __init__(self, config, event, global_config, publisher, publishers, driver):
         self.envs = []
         self.env = {}
         self.config = config
         self.event = event
         self.global_config = global_config
         self.publisher = publisher
+        self.publishers = publishers
         self.errors = []
         self.error = True
         self.seconds = 0
@@ -113,6 +114,7 @@ class CR(object):
                                     self.event["patchSet"]["number"])
         threading.currentThread().setName(change_full_id)
         publisher = self.config.get_publisher(self.event)
+        publishers = list(self.config.get_publishers(self.event))
         for job_config in self.project["jobs"]:
 
             driver_conf = self.config.drivers[job_config["driver"]]
@@ -120,7 +122,7 @@ class CR(object):
             driver = driver_class(**driver_conf)
 
             driver.setup(**job_config["driver-args"])
-            job = Job(job_config, self.event, self.config, publisher, driver)
+            job = Job(job_config, self.event, self.config, publisher, publishers, driver)
             self.jobs.append(job)
             t = threading.Thread(target=job.run)
             t.start()
@@ -129,3 +131,11 @@ class CR(object):
             t.join()
         LOG.info("Completed jobs for %s" % self.event["change"]["id"])
         publisher.publish_summary(self.jobs)
+        LOG.debug("Publishing in all publishers...")
+        for p in publishers:
+            LOG.debug("Publishing %r" % p)
+            try:
+                p.publish_summary(self.jobs)
+            except Exception as e:
+                LOG.warning("Publishing failed", exc_info=True)
+        LOG.debug("Done with publishing")

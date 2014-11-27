@@ -18,13 +18,27 @@ class Config(object):
         self.stream = {}
         self.daemon = {}
         self.publisher = {}
+        self.publishers = []
         self.glob = {}
         self.env_drivers = {}
         self.projects = {}
+        self.publisher_modules = {}
 
     def init(self):
         self._init_publishers()
+        self._init_publishers_()
         self._init_environments()
+
+    def _init_publishers_(self):
+        for p in self.publishers:
+            if p["module"] not in self.publisher_modules:
+                self.publisher_modules[p["module"]] = importlib.\
+                        import_module(p["module"])
+        LOG.debug("Imported publisher modules: %r" % self.publisher_modules)
+
+    def get_publishers(self, event):
+        for p in self.publishers:
+            yield self.publisher_modules[p["module"]].Publisher(event, p)
 
     def _init_publishers(self):
         self.publisher_class = importlib.import_module(
@@ -67,6 +81,7 @@ class Config(object):
         data = yaml.safe_load(open(fname, "rb"))
         self.stream.update(data.get("stream", {}))
         self.publisher.update(data.get("publisher", {}))
+        self.publishers += data.get("publishers", [])
         self.glob.update(data.get("global", {}))
         self.daemon.update(data.get("daemon", {}))
         self.load_items("environments", data.get("environments", []))

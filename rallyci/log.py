@@ -50,7 +50,7 @@ LOGGING = {
             "level": "DEBUG",
         },
         "paramiko": {
-            "level": "WARNING",
+            "level": "DEBUG",
         },
         "rallyci.virsh": {
             "level": "DEBUG",
