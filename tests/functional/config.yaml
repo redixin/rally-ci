@@ -1,0 +1,63 @@
+---
+
+stream:
+  module: rallyci.streams.fake
+  path: tests/functional/gerrit-sample-stream.json
+
+
+publishers:
+  - module: rallyci.publishers.fake
+    arg1: ARG_1
+
+
+global:
+  recheck-regexp: ^recheck rally$
+
+
+runners:
+  - name: test
+    module: rallyci.runners.fake
+
+
+environments:
+  - name: test
+    module: rallyci.environments.dummy
+
+
+scripts:
+  - name: test1
+    interpreter: /bin/bash -xe -s
+    args:
+      - change.project
+      - patchSet.ref
+    data: |
+        echo TEST_SCRIPT_1
+
+  - name: test2
+    interpreter: /bin/bash -xe -s
+    args:
+      - change.project
+      - patchSet.ref
+    path: tests/functional/test_script_2.sh
+
+
+projects:
+  - name: stackforge/rally
+    job-common-attrs:
+      build-scripts: ["test1", "test2"]
+      runner: test
+      runner-args:
+        test_arg: 42
+
+    jobs:
+
+      - name: job1
+        test-commands: ["echo JOB_1_CMD"]
+
+      - name: job2
+        test-commands: ["echo JOB_2_CMD"]
+
+      - name: job3
+        environments: ["test"]
+        build-scripts: ["test1"]
+        test-commands: ["echo JOB_3_CMD"]
