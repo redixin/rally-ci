@@ -17,41 +17,46 @@ class Config(object):
     def __init__(self):
         self.stream = {}
         self.daemon = {}
-        self.publisher = {}
         self.publishers = []
         self.glob = {}
-        self.env_drivers = {}
+        self.env_modules = {}
         self.projects = {}
         self.publisher_modules = {}
+        self.runner_modules = {}
 
     def init(self):
         self._init_publishers()
-        self._init_publishers_()
         self._init_environments()
+        self._init_runners()
 
-    def _init_publishers_(self):
+    def _init_publishers(self):
         for p in self.publishers:
             if p["module"] not in self.publisher_modules:
                 self.publisher_modules[p["module"]] = importlib.\
                         import_module(p["module"])
         LOG.debug("Imported publisher modules: %r" % self.publisher_modules)
 
-    def get_publishers(self, event):
+    def get_publishers(self, run_id, event):
         for p in self.publishers:
-            yield self.publisher_modules[p["module"]].Publisher(event, p)
-
-    def _init_publishers(self):
-        self.publisher_class = importlib.import_module(
-                self.publisher["driver"]).Driver
-        error = self.publisher_class.check_config(self.publisher)
-        if error:
-            raise ConfigError(error)
+            yield self.publisher_modules[p["module"]].Publisher(run_id, event, p)
 
     def _init_environments(self):
         for name, env in self.environments.items():
-            drv = env["driver"]
-            if drv not in self.env_drivers:
-                self.env_drivers[drv] = importlib.import_module(drv)
+            module = env["module"]
+            if module not in self.env_modules:
+                self.env_modules[module] = importlib.import_module(module)
+        LOG.debug("Loaded environment modules %r" % self.env_modules)
+
+    def _init_runners(self):
+        for name, runner in self.runners.items():
+            module = runner["module"]
+            if module not in self.runner_modules:
+                self.runner_modules[module] = importlib.import_module(module)
+        LOG.debug("Loaded runner modules %r" % self.runner_modules)
+
+    def get_runner(self, name):
+        runner = self.runners[name]
+        return self.runner_modules[runner["module"]].Runner(runner)
 
     def load_items(self, name, items):
         if not hasattr(self, name):
@@ -80,22 +85,18 @@ class Config(object):
     def load_file(self, fname):
         data = yaml.safe_load(open(fname, "rb"))
         self.stream.update(data.get("stream", {}))
-        self.publisher.update(data.get("publisher", {}))
         self.publishers += data.get("publishers", [])
         self.glob.update(data.get("global", {}))
         self.daemon.update(data.get("daemon", {}))
         self.load_items("environments", data.get("environments", []))
-        self.load_items("drivers", data.get("drivers", []))
+        self.load_items("runners", data.get("runners", []))
         self.load_items("scripts", data.get("scripts", []))
         self.load_items("job_templates", data.get("job-templates", []))
         self.load_projects(data.get("projects", []))
 
     def get_env(self, env_name):
         env = self.environments[env_name]
-        return self.env_drivers[env["driver"]].Env(self, env)
-
-    def get_publisher(self, event):
-        return self.publisher_class(self.publisher, event)
+        return self.env_modules[env["module"]].Environment(self, env)
 
     def _assert_new_item(self, item_name, item, items):
         if item["name"] in items:
