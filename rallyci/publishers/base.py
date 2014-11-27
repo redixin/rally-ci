@@ -9,13 +9,15 @@ class Publisher:
     """
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, event, config):
+    def __init__(self, run_id, event, config):
         """Initialise publisher.
 
+        :param run_id: unique id of jobs run
         :param event: Event object
         :param config: publisher's config dictionary from config file
 
         """
+        self.run_id = run_id
         self.event = event
         self.config = config
 
