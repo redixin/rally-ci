@@ -91,6 +91,7 @@ class Job(object):
 
         for test_cmd in self.config.get("test-commands", []):
             self.errors.append(self.driver.run(test_cmd, stdout, env=self.env))
+
         self.driver.cleanup()
         self.seconds = int(time.time() - start)
         self.error = any(self.errors)
