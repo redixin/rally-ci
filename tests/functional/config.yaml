@@ -22,7 +22,9 @@ runners:
 environments:
   - name: test
     module: rallyci.environments.dummy
-
+    export:
+      ONE: one
+      TWO: two
 
 scripts:
   - name: test1

@@ -16,11 +16,11 @@ class Runner:
         pass
 
     @abc.abstractmethod
-    def run(self, cmd, stdout_handler, stdin=None, env=None):
+    def run(self, cmd, stdout_callback, stdin=None, env=None):
         """Run command.
 
         :param cmd: string command
-        :param stdout_handler: callback to be called for every out/err string
+        :param stdout_callback: callback to be called for every out/err string
         :param env: environment variables dict
         """
         pass
