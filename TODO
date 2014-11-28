@@ -2,7 +2,6 @@
 * voting/non-voting jobs
 * add ability to incude config file
 * limit number of active jobs
-* use paramiko in EventListener
 * job timeout
 * validate event values
 * validate config
