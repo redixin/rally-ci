@@ -8,7 +8,7 @@ class Runner:
         self.config = config
 
     @abc.abstractmethod
-    def init(self, **kwargs):
+    def setup(self, **kwargs):
         pass
 
     @abc.abstractmethod

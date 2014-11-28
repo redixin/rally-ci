@@ -26,11 +26,11 @@ class Runner(base.Runner):
         LOG.debug("Running cmd: %r" % cmd)
 
         class Stdout(object):
-            def write(line):
+            def write(self, line):
                 stdout_callback((1, line))
 
         class Stderr(object):
-            def write(line)
+            def write(self, line):
                 stdout_callback((2, line))
 
         return self.ssh.run(" ".join(cmd), stdout=Stdout(), stderr=Stderr(),

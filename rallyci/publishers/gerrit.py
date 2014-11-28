@@ -12,9 +12,8 @@ LOG = logging.getLogger(__name__)
 
 class Publisher(base.Publisher):
 
-    def __init__(self, event, config):
-        self.event = event
-        self.config = config
+    def __init__(self, *args, **kwargs):
+        super(Publisher, self).__init__(*args, **kwargs)
         template_file = self.config.get("template_file")
         if template_file:
             self.template = Template(filename=template_file)
@@ -24,7 +23,7 @@ class Publisher(base.Publisher):
     def publish_summary(self, jobs):
         success = not any([job.error for job in jobs])
         summary = self.template.render(jobs=jobs, event=self.event,
-                                       success=success)
+                                       success=success, run_id=self.run_id)
         cmd_template = """gerrit review -m '{summary}' {verified} {id}"""
         verified = ""
         if self.config.get("vote"):

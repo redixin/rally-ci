@@ -1,5 +1,6 @@
 
 import os
+import copy
 
 import yaml
 import importlib
@@ -68,6 +69,7 @@ class Config(object):
                 LOG.error(msg)
                 raise ConfigError(msg)
             target[item["name"]] = item
+        LOG.debug("Loaded items %s %r" % (name, target))
 
     def load_projects(self, projects):
         for project in projects:
@@ -76,7 +78,9 @@ class Config(object):
             common_attrs = project.get("job-common-attrs")
             if common_attrs:
                 for job in project["jobs"]:
-                    job.update(common_attrs)
+                    for k, v in common_attrs.items():
+                        if k not in job:
+                            job[k] = v
                     for jt in job.get("templates", []):
                         jt = dict(self.job_templates[jt])
                         del(jt["name"])
