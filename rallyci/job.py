@@ -3,6 +3,8 @@ import time
 import threading
 import os.path
 import StringIO
+import random
+import string
 
 import logging
 LOG = logging.getLogger(__name__)
@@ -87,7 +89,9 @@ class Job(object):
             self.prepare_environment(env_name)
 
         for script in ("build-scripts", "test-scripts"):
+            LOG.debug("Scripts found %r" % self.job_config.get(script, []))
             for s in self.job_config.get(script, []):
+                LOG.debug("Starting script %r" % s)
                 self.errors.append(self.run_script(self.config.scripts[s]))
 
         self.runner.cleanup()
@@ -105,7 +109,7 @@ class CR(object):
         self.config = config
         self.event = event
         self.jobs = []
-        self.run_id = "fake_unique_id"
+        self.run_id = "".join(random.sample(string.letters, 16))
 
     def run_jobs(self):
         threads = []
@@ -115,7 +119,7 @@ class CR(object):
         publishers = list(self.config.get_publishers(self.run_id, self.event))
         for job_config in self.project_config["jobs"]:
             runner = self.config.get_runner(job_config["runner"])
-            runner.init(**job_config["runner-args"])
+            runner.setup(**job_config["runner-args"])
             job = Job(self.config, job_config, self.event, publishers, runner)
             self.jobs.append(job)
             t = threading.Thread(target=job.run)
