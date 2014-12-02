@@ -98,9 +98,9 @@ class Config(object):
         self.load_items("job_templates", data.get("job-templates", []))
         self.load_projects(data.get("projects", []))
 
-    def get_env(self, env_name):
+    def get_env(self, env_name, job):
         env = self.environments[env_name]
-        return self.env_modules[env["module"]].Environment(self, env)
+        return self.env_modules[env["module"]].Environment(self, env, job)
 
     def _assert_new_item(self, item_name, item, items):
         if item["name"] in items:

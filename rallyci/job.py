@@ -44,7 +44,7 @@ class Job(object):
 
     def prepare_environment(self, env_name):
         LOG.debug("Preparing env: %s" % env_name)
-        env = self.config.get_env(env_name)
+        env = self.config.get_env(env_name, self)
         env.build()
         self.env.update(env.env)
         self.envs.append(env)
@@ -60,14 +60,6 @@ class Job(object):
                 p.publish_line(os.path.join(self.name, name), line)
 
         cmd = script["interpreter"]
-
-        if "args" in script:
-            for arg in script["args"]:
-                value = dict(self.event)
-                for key in arg.split('.'):
-                    value = value[key]
-                cmd += " %s" % value
-
         path = script.get("path")
         if path:
             if path.startswith("~"):

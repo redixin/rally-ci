@@ -5,9 +5,10 @@ import abc
 class Environment:
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, global_config, config):
+    def __init__(self, global_config, config, job):
         self.global_config = global_config
         self.config = config
+        self.job = job
         self.env = config.get("export", {})
 
     @staticmethod

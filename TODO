@@ -1,4 +1,7 @@
 
+* apply envs to scripts
+* add timestamps to stdouts
+* reload config
 * voting/non-voting jobs
 * add ability to incude config file
 * limit number of active jobs
