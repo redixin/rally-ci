@@ -1,4 +1,5 @@
 
+import threading
 import random
 import string
 import os.path
@@ -8,6 +9,14 @@ import base
 
 import logging
 LOG = logging.getLogger(__name__)
+
+
+BUILD_LOCK = {}
+LOCK = threading.Lock()
+
+
+def get_rnd_name(length=12):
+    return "".join(random.sample(string.letters, length))
 
 
 class Runner(base.Runner):
@@ -36,14 +45,30 @@ class Runner(base.Runner):
         return self.ssh.run(" ".join(cmd), stdout=Stdout(), stderr=Stderr(),
                             stdin=stdin, raise_on_error=False)
 
+    def _build(self, stdout_callback):
+        LOG.debug("Uploading dockerfile")
+        tmpdir = get_rnd_name()
+        tmpdir = os.path.join("/tmp", tmpdir)
+        self.ssh.run("mkdir %s" % tmpdir)
+        self.ssh.run("cat > %s" % tmpdir,
+                     stdin=open(self.dockerfilepath, "rb"))
+        LOG.debug("Building image %r" % self.tag)
+        return self._run(["docker", "build", "-t", tmpdir],
+                         stdout_callback)
+
     def build(self, stdout_callback):
-        cmd = ["docker", "build", "-t", self.tag, self.dockerfilepath]
-        LOG.debug("Building image %r" % cmd)
-        return self._run(cmd, stdout_callback)
+        with LOCK:
+            lock = BUILD_LOCK.get(self.tag)
+            if not lock:
+                lock = threading.Lock()
+        with lock:
+            LOG.debug("Checking docker image")
+            status, out, err = self.ssh.execute("docker history %s" % self.tag)
+            if status:
+                return self._build(stdout_callback)
 
     def run(self, cmd, stdout_callback, stdin=None, env=None):
-
-        name = "".join(random.sample(string.letters, 12))
+        name = get_rnd_name()
         self.names.append(name)
         command = ["docker", "run", "--name", name]
         if stdin:
@@ -64,3 +89,4 @@ class Runner(base.Runner):
         for name in self.names:
             self.ssh.run("docker rm %s" % name)
         self.ssh.run("docker rmi %s" % self.current)
+        del(self.ssh)
