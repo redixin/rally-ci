@@ -19,12 +19,14 @@ This attributes will be copued to every job::
     projects:
         - name: openstack/nova
           job-common-attrs:
-            driver: local-docker
+             runner: local-docker
+             runner-args:
+               dockerfilepath: "~/conf/docker/rally/"
           jobs:
            - name: pep8
-             test-commands: ["tox -epep8"]
+             test-scripts: ["epep8"]
            - name: py27
-             test-commands: ["tox -epy27"]
+             test-scripts: ["epy27"]
 
 is equevalent to::
 
@@ -32,11 +34,11 @@ is equevalent to::
         - name: openstack/nova
           jobs:
            - name: pep8
-             test-commands: ["tox -epep8"]
-             driver: local-docker
+             test-scripts: ["epep8"]
+             runner: local-docker
            - name: py27
-             test-commands: ["tox -epy27"]
-             driver: local-docker
+             test-scripts: ["epy27"]
+             runner: local-docker
 
 
 jobs
@@ -49,20 +51,20 @@ name
 
 Job name. Should be unique across the project.
 
-driver
+runner
 ------
 
-Driver module to be used for job
+Runner to be used for job
 
-driver-args
+runner-args
 -----------
 
-Driver specific arguments to be passed to driver
+Runner specific arguments to be passed to runner's "setup" method
 
-test-commands
--------------
+test-scripts
+------------
 
-List of commands to be executed
+List of scripts to be executed
 
 
 
