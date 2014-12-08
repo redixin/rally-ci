@@ -1,10 +1,11 @@
 
+* voting/non-voting jobs
 * apply envs to scripts
+* handle "merged" events
 * add timestamps to stdouts
 * reload config
-* voting/non-voting jobs
+* job timeout
 * add ability to incude config file
 * limit number of active jobs
-* job timeout
 * validate event values
 * validate config
