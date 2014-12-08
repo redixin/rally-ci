@@ -4,6 +4,10 @@ import subprocess
 
 import base
 
+import logging
+LOG = logging.getLogger(__name__)
+
+
 class Stream(base.Stream):
 
     def generate(self):
@@ -14,7 +18,12 @@ class Stream(base.Stream):
                                 stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT)
         for line in iter(pipe.stdout.readline, b''):
-            event = json.loads(line)
+            if not line:
+                break
+            try:
+                event = json.loads(line)
+            except ValueError:
+                LOG.warning("Invalid json: %s" % line)
             yield(event)
 
 
