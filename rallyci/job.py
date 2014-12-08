@@ -70,6 +70,14 @@ class Job(object):
         return self.runner.run(cmd, stdout_callback, stdin=stdin, env=self.env)
 
     def run(self):
+
+        def stdout_callback(line):
+            for p in self.publishers:
+                # kinda dirty hack: stream_name = file_name
+                # so file name will be actually directory/file
+                p.publish_line(os.path.join(self.name, "00_build"), line)
+        self.runner.build(stdout_callback)
+
         job_id = "%s-%s-%s" % (self.event["change"]["id"],
                                self.event["patchSet"]["number"],
                                self.name)

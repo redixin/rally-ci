@@ -21,14 +21,14 @@ def get_rnd_name(length=12):
 
 class Runner(base.Runner):
 
-    def setup(self, dockerfilepath):
+    def setup(self, dockerfile):
         self.ssh = sshutils.SSH(**self.config["ssh"])
         self.names = []
         self.number = 0
-        tag = dockerfilepath.replace("/", "_")
+        tag = dockerfile.replace("/", "_")
         tag = tag.replace("~", "_")
         self.tag = "rallyci:" + tag
-        self.dockerfilepath = os.path.expanduser(dockerfilepath)
+        self.dockerfile = os.path.expanduser(dockerfile)
         self.current = self.tag
 
     def _run(self, cmd, stdout_callback, stdin=None):
@@ -50,10 +50,11 @@ class Runner(base.Runner):
         tmpdir = get_rnd_name()
         tmpdir = os.path.join("/tmp", tmpdir)
         self.ssh.run("mkdir %s" % tmpdir)
-        self.ssh.run("cat > %s" % tmpdir,
-                     stdin=open(self.dockerfilepath, "rb"))
+        self.ssh.run("cat > %s/Dockerfile" % tmpdir,
+                     stdin=open(self.dockerfile, "rb"))
         LOG.debug("Building image %r" % self.tag)
-        return self._run(["docker", "build", "-t", tmpdir],
+        return self._run(["docker", "build", "--no-cache",
+                          "-t", self.tag, tmpdir],
                          stdout_callback)
 
     def build(self, stdout_callback):
@@ -61,6 +62,7 @@ class Runner(base.Runner):
             lock = BUILD_LOCK.get(self.tag)
             if not lock:
                 lock = threading.Lock()
+                BUILD_LOCK[self.tag] = lock
         with lock:
             LOG.debug("Checking docker image")
             status, out, err = self.ssh.execute("docker history %s" % self.tag)
