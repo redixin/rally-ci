@@ -33,9 +33,11 @@ class DockerTestCase(unittest.TestCase):
         r.setup("~/fake/path/")
         r._run = mock.Mock()
         r.build("fake_stdout_callback")
-        r._run.assert_called_once_with(["docker", "build", "-t",
+        r._run.assert_called_once_with(["docker", "build", "--no-cache",
+                                        "-t", "rallyci:__fake_path_",
                                         "/tmp/fake_rnd"],
                                        "fake_stdout_callback")
         expected = [mock.call("mkdir /tmp/fake_rnd"),
-                    mock.call("cat > /tmp/fake_rnd", stdin="fake_file")]
+                    mock.call("cat > /tmp/fake_rnd/Dockerfile",
+                              stdin="fake_file")]
         self.assertEqual(expected, ssh.run.mock_calls)

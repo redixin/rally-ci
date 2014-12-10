@@ -30,6 +30,7 @@ class Job(object):
         self.seconds = 0
         self.name = job_config["name"]
         self.runner = runner
+        setattr(self.runner, "job", self)
 
     @property
     def human_time(self):

@@ -6,6 +6,7 @@ from xmlbuilder import XMLBuilder
 
 import StringIO
 import random
+import re
 import string
 import logging
 import time
@@ -16,6 +17,8 @@ LOG = logging.getLogger(__name__)
 PREFIX = "rci_"
 LOCK = threading.Lock()
 SEMS = {}
+NETWORKS = set()
+IFACE_RE = re.compile("\d+: ([a-z]+)([0-9]+): .*")
 
 
 def get_rnd_name(length=10):
@@ -58,6 +61,7 @@ class VM(object):
 
     def __init__(self, global_config, config):
         self.volumes = []
+        self.ifs = []
         self.global_config = global_config
         self.config = config
         self.ssh = sshutils.SSH(*config["host"])
@@ -66,6 +70,24 @@ class VM(object):
     def _get_rnd_mac(self):
         return "00:" + ":".join(["%02x" % random.randint(0, 255) for i in range(5)])
 
+    def _get_bridge(self, prefix):
+        nums = set()
+        with LOCK:
+            s, o, e = self.ssh.execute("ip link list")
+            for l in o.splitlines():
+                m = IFACE_RE.match(l)
+                if m:
+                    if m.group(1) == prefix:
+                        nums.add(int(m.group(2)))
+            for i in range(len(nums) + 1):
+                if i not in nums:
+                    iface = "%s%d" % (prefix, i)
+                    break
+            self.ssh.run("ip link add %s type bridge" % iface)
+            self.ssh.run("ip link set %s up" % iface)
+            self.ifs.append(iface)
+            return iface
+
     def gen_xml(self):
         self.xml = XMLBuilder("domain", type="kvm")
         self.xml.name(self.name)
@@ -73,8 +95,8 @@ class VM(object):
         self.xml.currentMemory("%d" % self.config["memory"], unit="KiB")
 
         self.xml.vcpu("1", placement="static")
-        with self.xml.cpu(mode='host-model'):
-            self.xml.model(fallback='forbid')
+        with self.xml.cpu(mode="host-model"):
+            self.xml.model(fallback="forbid")
         self.xml.os.type("hvm", arch="x86_64", machine="pc-i440fx-2.1")
         with self.xml.features:
             self.xml.acpi
@@ -83,12 +105,12 @@ class VM(object):
 
         with self.xml.devices:
             self.xml.emulator("/usr/bin/kvm")
-            self.xml.controller(type='pci', index='0', model='pci-root')
-            self.xml.graphics(type='spice', autoport='yes')
+            self.xml.controller(type="pci", index="0", model="pci-root")
+            self.xml.graphics(type="spice", autoport="yes")
 
-            with self.xml.memballoon(model='virtio'):
-                self.xml.address(type='pci', domain='0x0000', bus='0x00',
-                                 slot='0x09', function='0x0')
+            with self.xml.memballoon(model="virtio"):
+                self.xml.address(type="pci", domain="0x0000", bus="0x00",
+                                 slot="0x09", function="0x0")
 
             for num, vol in enumerate(self.volumes):
                 with self.xml.disk(type="block", device="disk"):
@@ -99,10 +121,13 @@ class VM(object):
                                     bus="virtio")
             for net in self.config["networks"]:
                 net = net.split(" ")
+                mac = self._get_rnd_mac() if len(net) < 2 else net[1]
+                iface = net[0]
+                if iface.endswith("%"):
+                    iface = self._get_bridge(iface[:-1])
                 with self.xml.interface(type="bridge"):
-                    self.xml.source(bridge=net[0])
+                    self.xml.source(bridge=iface)
                     self.xml.model(type="virtio")
-                    mac = self._get_rnd_mac() if len(net) < 2 else net[1]
                     self.xml.mac(address=mac)
 
     def get_ip(self, timeout=120):
@@ -136,6 +161,8 @@ class VM(object):
         self.ssh.run("virsh destroy %s" % self.name)
         for v in self.volumes:
             v.cleanup()
+        for i in self.ifs:
+            self.ssh.run("ip link del %s" % i)
 
 
 class LVM(object):
