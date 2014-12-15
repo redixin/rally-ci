@@ -4,8 +4,9 @@ import abc
 class Runner:
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, config):
+    def __init__(self, config, global_config):
         self.config = config
+        self.global_config = global_config
 
     @abc.abstractmethod
     def setup(self, **kwargs):
@@ -13,6 +14,10 @@ class Runner:
 
     @abc.abstractmethod
     def build(self):
+        """Build VM/Container to run job.
+
+        Raise exception if build failed.
+        """
         pass
 
     @abc.abstractmethod

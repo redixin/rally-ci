@@ -1,8 +1,14 @@
 
+import sys
 import logging
 import logging.config
 import threading
 
+
+if len(sys.argv) > 1:
+    logfile = sys.argv[2]
+else:
+    logfile = "/var/log/rally-ci/daemon.log"
 
 class ThreadNameFilter(logging.Filter):
     def filter(self, record):
@@ -38,7 +44,7 @@ LOGGING = {
             "level": "DEBUG",
             "formatter": "standard",
             "class": "logging.handlers.RotatingFileHandler",
-            "filename": "/var/log/rally-ci/daemon.log",
+            "filename": logfile,
             "encoding": "utf-8",
             "maxBytes": 10000000,
             "backupCount": 128,

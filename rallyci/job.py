@@ -71,36 +71,44 @@ class Job(object):
         return self.runner.run(cmd, stdout_callback, stdin=stdin, env=self.env)
 
     def run(self):
+        start = time.time()
+        job_id = "%s-%s-%s" % (self.event["change"]["id"],
+                               self.event["patchSet"]["number"],
+                               self.name)
+        threading.currentThread().setName(job_id)
+        LOG.info("Started thread for job %s" % job_id)
 
         def stdout_callback(line):
             for p in self.publishers:
                 # kinda dirty hack: stream_name = file_name
                 # so file name will be actually directory/file
                 p.publish_line(os.path.join(self.name, "00_build"), line)
-        self.runner.build(stdout_callback)
 
-        job_id = "%s-%s-%s" % (self.event["change"]["id"],
-                               self.event["patchSet"]["number"],
-                               self.name)
-        threading.currentThread().setName(job_id)
-        LOG.info("Started thread for job %s" % job_id)
-        start = time.time()
-
-        for env_name in self.job_config.get("environments", []):
-            self.prepare_environment(env_name)
-
-        for script in ("build-scripts", "test-scripts"):
-            LOG.debug("Scripts found %r" % self.job_config.get(script, []))
-            for s in self.job_config.get(script, []):
-                LOG.debug("Starting script %r" % s)
-                self.errors.append(self.run_script(self.config.scripts[s]))
-
-        self.runner.cleanup()
-        self.seconds = int(time.time() - start)
-        self.error = any(self.errors)
-
-        for env in getattr(self, "envs", []):
-            env.cleanup()
+        try:
+            try:
+                self.runner.build(stdout_callback)
+            except:
+                self.errors.append("Build failed.")
+                raise
+            for env_name in self.job_config.get("environments", []):
+                self.prepare_environment(env_name)
+            self.runner.boot()
+            for script in ("build-scripts", "test-scripts"):
+                LOG.debug("Scripts found %r" % self.job_config.get(script, []))
+                for s in self.job_config.get(script, []):
+                    LOG.debug("Starting script %r" % s)
+                    self.errors.append(self.run_script(self.config.scripts[s]))
+        except Exception as e:
+            # TODO: fix exceptions hadling
+            LOG.error("Failed to build.")
+            LOG.debug("Exception while building:", exc_info=True)
+            self.errors.append(e)
+        finally:
+            self.seconds = int(time.time() - start)
+            self.error = any(self.errors)
+            self.runner.cleanup()
+            for env in getattr(self, "envs", []):
+                env.cleanup()
 
 
 class CR(object):

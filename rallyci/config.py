@@ -57,7 +57,7 @@ class Config(object):
 
     def get_runner(self, name):
         runner = self.runners[name]
-        return self.runner_modules[runner["module"]].Runner(runner)
+        return self.runner_modules[runner["module"]].Runner(runner, self)
 
     def load_items(self, name, items):
         if not hasattr(self, name):

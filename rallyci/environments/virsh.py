@@ -15,6 +15,7 @@ import threading
 
 LOG = logging.getLogger(__name__)
 PREFIX = "rci_"
+LOCK_GET_SEM = threading.Lock()
 LOCK = threading.Lock()
 SEMS = {}
 NETWORKS = set()
@@ -31,9 +32,10 @@ class Environment(base.Environment):
         super(Environment, self).__init__(*args, **kwargs)
         self.vms = []
         self.name = self.config["name"]
+        self.ifs = {}
 
     def build(self):
-        with LOCK:
+        with LOCK_GET_SEM:
             if self.name not in SEMS:
                 SEMS[self.name] = threading.Semaphore(self.config["max_threads"])
         LOG.debug(SEMS)
@@ -41,7 +43,7 @@ class Environment(base.Environment):
         LOG.debug("acquired %r" % SEMS[self.name])
         try:
             for vm_conf in self.config["create-vms"]:
-                vm = VM(self.global_config, vm_conf)
+                vm = VM(self.global_config, vm_conf, self)
                 vm.build()
                 ip_env_var = vm_conf.get("ip_env_var")
                 if ip_env_var:
@@ -59,18 +61,22 @@ class Environment(base.Environment):
 
 class VM(object):
 
-    def __init__(self, global_config, config):
+    def __init__(self, global_config, config, env):
         self.volumes = []
         self.ifs = []
         self.global_config = global_config
         self.config = config
         self.ssh = sshutils.SSH(*config["host"])
         self.name = get_rnd_name()
+        self.env = env
 
     def _get_rnd_mac(self):
         return "00:" + ":".join(["%02x" % random.randint(0, 255) for i in range(5)])
 
     def _get_bridge(self, prefix):
+        iface = self.env.ifs.get(prefix)
+        if iface:
+            return iface
         nums = set()
         with LOCK:
             s, o, e = self.ssh.execute("ip link list")
@@ -86,6 +92,7 @@ class VM(object):
             self.ssh.run("ip link add %s type bridge" % iface)
             self.ssh.run("ip link set %s up" % iface)
             self.ifs.append(iface)
+            self.env.ifs[prefix] = iface
             return iface
 
     def gen_xml(self):
