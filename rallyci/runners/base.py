@@ -12,6 +12,9 @@ class Runner:
     def setup(self, **kwargs):
         pass
 
+    def boot(self):
+        pass
+
     @abc.abstractmethod
     def build(self):
         """Build VM/Container to run job.

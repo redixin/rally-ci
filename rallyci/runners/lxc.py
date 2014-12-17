@@ -102,7 +102,7 @@ class Runner(base.Runner):
             LOG.debug("Checking base container")
             status, out, err = self.ssh.execute("lxc-info -n %s" % self.base_name)
             if status:
-                return self._build(stdout_callback)
+                self._build(stdout_callback)
         self.ssh.run("lxc-clone -s %s %s" % (self.base_name, self.name))
 
     def boot(self):
