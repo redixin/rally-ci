@@ -1,5 +1,4 @@
 
-* use run id for thread name
 * specify user in runner somehow
 * voting/non-voting jobs
 * apply envs to scripts

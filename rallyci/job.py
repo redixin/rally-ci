@@ -18,17 +18,16 @@ NAMES = [('s', 's'),
 
 class Job(object):
 
-    def __init__(self, config, job_config, event, publishers, runner):
+    def __init__(self, config, cr, publishers, runner):
         self.envs = []
         self.env = {}
         self.config = config
-        self.job_config = job_config
-        self.event = event
+        self.cr = cr
         self.publishers = publishers
         self.errors = []
         self.error = True
         self.seconds = 0
-        self.name = job_config["name"]
+        self.name = config["name"]
         self.runner = runner
         setattr(self.runner, "job", self)
 
@@ -45,7 +44,7 @@ class Job(object):
 
     def prepare_environment(self, env_name):
         LOG.debug("Preparing env: %s" % env_name)
-        env = self.config.get_env(env_name, self)
+        env = self.cr.config.get_env(env_name, self)
         env.build()
         self.env.update(env.env)
         self.envs.append(env)
@@ -72,11 +71,8 @@ class Job(object):
 
     def run(self):
         start = time.time()
-        job_id = "%s-%s-%s" % (self.event["change"]["id"],
-                               self.event["patchSet"]["number"],
-                               self.name)
-        threading.currentThread().setName(job_id)
-        LOG.info("Started thread for job %s" % job_id)
+        threading.currentThread().setName("%s-%s" % (self.cr.run_id, self.name))
+        LOG.info("Started job thread")
 
         def stdout_callback(line):
             for p in self.publishers:
@@ -90,14 +86,14 @@ class Job(object):
             except:
                 self.errors.append("Build failed.")
                 raise
-            for env_name in self.job_config.get("environments", []):
+            for env_name in self.config.get("environments", []):
                 self.prepare_environment(env_name)
             self.runner.boot()
             for script in ("build-scripts", "test-scripts"):
-                LOG.debug("Scripts found %r" % self.job_config.get(script, []))
-                for s in self.job_config.get(script, []):
+                LOG.debug("Scripts found %r" % self.config.get(script, []))
+                for s in self.config.get(script, []):
                     LOG.debug("Starting script %r" % s)
-                    self.errors.append(self.run_script(self.config.scripts[s]))
+                    self.errors.append(self.run_script(self.cr.config.scripts[s]))
         except Exception as e:
             # TODO: fix exceptions hadling
             LOG.error("Failed to build.")
@@ -122,14 +118,12 @@ class CR(object):
 
     def run_jobs(self):
         threads = []
-        change_full_id = "%s-%s" % (self.event["change"]["id"],
-                                    self.event["patchSet"]["number"])
-        threading.currentThread().setName(change_full_id)
+        threading.currentThread().setName(self.run_id)
         publishers = list(self.config.get_publishers(self.run_id, self.event))
         for job_config in self.project_config["jobs"]:
             runner = self.config.get_runner(job_config["runner"])
             runner.setup(**job_config["runner-args"])
-            job = Job(self.config, job_config, self.event, publishers, runner)
+            job = Job(job_config, self, publishers, runner)
             self.jobs.append(job)
             t = threading.Thread(target=job.run)
             t.start()
