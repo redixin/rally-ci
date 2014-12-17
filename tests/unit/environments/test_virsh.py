@@ -35,8 +35,9 @@ class VMTestCase(unittest.TestCase):
 
     def test__get_bridge(self):
         conf = mock.Mock()
-        job = mock.Mock()
-        vm = VM(conf, SAMPLE_CONFIG)
+        env = mock.Mock()
+        env.ifs = {}
+        vm = VM(conf, SAMPLE_CONFIG, env)
         vm.ssh = mock.Mock()
         vm.ssh.execute.return_value = (0, SAMPLE_IP_LINK_LIST, "")
         self.assertEqual("nr1", vm._get_bridge("nr"))

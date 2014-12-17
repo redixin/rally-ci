@@ -12,7 +12,8 @@ class DockerTestCase(unittest.TestCase):
         ssh.execute.side_effect = [(0,0,0), (0,0,0)]
         m_ssh.SSH.return_value = ssh
         config = {"ssh": {"user": "root"}}
-        r = docker.Runner(config)
+        global_config = mock.Mock()
+        r = docker.Runner(config, global_config)
         r.setup("~/fake/path/")
         r._run = mock.Mock()
         r.build(mock.Mock())
@@ -29,7 +30,8 @@ class DockerTestCase(unittest.TestCase):
         ssh.execute.side_effect = [(1, 0, 0), (0, 0, 0)]
         m_ssh.SSH.return_value = ssh
         config = {"ssh": {"user": "root"}}
-        r = docker.Runner(config)
+        global_config = mock.Mock()
+        r = docker.Runner(config, global_config)
         r.setup("~/fake/path/")
         r._run = mock.Mock()
         r.build("fake_stdout_callback")
