@@ -5,6 +5,9 @@ import string
 import os.path
 
 from rallyci import sshutils
+from rallyci import utils
+
+
 import base
 
 import logging
@@ -13,10 +16,6 @@ LOG = logging.getLogger(__name__)
 
 BUILD_LOCK = {}
 LOCK = threading.Lock()
-
-
-def get_rnd_name(length=12):
-    return "".join(random.sample(string.letters, length))
 
 
 class Runner(base.Runner):
@@ -47,7 +46,7 @@ class Runner(base.Runner):
 
     def _build(self, stdout_callback):
         LOG.debug("Uploading dockerfile")
-        tmpdir = get_rnd_name()
+        tmpdir = utils.get_rnd_name()
         tmpdir = os.path.join("/tmp", tmpdir)
         self.ssh.run("mkdir %s" % tmpdir)
         self.ssh.run("cat > %s/Dockerfile" % tmpdir,
@@ -70,7 +69,7 @@ class Runner(base.Runner):
                 return self._build(stdout_callback)
 
     def run(self, cmd, stdout_callback, stdin=None, env=None):
-        name = get_rnd_name()
+        name = utils.get_rnd_name()
         self.names.append(name)
         command = ["docker", "run", "--name", name]
         if stdin:

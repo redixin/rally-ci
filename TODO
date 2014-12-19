@@ -1,4 +1,5 @@
 
+* add virsh runner
 * specify user in runner somehow
 * voting/non-voting jobs
 * apply envs to scripts

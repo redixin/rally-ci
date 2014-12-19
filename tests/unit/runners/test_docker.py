@@ -20,7 +20,7 @@ class DockerTestCase(unittest.TestCase):
         expected = []
         self.assertEqual(expected, r._run.mock_calls)
 
-    @mock.patch("rallyci.runners.docker.get_rnd_name")
+    @mock.patch("rallyci.runners.docker.utils.get_rnd_name")
     @mock.patch("rallyci.runners.docker.sshutils")
     @mock.patch("rallyci.runners.docker.open", create=True)
     def test_build_cahce_miss(self, m_open, m_ssh, m_rnd):

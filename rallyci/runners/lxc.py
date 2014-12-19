@@ -5,6 +5,7 @@ import StringIO
 
 import base
 from rallyci import sshutils
+from rallyci import utils
 
 LOG = logging.getLogger(__name__)
 LOCK = threading.Lock()
@@ -21,17 +22,11 @@ class Stdout(object):
         self.cb((self.num, line))
 
 
-def get_rnd_name(prefix="rci_", length=12):
-    import random
-    import string
-    return prefix + "".join(random.sample(string.letters, length))
-
-
 class Runner(base.Runner):
 
     def setup(self, name, template, build_scripts, template_options="", env_networks=None):
         self.base_name = name
-        self.name = get_rnd_name()
+        self.name = utils.get_rnd_name()
         self.ssh = sshutils.SSH(**self.config["ssh"])
         self.template = template
         self.template_options = template_options

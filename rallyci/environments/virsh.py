@@ -1,6 +1,7 @@
 
 import base
 from rallyci import sshutils
+from rallyci import utils
 
 from xmlbuilder import XMLBuilder
 
@@ -20,10 +21,6 @@ LOCK = threading.Lock()
 SEMS = {}
 NETWORKS = set()
 IFACE_RE = re.compile("\d+: ([a-z]+)([0-9]+): .*")
-
-
-def get_rnd_name(length=10):
-        return PREFIX + "".join(random.sample(string.letters, length))
 
 
 class Environment(base.Environment):
@@ -67,7 +64,7 @@ class VM(object):
         self.global_config = global_config
         self.config = config
         self.ssh = sshutils.SSH(*config["host"])
-        self.name = get_rnd_name()
+        self.name = utils.get_rnd_name()
         self.env = env
 
     def _get_rnd_mac(self):
@@ -181,7 +178,7 @@ class LVM(object):
         self.size = size
 
     def build(self):
-        self.name = get_rnd_name()
+        self.name = utils.get_rnd_name()
         self.dev = "/dev/%s/%s" % (self.vg, self.name)
         cmd_t = "lvcreate -n%s -L%s -s /dev/%s/%s"
         cmd = cmd_t % (self.name, self.size, self.vg, self.source)
