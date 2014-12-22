@@ -16,7 +16,7 @@ class Runner:
         pass
 
     @abc.abstractmethod
-    def build(self):
+    def build(self, stdout_cb):
         """Build VM/Container to run job.
 
         Raise exception if build failed.

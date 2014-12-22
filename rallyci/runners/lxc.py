@@ -12,16 +12,6 @@ LOCK = threading.Lock()
 BUILD_LOCK = {}
 
 
-class Stdout(object):
-
-    def __init__(self, cb, num=1):
-        self.cb = cb
-        self.num = num
-
-    def write(self, line):
-        self.cb((self.num, line))
-
-
 class Runner(base.Runner):
 
     def setup(self, name, template, build_scripts, template_options="", env_networks=None):
@@ -57,7 +47,6 @@ class Runner(base.Runner):
     def _build(self, stdout_cb):
         failed = False
         try:
-            outerr = {"stdout": Stdout(stdout_cb), "stderr": Stdout(stdout_cb, 2)}
             cmd = "lxc-create -B btrfs -t %s -n %s -- %s"
             cmd = cmd % (self.template,
                          self.base_name,
@@ -79,7 +68,7 @@ class Runner(base.Runner):
                     stdin = open(path, "rb")
                 else:
                     stdin = StringIO.StringIO(s["data"])
-                self.ssh.run(cmd, stdin=stdin, **outerr)
+                self.ssh.run(cmd, stdin=stdin, **utils.get_stdouterr(stdout_cb))
         except Exception as e:
             LOG.warning("Failed to build container.")
             self.ssh.execute("lxc-destroy -f -n %s" % self.base_name)
@@ -108,12 +97,11 @@ class Runner(base.Runner):
         self.ssh.run("lxc-start -d -n %s" % self.name)
 
     def run(self, cmd, stdout_cb, stdin, env):
-        outerr = {"stdout": Stdout(stdout_cb), "stderr": Stdout(stdout_cb, 2)}
         cmd = "lxc-attach -n %s -- %s" % (self.name, cmd)
         for k, v in env.items():
             cmd = "%s=%s " % (k, v) + cmd
         LOG.debug("Executing '%s' in container" % cmd)
-        self.ssh.run(cmd, stdin=stdin, **outerr)
+        self.ssh.run(cmd, stdin=stdin, **utils.get_stdouterr(stdout_cb))
 
     def cleanup(self):
         self.ssh.execute("lxc-stop -n %s" % self.name)
