@@ -19,4 +19,3 @@ class Stdout(object):
 def get_stdouterr(cb):
     return {"stdout": Stdout(cb),
             "stderr": Stdout(cb, 2)}
-
