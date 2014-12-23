@@ -7,7 +7,7 @@ from rallyci.environments import event
 class EventTestCase(unittest.TestCase):
     def test_build(self):
         job = mock.Mock()
-        job.event = {
+        job.cr.event = {
                 "key1": "val1",
                 "key2": "val2",
                 "subdict1": {"subkey1": "subval1"},

@@ -9,7 +9,7 @@ class Environment(base.Environment):
 
     def build(self):
         for k, v in self.config["export-event"].items():
-            value = dict(self.job.event)
+            value = dict(self.job.cr.event)
             for key in v.split("."):
                 value = value[key]
             self.env[k] = value

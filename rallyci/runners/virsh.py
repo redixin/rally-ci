@@ -30,7 +30,9 @@ class Runner(base.Runner):
             self._ip = self.vm.get_ip()
         return self._ip
 
-    def run(self, cmd, stdout_cb, stdin=None, env=None):
+    def run(self, cmd, stdout_cb, stdin, env):
+        for k, v in env.items():
+            cmd = "%s=%s " % (k, v) + cmd
         self.ssh.run(cmd, stdin=stdin, **utils.get_stdouterr(stdout_cb))
 
     def cleanup(self):
