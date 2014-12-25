@@ -89,7 +89,7 @@ class Job(object):
             for env_name in self.config.get("environments", []):
                 self.prepare_environment(env_name)
             self.runner.boot()
-            for script in ("build-scripts", "test-scripts"):
+            for script in ("build-scripts", "test-scripts", "scripts"):
                 LOG.debug("Scripts found %r" % self.config.get(script, []))
                 for s in self.config.get(script, []):
                     LOG.debug("Starting script %r" % s)
@@ -121,6 +121,10 @@ class CR(object):
         threading.currentThread().setName(self.run_id)
         publishers = list(self.config.get_publishers(self.run_id, self.event))
         for job_config in self.project_config["jobs"]:
+            event = self.event["type"]
+            if event != job_config.get("event", "patchset-created"):
+                LOG.debug("%s: skipping job %s" % (event, job_config["name"]))
+                continue
             runner = self.config.get_runner(job_config["runner"])
             runner.setup(**job_config["runner-args"])
             job = Job(job_config, self, publishers, runner)
