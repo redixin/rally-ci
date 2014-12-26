@@ -21,7 +21,8 @@ class Publisher(base.Publisher):
             self.template = Template(self.config["template"])
 
     def publish_summary(self, jobs):
-        success = not any([job.error for job in jobs])
+        success = not any([(job.error and job.config.get("voting", True))
+                           for job in jobs])
         summary = self.template.render(jobs=jobs, event=self.event,
                                        success=success, run_id=self.run_id)
         cmd_template = """gerrit review -m '{summary}' {verified} {id}"""

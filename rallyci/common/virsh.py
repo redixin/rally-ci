@@ -80,7 +80,7 @@ class VM(object):
 
             for num, vol in enumerate(self.volumes):
                 with self.xml.disk(type="block", device="disk"):
-                    self.xml.driver(name="qemu", type="raw", cache="none",
+                    self.xml.driver(name="qemu", type="raw", cache="directsync",
                                     io="native")
                     self.xml.source(dev=vol.dev)
                     self.xml.target(dev="vd%s" % string.lowercase[num],
@@ -129,10 +129,13 @@ class VM(object):
 
     def cleanup(self):
         self.ssh.run("virsh destroy %s" % self.name)
-        for v in self.volumes:
+        while self.volumes:
+            v = self.volumes.pop()
             v.cleanup()
         for i in self.ifs:
             self.ssh.run("ip link del %s" % i)
+        self.ssh.close()
+        del(self.ssh)
 
 
 class LVM(object):
@@ -153,3 +156,5 @@ class LVM(object):
     def cleanup(self):
         cmd = "lvremove -f /dev/%s/%s" % (self.vg, self.name)
         self.ssh.run(cmd)
+        self.ssh.close()
+        del(self.ssh)

@@ -90,4 +90,5 @@ class Runner(base.Runner):
         for name in self.names:
             self.ssh.run("docker rm %s" % name)
         self.ssh.run("docker rmi %s" % self.current)
+        self.ssh.close()
         del(self.ssh)

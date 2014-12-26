@@ -135,8 +135,9 @@ class SSH(object):
                                       'exception_type': type(e)})
 
     def close(self):
-        self._client.close()
-        self._client = False
+        if self._client:
+            self._client.close()
+            self._client = False
 
     def run(self, cmd, stdin=None, stdout=None, stderr=None,
             raise_on_error=True, timeout=3600):

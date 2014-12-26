@@ -103,7 +103,8 @@ class Job(object):
             self.seconds = int(time.time() - start)
             self.error = any(self.errors)
             self.runner.cleanup()
-            for env in getattr(self, "envs", []):
+            while self.envs:
+                env = self.envs.pop()
                 env.cleanup()
 
 
@@ -122,7 +123,8 @@ class CR(object):
         publishers = list(self.config.get_publishers(self.run_id, self.event))
         for job_config in self.project_config["jobs"]:
             event = self.event["type"]
-            if event != job_config.get("event", "patchset-created"):
+            events = job_config.get("events", ["patchset-created", "comment-added"])
+            if event not in events:
                 LOG.debug("%s: skipping job %s" % (event, job_config["name"]))
                 continue
             runner = self.config.get_runner(job_config["runner"])

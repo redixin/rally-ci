@@ -106,3 +106,5 @@ class Runner(base.Runner):
     def cleanup(self):
         self.ssh.execute("lxc-stop -n %s" % self.name)
         self.ssh.execute("lxc-destroy -n %s" % self.name)
+        self.ssh.close()
+        del(self.ssh)

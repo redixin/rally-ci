@@ -1,9 +1,6 @@
 
-* add virsh runner
 * specify user in runner somehow
-* voting/non-voting jobs
 * apply envs to scripts
-* handle "merged" events
 * add timestamps to stdouts
 * reload config
 * job timeout

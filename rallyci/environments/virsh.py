@@ -53,5 +53,6 @@ class Environment(base.Environment):
 
     def cleanup(self):
         SEMS[self.name].release()
-        for vm in self.vms:
+        while self.vms:
+            vm = self.vms.pop()
             vm.cleanup()
