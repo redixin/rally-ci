@@ -21,6 +21,7 @@ class EventHandler(object):
         self.config = config
         self.handlers = {
                 "patchset-created": self._handle_patchset_created,
+                "change-merged": self._handle_change_merged,
                 "comment-added": self._handle_comment_added,
         }
         self.recheck_regexp = self.config.glob.get("recheck-regexp")
@@ -45,7 +46,9 @@ class EventHandler(object):
             LOG.debug("Unknown project '%s'" % event["change"]["project"])
 
     def _handle_patchset_created(self, event):
-        LOG.debug("Patchset created")
+        self.enqueue_job(event)
+
+    def _handle_change_merged(self, event):
         self.enqueue_job(event)
 
     def _handle_comment_added(self, event):
