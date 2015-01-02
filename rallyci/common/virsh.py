@@ -2,6 +2,7 @@ from xmlbuilder import XMLBuilder
 
 import StringIO
 import threading
+import os
 import random
 import re
 import string
@@ -15,6 +16,55 @@ LOG = logging.getLogger(__name__)
 IFACE_RE = re.compile("\d+: ([a-z]+)([0-9]+): .*")
 NETWORKS = set()
 LOCK = threading.Lock()
+
+
+class ZFS(object):
+    def __init__(self, ssh, source, **kwargs):
+        self.ssh = ssh
+        self.dataset, self.source = source.rsplit("/", 1)
+        self.name = utils.get_rnd_name()
+        self.dev = os.path.join("/dev", self.dataset, self.name)
+
+    def build(self):
+        LOG.info("Creating zfs volume %s" % self.name)
+        cmd = "zfs clone %(dataset)s/%(src)s %(dataset)s/%(dst)s" % {
+                "src": self.source, "dst": self.name, "dataset": self.dataset}
+        self.ssh.run(cmd)
+
+    def cleanup(self):
+        time.sleep(5)
+        # remove sleep when (if) this is fixed:
+        # https://bugzilla.redhat.com/show_bug.cgi?id=1178150
+        LOG.info("Removing zfs volume %s" % self.name)
+        cmd = "zfs destroy %(dataset)s/%(name)s" % {
+                "name": self.name, "dataset": self.dataset}
+        self.ssh.run(cmd)
+        self.ssh.close()
+        del(self.ssh)
+
+
+class LVM(object):
+
+    def __init__(self, ssh, source, vg, size, **kwargs):
+        self.ssh = ssh
+        self.vg = vg
+        self.source = source
+        self.size = size
+
+    def build(self):
+        self.name = utils.get_rnd_name()
+        self.dev = os.path.join("/dev", self.vg, self.name)
+        cmd_t = "lvcreate -n%s -L%s -s /dev/%s/%s"
+        cmd = cmd_t % (self.name, self.size, self.vg, self.source)
+        self.ssh.run(cmd)
+
+    def cleanup(self):
+        cmd = "lvremove -f /dev/%s/%s" % (self.vg, self.name)
+        self.ssh.run(cmd)
+        self.ssh.close()
+        del(self.ssh)
+
+DRIVERS = {"lvm": LVM, "zfs": ZFS}
 
 
 class VM(object):
@@ -118,7 +168,7 @@ class VM(object):
 
     def build(self):
         for v in self.config["volumes"]:
-            volume = LVM(self.ssh, **v)
+            volume = DRIVERS[v["driver"]](self.ssh, **v)
             volume.build()
             self.volumes.append(volume)
 
@@ -134,27 +184,5 @@ class VM(object):
             v.cleanup()
         for i in self.ifs:
             self.ssh.run("ip link del %s" % i)
-        self.ssh.close()
-        del(self.ssh)
-
-
-class LVM(object):
-
-    def __init__(self, ssh, source, vg, size, **kwargs):
-        self.ssh = ssh
-        self.vg = vg
-        self.source = source
-        self.size = size
-
-    def build(self):
-        self.name = utils.get_rnd_name()
-        self.dev = "/dev/%s/%s" % (self.vg, self.name)
-        cmd_t = "lvcreate -n%s -L%s -s /dev/%s/%s"
-        cmd = cmd_t % (self.name, self.size, self.vg, self.source)
-        self.ssh.run(cmd)
-
-    def cleanup(self):
-        cmd = "lvremove -f /dev/%s/%s" % (self.vg, self.name)
-        self.ssh.run(cmd)
         self.ssh.close()
         del(self.ssh)

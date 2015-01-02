@@ -87,6 +87,7 @@ class Runner(base.Runner):
             status, out, err = self.ssh.execute("lxc-info -n %s" % self.base_name)
             if status:
                 self._build(stdout_callback)
+        LOG.info("Creating container %s" % self.name)
         self.ssh.run("lxc-clone -s %s %s" % (self.base_name, self.name))
 
     def boot(self):
@@ -104,7 +105,7 @@ class Runner(base.Runner):
         self.ssh.run(cmd, stdin=stdin, **utils.get_stdouterr(stdout_cb))
 
     def cleanup(self):
-        self.ssh.execute("lxc-stop -n %s" % self.name)
-        self.ssh.execute("lxc-destroy -n %s" % self.name)
+        LOG.info("Removing container %s" % self.name)
+        self.ssh.execute("lxc-destroy -f -n %s" % self.name)
         self.ssh.close()
         del(self.ssh)
