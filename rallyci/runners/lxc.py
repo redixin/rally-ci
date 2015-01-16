@@ -47,11 +47,11 @@ class Runner(base.Runner):
     def _build(self, stdout_cb):
         failed = False
         try:
-            cmd = "lxc-create -B btrfs -t %s -n %s -- %s"
+            cmd = "lxc-create -B zfs -t %s -n %s -- %s"
             cmd = cmd % (self.template,
                          self.base_name,
                          self.template_options)
-            self.ssh.run(cmd, **outerr)
+            self.ssh.run(cmd, **utils.get_stdouterr(stdout_cb))
             conf = StringIO.StringIO()
             self._setup_base_networks(conf)
             conf.seek(0)
@@ -86,8 +86,9 @@ class Runner(base.Runner):
             LOG.debug("Checking base container")
             status, out, err = self.ssh.execute("lxc-info -n %s" % self.base_name)
             if status:
+                LOG.debug("No container %s. Building new one." % self.base_name)
                 self._build(stdout_callback)
-        LOG.info("Creating container %s" % self.name)
+        LOG.info("Creating container %s as clone of %s" % (self.name, self.base_name))
         self.ssh.run("lxc-clone -s %s %s" % (self.base_name, self.name))
 
     def boot(self):
@@ -107,5 +108,7 @@ class Runner(base.Runner):
     def cleanup(self):
         LOG.info("Removing container %s" % self.name)
         self.ssh.execute("lxc-destroy -f -n %s" % self.name)
+        # https://github.com/lxc/lxc/issues/401
+        self.ssh.execute("zfs destroy tank/lxc/%s@%s" % (self.base_name, self.name))
         self.ssh.close()
         del(self.ssh)

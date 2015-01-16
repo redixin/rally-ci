@@ -23,7 +23,7 @@ class ZFS(object):
         self.ssh = ssh
         self.dataset, self.source = source.rsplit("/", 1)
         self.name = utils.get_rnd_name()
-        self.dev = os.path.join("/dev", self.dataset, self.name)
+        self.dev = os.path.join("/dev/zvol", self.dataset, self.name)
 
     def build(self):
         LOG.info("Creating zfs volume %s" % self.name)
@@ -113,7 +113,7 @@ class VM(object):
         self.xml.vcpu("1", placement="static")
         with self.xml.cpu(mode="host-model"):
             self.xml.model(fallback="forbid")
-        self.xml.os.type("hvm", arch="x86_64", machine="pc-i440fx-2.1")
+        self.xml.os.type("hvm", arch="x86_64", machine="pc-i440fx-2.0")
         with self.xml.features:
             self.xml.acpi
             self.xml.apic

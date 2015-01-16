@@ -1,4 +1,4 @@
-
+* add run_id to all generated names
 * specify user in runner somehow
 * apply envs to scripts
 * add timestamps to stdouts
