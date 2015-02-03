@@ -1,4 +1,5 @@
 
+import os
 import threading
 import logging
 import StringIO
@@ -40,7 +41,7 @@ class Runner(base.Runner):
                        "lxc.network.ipv4 = %s\n" % (ifname, ip))
 
     def _setup_base_networks(self, conf):
-        for net in self.config["networking"]:
+        for net in self.config.get("networking", []):
             conf.write("lxc.network.type = veth\n"
                        "lxc.network.link = %s\n" % net["bridge"])
 
@@ -104,6 +105,14 @@ class Runner(base.Runner):
             cmd = "%s=%s " % (k, v) + cmd
         LOG.debug("Executing '%s' in container" % cmd)
         self.ssh.run(cmd, stdin=stdin, **utils.get_stdouterr(stdout_cb))
+
+
+    def publish_files(self, job, path="/tmp/pub"):
+        for p in job.publishers:
+            publisher = getattr(p, "publish_files", None)
+            if publisher:
+                path = "/var/lib/lxc/%s/rootfs/%s" % (self.name, path)
+                publisher(self.config["ssh"], path, "%s/pub" % job.name)
 
     def cleanup(self):
         LOG.info("Removing container %s" % self.name)

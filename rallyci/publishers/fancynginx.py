@@ -3,6 +3,7 @@ import gzip
 import os
 import errno
 import base
+import subprocess
 
 from mako.template import Template
 
@@ -44,7 +45,7 @@ class Publisher(base.Publisher):
         if stream not in self.streams:
             fname = os.path.join(self.path, stream + ".txt.gz")
             mkdir(os.path.dirname(fname))
-            self.streams[stream] = gzip.open(fname, "wb")
+            self.streams[stream] = gzip.open(fname, "wb", 9)
         self.streams[stream].write(line[1])
 
     def publish_summary(self, jobs):
@@ -52,6 +53,18 @@ class Publisher(base.Publisher):
         for stream in self.streams.values():
             stream.close()
         self._render(index, "summary-template", jobs=jobs, event=self.event)
+
+    def publish_files(self, ssh, src, dst):
+        """Publish directory from test vm.
+
+        :param ssh: dictionary with ssh credentials
+        """
+        dst = os.path.join(self.path, dst.strip("/"))
+        uhp = "%s@%s:%s" % (ssh["user"], ssh["host"], src)
+        port = str(ssh.get("port", 22))
+        cmd = ["scp", "-r", "-P", port, uhp, dst]
+        LOG.debug("Calling %r" % cmd)
+        subprocess.call(cmd)
 
     def _render(self, filename, template_name, **kwargs):
         template = Template(filename=self.config[template_name])

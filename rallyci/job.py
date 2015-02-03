@@ -102,10 +102,21 @@ class Job(object):
         finally:
             self.seconds = int(time.time() - start)
             self.error = any(self.errors)
+
+            try:
+                LOG.debug("Publishing files")
+                if hasattr(self.runner, "publish_files"):
+                    self.runner.publish_files(self)
+            except Exception:
+                LOG.error("Failed to publish files", exc_info=True)
+
             self.runner.cleanup()
             while self.envs:
                 env = self.envs.pop()
                 env.cleanup()
+
+
+        LOG.debug("Done with publishing files")
 
 
 class CR(object):
