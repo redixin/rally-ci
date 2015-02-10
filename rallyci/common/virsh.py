@@ -160,7 +160,6 @@ class VM(object):
                 if l.startswith("lease "):
                     ip = l.split(" ")[1]
                 elif ("hardware ethernet %s;" % mac) in l:
-                    time.sleep(5)
                     return ip
             if time.time() - start > timeout:
                 raise Exception('timeout')

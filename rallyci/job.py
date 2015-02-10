@@ -20,7 +20,7 @@ class Job(object):
 
     def __init__(self, config, cr, publishers, runner):
         self.envs = []
-        self.env = {}
+        self.env = config.get("env", {})
         self.config = config
         self.cr = cr
         self.publishers = publishers

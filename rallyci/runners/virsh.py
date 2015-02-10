@@ -22,7 +22,7 @@ class Runner(base.Runner):
         sshconf["host"] = self.ip
         LOG.debug("Connecting to %r" % sshconf)
         self.ssh = sshutils.SSH(**sshconf)
-        self.ssh.run("uname")
+        self.ssh.wait()
 
     @property
     def ip(self):
