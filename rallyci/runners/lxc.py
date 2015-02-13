@@ -116,7 +116,8 @@ class Runner(base.Runner):
 
     def cleanup(self):
         LOG.info("Removing container %s" % self.name)
-        self.ssh.execute("lxc-destroy -f -n %s" % self.name)
+        # https://github.com/lxc/lxc/issues/440
+        utils.retry(self.ssh.run, "lxc-destroy -f -n %s" % self.name)
         # https://github.com/lxc/lxc/issues/401
         self.ssh.execute("zfs destroy tank/lxc/%s@%s" % (self.base_name, self.name))
         self.ssh.close()
