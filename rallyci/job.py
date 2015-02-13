@@ -1,4 +1,5 @@
 
+import copy
 import time
 import threading
 import os.path
@@ -20,7 +21,7 @@ class Job(object):
 
     def __init__(self, config, cr, publishers, runner):
         self.envs = []
-        self.env = config.get("env", {})
+        self.env = copy.deepcopy(config.get("env", {}))
         self.config = config
         self.cr = cr
         self.publishers = publishers
@@ -48,6 +49,8 @@ class Job(object):
         env.build()
         self.env.update(env.env)
         self.envs.append(env)
+        LOG.debug("New env vars %r" % env.env)
+        LOG.debug("Resulting env (%r) %r" % (self, self.env))
 
     def run_script(self, script):
         LOG.debug("Running script %r" % script)
@@ -67,6 +70,7 @@ class Job(object):
             stdin = open(path, "rb")
         else:
             stdin = StringIO.StringIO(script["data"])
+        LOG.debug("(%r) calling runner.run with env (%d) %r" % (self, id(self.env), self.env))
         return self.runner.run(cmd, stdout_callback, stdin=stdin, env=self.env)
 
     def run(self):
