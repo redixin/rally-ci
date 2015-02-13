@@ -1,5 +1,9 @@
 import random
 import string
+import time
+import logging
+
+LOG = logging.getLogger(__name__)
 
 
 def get_rnd_name(prefix="rci_", length=12):
@@ -19,3 +23,13 @@ class Stdout(object):
 def get_stdouterr(cb):
     return {"stdout": Stdout(cb),
             "stderr": Stdout(cb, 2)}
+
+
+def retry(fun, *args, **kwargs):
+    for i in range(4):
+        try:
+            return fun(*args, **kwargs)
+        except Exception as e:
+            LOG.warning("Raised %s. Retrying (%s)." % (e, i))
+            time.sleep(1)
+    raise e
