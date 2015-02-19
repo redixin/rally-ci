@@ -15,12 +15,15 @@ BUILD_LOCK = {}
 
 class Runner(base.Runner):
 
-    def setup(self, name, template, build_scripts, template_options="", env_networks=None):
+    def setup(self, name, template, build_scripts,
+              pub_dir="/tmp/pub", template_options="",
+              env_networks=None):
         self.base_name = name
         self.name = utils.get_rnd_name()
         self.ssh = sshutils.SSH(**self.config["ssh"])
         self.template = template
         self.template_options = template_options
+        self.pub_dir = pub_dir
         self.build_scripts = build_scripts
         self.env_networks = env_networks
 
@@ -107,11 +110,11 @@ class Runner(base.Runner):
         self.ssh.run(cmd, stdin=stdin, **utils.get_stdouterr(stdout_cb))
 
 
-    def publish_files(self, job, path="/tmp/pub"):
+    def publish_files(self, job):
         for p in job.publishers:
             publisher = getattr(p, "publish_files", None)
             if publisher:
-                path = "/var/lib/lxc/%s/rootfs/%s" % (self.name, path)
+                path = "/var/lib/lxc/%s/rootfs/%s" % (self.name, self.pub_dir)
                 publisher(self.config["ssh"], path, "%s/pub" % job.name)
 
     def cleanup(self):

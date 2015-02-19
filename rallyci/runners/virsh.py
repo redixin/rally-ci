@@ -10,7 +10,7 @@ LOG = logging.getLogger(__name__)
 
 class Runner(base.Runner):
 
-    def setup(self, user):
+    def setup(self, user, pub_dir="/tmp/pub"):
         self.user = user
 
     def build(self, stdout_cb):
