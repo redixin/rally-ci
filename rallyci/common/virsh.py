@@ -18,7 +18,17 @@ NETWORKS = set()
 LOCK = threading.Lock()
 
 
-class ZFS(object):
+class DevVolMixin(object):
+    num = 0
+    def gen_xml(self, xml):
+        with xml.disk(type="block", device="disk"):
+            xml.driver(name="qemu", type="raw", cache="directsync", io="native")
+            xml.source(dev=self.dev)
+            xml.target(dev="vd%s" % string.lowercase[self.num], bus="virtio")
+        self.num += 1
+
+
+class ZFS(DevVolMixin):
     def __init__(self, ssh, source, **kwargs):
         self.ssh = ssh
         self.dataset, self.source = source.rsplit("/", 1)
@@ -43,7 +53,37 @@ class ZFS(object):
         del(self.ssh)
 
 
-class LVM(object):
+class ZFSFile(object):
+    num = 0
+    def __init__(self, ssh, dataset, source, **kwargs):
+        self.ssh = ssh
+        self.dataset = dataset
+        self.source = source
+        self.name = utils.get_rnd_name()
+
+    def build(self):
+        cmd = "zfs clone {ds}/{src} {ds}/{dst}".format(ds=self.dataset,
+                                                       src=self.source,
+                                                       dst=self.name)
+        self.ssh.run(cmd)
+
+    def gen_xml(self, xml):
+        path = ("/%s/%s" % (self.dataset, self.source)).split("@")[0]
+        status, out, err = self.ssh.execute("ls %s" % path)
+        for img in out.splitlines():
+            with xml.disk(type="file", device="disk"):
+                xml.driver(name="qemu", type="qcow2", cache="unsafe")
+                xml.source(file="/%s/%s/%s" % (self.dataset, self.name, img))
+                xml.target(dev="vd%s" % string.lowercase[self.num], bus="virtio")
+            self.num += 1
+
+    def cleanup(self):
+        self.ssh.run("zfs destroy %s/%s" % (self.dataset, self.name))
+
+
+class LVM(DevVolMixin):
+    conf_type = "raw"
+    conf_cache = "directsync"
 
     def __init__(self, ssh, source, vg, size, **kwargs):
         self.ssh = ssh
@@ -64,7 +104,8 @@ class LVM(object):
         self.ssh.close()
         del(self.ssh)
 
-DRIVERS = {"lvm": LVM, "zfs": ZFS}
+
+DRIVERS = {"lvm": LVM, "zfs": ZFS, "zfsf": ZFSFile}
 
 
 class VM(object):
@@ -128,13 +169,9 @@ class VM(object):
                 self.xml.address(type="pci", domain="0x0000", bus="0x00",
                                  slot="0x09", function="0x0")
 
-            for num, vol in enumerate(self.volumes):
-                with self.xml.disk(type="block", device="disk"):
-                    self.xml.driver(name="qemu", type="raw", cache="directsync",
-                                    io="native")
-                    self.xml.source(dev=vol.dev)
-                    self.xml.target(dev="vd%s" % string.lowercase[num],
-                                    bus="virtio")
+            for vol in self.volumes:
+                vol.gen_xml(self.xml)
+
             for net in self.config["networks"]:
                 net = net.split(" ")
                 mac = self._get_rnd_mac() if len(net) < 2 else net[1]

@@ -1,9 +1,11 @@
 
 import mock
+from mock import call
 import unittest
 
 from rallyci.common import virsh
 
+# {{{
 SAMPLE_IP_LINK_LIST = """
 1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN mode DEFAULT group default
     link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
@@ -28,8 +30,10 @@ SAMPLE_IP_LINK_LIST = """
 433: docker0: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc noqueue state DOWN mode DEFAULT group default
     link/ether 56:84:7a:fe:97:99 brd ff:ff:ff:ff:ff:ff
 """
+# }}}
 
 SAMPLE_CONFIG = {"host": ["user", "host"]}
+
 
 class VMTestCase(unittest.TestCase):
 
@@ -50,3 +54,63 @@ class VMTestCase(unittest.TestCase):
                 ]
         self.assertEqual(calls, vm.ssh.run.mock_calls)
         self.assertEqual(["nr1", "ok0"], vm.ifs)
+
+class VolumeTestCase(unittest.TestCase):
+
+    def setUp(self):
+        super(VolumeTestCase, self).setUp()
+        self._m_utils = mock.patch('rallyci.common.virsh.utils')
+        self.m_utils = self._m_utils.start()
+        self.m_utils.get_rnd_name.return_value = "rnd_name"
+
+        self.ssh = mock.Mock()
+        self.xml = mock.MagicMock()
+
+    def tearDown(self):
+        self._m_utils.stop()
+
+    def test_zfs(self):
+        zfs = virsh.ZFS(self.ssh, "tank/src@1")
+        zfs.build()
+        self.ssh.run.assert_called_once_with("zfs clone tank/src@1 tank/rnd_name")
+
+        zfs.gen_xml(self.xml)
+        xml_calls = [
+                call.disk(device='disk', type='block'),
+                call.disk().__enter__(),
+                call.driver(cache='directsync', type='raw', name='qemu', io='native'),
+                call.source(dev='/dev/zvol/tank/rnd_name'),
+                call.target(bus='virtio', dev='vda'),
+                call.disk().__exit__(None, None, None),
+            ]
+        self.assertEqual(xml_calls, self.xml.mock_calls)
+
+        zfs.cleanup()
+        self.ssh.run.assert_has_calls(call('zfs destroy tank/rnd_name'))
+        self.ssh.close.assert_called_once_with()
+
+    def test_zfs_file(self):
+        self.ssh.execute.return_value = [0, "img1.qcow2\nimg2.qcow2", ""]
+        zfsf = virsh.ZFSFile(self.ssh, "tank/qcow", "img1@1")
+        zfsf.build()
+        self.ssh.run.assert_called_once_with("zfs clone tank/qcow/img1@1 tank/qcow/rnd_name")
+
+        zfsf.gen_xml(self.xml)
+        xml_calls = [
+                call.disk(device='disk', type='file'),
+                call.disk().__enter__(),
+                call.driver(cache='unsafe', type='qcow2', name='qemu'),
+                call.source(dev='/tank/qcow/rnd_name/img1.qcow2'),
+                call.target(bus='virtio', dev='vda'),
+                call.disk().__exit__(None, None, None),
+                call.disk(device='disk', type='file'),
+                call.disk().__enter__(),
+                call.driver(cache='unsafe', type='qcow2', name='qemu'),
+                call.source(dev='/tank/qcow/rnd_name/img2.qcow2'),
+                call.target(bus='virtio', dev='vdb'),
+                call.disk().__exit__(None, None, None),
+            ]
+        self.assertEqual(xml_calls, self.xml.mock_calls)
+
+        zfsf.cleanup()
+        self.ssh.run.assert_has_calls(call("zfs destroy tank/qcow/rnd_name"))
