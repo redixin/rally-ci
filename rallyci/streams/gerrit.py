@@ -17,6 +17,8 @@ class Stream(base.Stream):
         pipe = subprocess.Popen(cmd.split(" "),
                                 stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT)
+        with open(self.config.get("pidfile", "/var/log/rally-ci/gerrit-ssh.pid"), "w") as pidfile:
+            pidfile.write(str(pipe.pid))
         for line in iter(pipe.stdout.readline, b''):
             if not line:
                 break

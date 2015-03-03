@@ -20,6 +20,7 @@ NAMES = [('s', 's'),
 class Job(object):
 
     def __init__(self, config, cr, publishers, runner):
+        self.ok = 1
         self.envs = []
         self.env = copy.deepcopy(config.get("env", {}))
         self.config = config

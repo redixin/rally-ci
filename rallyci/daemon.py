@@ -3,16 +3,28 @@
 import log  # noqa
 import config
 import events
+import signal
 import sys
+
+
+cfg = config.Config(sys.argv[1])
+
+
+def handle_term(signo, frame):
+    sys.exit(0)
+
+
+def handle_hup(signo, frame):
+    cfg.need_reload = True
 
 
 def run():
     if len(sys.argv) < 3:
         print "Usage:\n\t%s <config_file> <log_file>\n" % sys.argv[0]
         sys.exit(1)
-    cfg = config.Config()
-    config_file = sys.argv[1]
-    cfg.load_file(config_file)
-    cfg.init()
+
+    signal.signal(signal.SIGHUP, handle_hup)
+    signal.signal(signal.SIGTERM, handle_term)
+
     handler = events.EventHandler(cfg)
     handler.loop()

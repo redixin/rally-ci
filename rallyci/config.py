@@ -1,12 +1,15 @@
 
 import os
 import copy
+import re
 
 import yaml
 import importlib
 
 import logging
 LOG = logging.getLogger(__name__)
+
+DEFAULT_RECHECK_REGEXP = "^recheck( rally| bug \d+| no bug)?$"
 
 
 class ConfigError(Exception):
@@ -15,8 +18,34 @@ class ConfigError(Exception):
 
 class Config(object):
 
-    def __init__(self):
-        self.stream = {}
+    def __init__(self, config_file):
+        self.need_reload = True
+        self.config_file = config_file
+        self._modules = {}
+
+    def _get_module(self, name):
+        """Get module by name.
+
+        Import module if it is not imported.
+        """
+        module = self._modules.get(name)
+        if not module:
+            module = importlib.import_module(name)
+            self._modules[name] = module
+        return module
+
+    def reload(self):
+        """Reload confguration file."""
+
+        self.cleanup_vars()
+        self.load_file(self.config_file)
+        self.init()
+        self.need_reload = False
+
+    def cleanup_vars(self):
+        """Clear all previously loaded configuration data."""
+
+        self._stream = {}
         self.daemon = {}
         self.publishers = []
         self.glob = {}
@@ -26,16 +55,24 @@ class Config(object):
         self.runner_modules = {}
 
     def init(self):
+        """Set all internal variables according to loaded files."""
+
         self._init_publishers()
         self._init_environments()
         self._init_runners()
 
+        self.recheck_regexp = re.compile(
+                self.glob.get("recheck_regexp", DEFAULT_RECHECK_REGEXP),
+                re.MULTILINE)
+
+        self.stream = self._get_module(self._stream["module"]).\
+                Stream(self._stream)
+
     def _init_publishers(self):
         for p in self.publishers:
             if p["module"] not in self.publisher_modules:
-                self.publisher_modules[p["module"]] = importlib.\
-                        import_module(p["module"])
-        LOG.debug("Imported publisher modules: %r" % self.publisher_modules)
+                self.publisher_modules[p["module"]] = self._get_module(p["module"])
+        LOG.debug("Available publisher modules: %r" % self.publisher_modules)
 
     def get_publishers(self, run_id, event):
         for p in self.publishers:
@@ -45,14 +82,14 @@ class Config(object):
         for name, env in self.environments.items():
             module = env["module"]
             if module not in self.env_modules:
-                self.env_modules[module] = importlib.import_module(module)
-        LOG.debug("Loaded environment modules %r" % self.env_modules)
+                self.env_modules[module] = self._get_module(module)
+        LOG.debug("Available environment modules %r" % self.env_modules)
 
     def _init_runners(self):
         for name, runner in self.runners.items():
             module = runner["module"]
             if module not in self.runner_modules:
-                self.runner_modules[module] = importlib.import_module(module)
+                self.runner_modules[module] = self._get_module(module)
         LOG.debug("Loaded runner modules %r" % self.runner_modules)
 
     def get_runner(self, name):
@@ -88,7 +125,7 @@ class Config(object):
 
     def load_file(self, fname):
         data = yaml.safe_load(open(fname, "rb"))
-        self.stream.update(data.get("stream", {}))
+        self._stream.update(data.get("stream", {}))
         self.publishers += data.get("publishers", [])
         self.glob.update(data.get("global", {}))
         self.daemon.update(data.get("daemon", {}))
@@ -107,19 +144,3 @@ class Config(object):
             msg = "Duplicate %s %s" % item_name, item["name"]
             LOG.error(msg)
             raise ConfigError(msg)
-
-    def load_dir(self, d):
-        for dpath, dnames, fnames in os.walk(d):
-            for fname in fnames:
-                filename = os.path.join(dpath, fname)
-                LOG.debug("Loading configuration: %s" % filename)
-                self.load_file(filename)
-
-    def load(self, dirs):
-        for d in dirs:
-            if d.startswith("~"):
-                d = os.path.expanduser(d)
-            if os.path.isdir(d):
-                self.load_dir(d)
-            else:
-                LOG.warning("Unable to load config from: %s" % d)

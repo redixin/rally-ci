@@ -1,7 +1,6 @@
 
 import os.path
 import threading
-import re
 import json
 import Queue
 import importlib
@@ -17,24 +16,12 @@ class EventHandler(object):
     def __init__(self, config):
         self.queue = Queue.Queue()
         self.threads = {}
-        self.runner_modules = {}
         self.config = config
         self.handlers = {
                 "patchset-created": self._handle_patchset_created,
                 "change-merged": self._handle_change_merged,
                 "comment-added": self._handle_comment_added,
         }
-        self.recheck_regexp = self.config.glob.get("recheck-regexp")
-
-        stream_module = importlib.import_module(config.stream["module"])
-        self.stream = stream_module.Stream(config.stream)
-
-        if self.recheck_regexp:
-            self.recheck_regexp = re.compile(self.recheck_regexp, re.MULTILINE)
-
-        for runner_name, runner_conf in self.config.runners.items():
-            module = runner_conf["module"]
-            self.runner_modules[module] = importlib.import_module(module)
 
     def enqueue_job(self, event):
         project_config = self.config.projects.get(event["change"]["project"])
@@ -52,9 +39,7 @@ class EventHandler(object):
         self.enqueue_job(event)
 
     def _handle_comment_added(self, event):
-        if not self.recheck_regexp:
-            return
-        m = self.recheck_regexp.search(event["comment"])
+        m = self.config.recheck_regexp.search(event["comment"])
         if m:
             LOG.debug("Recheck requested")
             return self.enqueue_job(event)
@@ -63,8 +48,14 @@ class EventHandler(object):
         handler = Handler(self.queue)
         thread = threading.Thread(target=handler.run)
         thread.start()
+        restart = True
         try:
-            for event in self.stream.generate():
+            while True:
+                if self.config.need_reload:
+                    LOG.info("Reloading configuration.")
+                    self.config.reload()
+                    stream = self.config.stream.generate()
+                event = stream.next()
                 handler = self.handlers.get(event["type"])
                 if handler:
                     handler(event)
@@ -72,8 +63,11 @@ class EventHandler(object):
                     LOG.debug("Unknown event: %s" % event["type"])
         except KeyboardInterrupt:
             LOG.info("Interrupted.")
+        except StopIteration:
+            pass
         except:
             LOG.error("Exception during stream handling.", exc_info=True)
+
         LOG.info("Stream finished. Finalizing queue.")
         self.queue.put(None)
         self.queue.join()
