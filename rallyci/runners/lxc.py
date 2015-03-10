@@ -15,20 +15,16 @@ BUILD_LOCK = {}
 
 class Runner(base.Runner):
 
-    def setup(self, name, template, build_scripts,
-              pub_dir="/tmp/pub", template_options="",
-              env_networks=None):
+    def setup(self, name, template, build_scripts, **kwargs):
         self.base_name = name
         self.name = utils.get_rnd_name()
         self.ssh = sshutils.SSH(**self.config["ssh"])
         self.template = template
-        self.template_options = template_options
-        self.pub_dir = pub_dir
         self.build_scripts = build_scripts
-        self.env_networks = env_networks
+        self.kwargs = kwargs
 
     def _get_env_networks(self):
-        for env_net in self.env_networks or []:
+        for env_net in self.kwargs.get("env_networks", []):
             ifname, ip = env_net.split(":")
             for env in self.job.envs:
                 for vm in getattr(env, "vms", []):
@@ -54,7 +50,7 @@ class Runner(base.Runner):
             cmd = "lxc-create -B zfs -t %s -n %s -- %s"
             cmd = cmd % (self.template,
                          self.base_name,
-                         self.template_options)
+                         self.kwargs.get("template_options", ""))
             self.ssh.run(cmd, **utils.get_stdouterr(stdout_cb))
             conf = StringIO.StringIO()
             self._setup_base_networks(conf)
@@ -109,13 +105,17 @@ class Runner(base.Runner):
         LOG.debug("Executing '%s' in container" % cmd)
         self.ssh.run(cmd, stdin=stdin, **utils.get_stdouterr(stdout_cb))
 
-
     def publish_files(self, job):
+        dirs = self.kwargs.get("publish_files", [])
+        if not dirs:
+            return
         for p in job.publishers:
             publisher = getattr(p, "publish_files", None)
             if publisher:
-                path = "/var/lib/lxc/%s/rootfs/%s" % (self.name, self.pub_dir)
-                publisher(self.config["ssh"], path, "%s/pub" % job.name)
+                for src, dst in dirs:
+                    src = "/var/lib/lxc/%s/rootfs/%s" % (self.name, src)
+                    dst = "%s/%s" % (job.name, dst)
+                    publisher(self.config["ssh"], src, dst)
 
     def cleanup(self):
         LOG.info("Removing container %s" % self.name)

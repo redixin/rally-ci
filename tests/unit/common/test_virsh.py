@@ -32,7 +32,7 @@ SAMPLE_IP_LINK_LIST = """
 """
 # }}}
 
-SAMPLE_CONFIG = {"host": ["user", "host"]}
+SAMPLE_CONFIG = {"ssh": {"user": "root", "host": "example.net"}}
 
 
 class VMTestCase(unittest.TestCase):
@@ -100,13 +100,13 @@ class VolumeTestCase(unittest.TestCase):
                 call.disk(device='disk', type='file'),
                 call.disk().__enter__(),
                 call.driver(cache='unsafe', type='qcow2', name='qemu'),
-                call.source(dev='/tank/qcow/rnd_name/img1.qcow2'),
+                call.source(file='/tank/qcow/rnd_name/img1.qcow2'),
                 call.target(bus='virtio', dev='vda'),
                 call.disk().__exit__(None, None, None),
                 call.disk(device='disk', type='file'),
                 call.disk().__enter__(),
                 call.driver(cache='unsafe', type='qcow2', name='qemu'),
-                call.source(dev='/tank/qcow/rnd_name/img2.qcow2'),
+                call.source(file='/tank/qcow/rnd_name/img2.qcow2'),
                 call.target(bus='virtio', dev='vdb'),
                 call.disk().__exit__(None, None, None),
             ]

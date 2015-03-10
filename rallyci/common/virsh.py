@@ -115,7 +115,7 @@ class VM(object):
         self.ifs = []
         self.global_config = global_config
         self.config = config
-        self.ssh = sshutils.SSH(*config["host"])
+        self.ssh = sshutils.SSH(**config["ssh"])
         self.name = utils.get_rnd_name()
         self.env = env
 

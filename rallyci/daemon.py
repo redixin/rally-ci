@@ -24,7 +24,6 @@ def run():
         sys.exit(1)
 
     signal.signal(signal.SIGHUP, handle_hup)
-    signal.signal(signal.SIGTERM, handle_term)
 
     handler = events.EventHandler(cfg)
     handler.loop()

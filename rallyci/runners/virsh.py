@@ -10,18 +10,18 @@ LOG = logging.getLogger(__name__)
 
 class Runner(base.Runner):
 
-    def setup(self, user, pub_dir="/tmp/pub"):
+    def setup(self, user, **kwargs):
         self.user = user
+        self.kwargs = kwargs
 
     def build(self, stdout_cb):
         self.vm = virsh.VM(self.global_config, self.config)
         self.vm.build()
 
     def boot(self):
-        sshconf = {"user": self.user}
-        sshconf["host"] = self.ip
-        LOG.debug("Connecting to %r" % sshconf)
-        self.ssh = sshutils.SSH(**sshconf)
+        self.sshconf = {"user": self.user, "host": self.ip}
+        LOG.debug("Connecting to %r" % self.sshconf)
+        self.ssh = sshutils.SSH(**self.sshconf)
         self.ssh.wait()
 
     @property
@@ -37,3 +37,14 @@ class Runner(base.Runner):
 
     def cleanup(self):
         self.vm.cleanup()
+
+    def publish_files(self, job):
+        dirs = self.kwargs.get("publish_files", [])
+        if not dirs:
+            return
+        for p in job.publishers:
+            publisher = getattr(p, "publish_files", None)
+            if publisher:
+                for src, dst in dirs:
+                    dst = "%s/%s" % (job.name, dst)
+                    publisher(self.sshconf, src, dst)

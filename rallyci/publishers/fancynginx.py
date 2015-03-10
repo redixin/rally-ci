@@ -62,7 +62,8 @@ class Publisher(base.Publisher):
         dst = os.path.join(self.path, dst.strip("/"))
         uhp = "%s@%s:%s" % (ssh["user"], ssh["host"], src)
         port = str(ssh.get("port", 22))
-        cmd = ["scp", "-r", "-P", port, uhp, dst]
+        cmd = ["scp", "-B", "-o", "StrictHostKeyChecking no",
+               "-r", "-P", port, uhp, dst]
         LOG.debug("Calling %r" % cmd)
         subprocess.call(cmd)
 
