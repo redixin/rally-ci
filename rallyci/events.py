@@ -49,9 +49,12 @@ class EventHandler(object):
         thread = threading.Thread(target=handler.run)
         thread.start()
         restart = True
+        stream = None
         try:
             while True:
                 if self.config.need_reload:
+                    if stream:
+                        stream.close()
                     LOG.info("Reloading configuration.")
                     self.config.reload()
                     stream = self.config.stream.generate()

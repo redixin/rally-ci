@@ -1,11 +1,12 @@
+import base
 
 import json
 import subprocess
-
-import base
-
 import logging
+
+
 LOG = logging.getLogger(__name__)
+PIDFILE = "/var/log/rally-ci/gerrit-ssh.pid"
 
 
 class Stream(base.Stream):
@@ -17,15 +18,16 @@ class Stream(base.Stream):
         pipe = subprocess.Popen(cmd.split(" "),
                                 stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT)
-        with open(self.config.get("pidfile", "/var/log/rally-ci/gerrit-ssh.pid"), "w") as pidfile:
-            pidfile.write(str(pipe.pid))
-        for line in iter(pipe.stdout.readline, b''):
-            if not line:
-                break
-            try:
-                event = json.loads(line)
-            except ValueError:
-                LOG.warning("Invalid json: %s" % line)
-            yield(event)
-
-
+        try:
+            with open(self.config.get("pidfile", PIDFILE), "w") as pidfile:
+                pidfile.write(str(pipe.pid))
+            for line in iter(pipe.stdout.readline, b''):
+                if not line:
+                    break
+                try:
+                    event = json.loads(line)
+                except ValueError:
+                    LOG.warning("Invalid json: %s" % line)
+                yield(event)
+        finally:
+            pipe.terminate()
