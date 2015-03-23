@@ -28,6 +28,7 @@ class Stream(base.Stream):
                     event = json.loads(line)
                 except ValueError:
                     LOG.warning("Invalid json: %s" % line)
+                    next
                 yield(event)
         finally:
             pipe.terminate()
