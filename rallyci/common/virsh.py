@@ -20,9 +20,11 @@ LOCK = threading.Lock()
 
 class DevVolMixin(object):
     num = 0
+
     def gen_xml(self, xml):
         with xml.disk(type="block", device="disk"):
-            xml.driver(name="qemu", type="raw", cache="directsync", io="native")
+            xml.driver(name="qemu", type="raw",
+                       cache="directsync", io="native")
             xml.source(dev=self.dev)
             xml.target(dev="vd%s" % string.lowercase[self.num], bus="virtio")
         self.num += 1
@@ -55,6 +57,7 @@ class ZFS(DevVolMixin):
 
 class ZFSFile(object):
     num = 0
+
     def __init__(self, ssh, dataset, source, **kwargs):
         self.ssh = ssh
         self.dataset = dataset
@@ -74,7 +77,8 @@ class ZFSFile(object):
             with xml.disk(type="file", device="disk"):
                 xml.driver(name="qemu", type="qcow2", cache="unsafe")
                 xml.source(file="/%s/%s/%s" % (self.dataset, self.name, img))
-                xml.target(dev="vd%s" % string.lowercase[self.num], bus="virtio")
+                xml.target(dev="vd%s" % string.lowercase[self.num],
+                           bus="virtio")
             self.num += 1
 
     def cleanup(self):
@@ -120,7 +124,8 @@ class VM(object):
         self.env = env
 
     def _get_rnd_mac(self):
-        return "00:" + ":".join(["%02x" % random.randint(0, 255) for i in range(5)])
+        mac5 = ["%02x" % random.randint(0, 255) for i in range(5)]
+        return "00:" + ":".join(mac5)
 
     def _get_bridge(self, prefix):
         iface = self.env.ifs.get(prefix)
@@ -187,8 +192,9 @@ class VM(object):
         e = ~self.xml
         start = time.time()
         while 1:
-            time.sleep(8)
-            mac =  e.find("devices").find("interface").find("mac").get("address")
+            time.sleep(4)
+            ifs = e.find("devices").find("interface")
+            mac = ifs.find("mac").get("address")
             mac = mac.lower()
             LOG.debug("Searching for mac %s" % mac)
             s, out, err = self.ssh.execute("cat /var/lib/dhcp/dhcpd.leases")
@@ -200,7 +206,6 @@ class VM(object):
                     return ip
             if time.time() - start > timeout:
                 raise Exception('timeout')
-
 
     def build(self):
         for v in self.config["volumes"]:

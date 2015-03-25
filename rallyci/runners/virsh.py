@@ -1,4 +1,4 @@
-import base
+from rallycu.runners import base
 from rallyci.common import virsh
 from rallyci import sshutils
 from rallyci import utils

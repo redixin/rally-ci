@@ -1,14 +1,10 @@
 
 import threading
-import random
-import string
 import os.path
 
 from rallyci import sshutils
 from rallyci import utils
-
-
-import base
+from rallyci.runners import base
 
 import logging
 LOG = logging.getLogger(__name__)

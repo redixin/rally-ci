@@ -1,5 +1,5 @@
 
-import base
+from rallyci.publishers import base
 
 import logging
 LOG = logging.getLogger(__name__)

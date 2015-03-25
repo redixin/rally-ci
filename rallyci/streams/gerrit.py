@@ -1,4 +1,4 @@
-import base
+from rallyci.streams import base
 
 import json
 import subprocess
@@ -12,9 +12,8 @@ PIDFILE = "/var/log/rally-ci/gerrit-ssh.pid"
 class Stream(base.Stream):
 
     def generate(self):
-        conf = self.config["ssh"]
         cmd = "ssh -p %(port)d %(username)s@%(hostname)s gerrit stream-events" % \
-                self.config["ssh"]
+              self.config["ssh"]
         pipe = subprocess.Popen(cmd.split(" "),
                                 stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT)

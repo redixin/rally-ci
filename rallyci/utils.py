@@ -20,6 +20,7 @@ class Stdout(object):
     def write(self, line):
         self.cb((self.num, line))
 
+
 def get_stdouterr(cb):
     return {"stdout": Stdout(cb),
             "stderr": Stdout(cb, 2)}

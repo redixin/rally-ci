@@ -71,12 +71,14 @@ class Job(object):
             stdin = open(path, "rb")
         else:
             stdin = StringIO.StringIO(script["data"])
-        LOG.debug("(%r) calling runner.run with env (%d) %r" % (self, id(self.env), self.env))
+        LOG.debug("(%r) calling runner.run with env (%d) %r" % (
+            self, id(self.env), self.env))
         return self.runner.run(cmd, stdout_callback, stdin=stdin, env=self.env)
 
     def run(self):
         start = time.time()
-        threading.currentThread().setName("%s-%s" % (self.cr.run_id, self.name))
+        threading.currentThread().setName("%s-%s" % (self.cr.run_id,
+                                                     self.name))
         LOG.info("Started job thread")
 
         def stdout_callback(line):
@@ -98,7 +100,8 @@ class Job(object):
                 LOG.debug("Scripts found %r" % self.config.get(script, []))
                 for s in self.config.get(script, []):
                     LOG.debug("Starting script %r" % s)
-                    self.errors.append(self.run_script(self.cr.config.scripts[s]))
+                    self.errors.append(self.run_script(
+                        self.cr.config.scripts[s]))
         except Exception as e:
             # TODO: fix exceptions hadling
             LOG.error("Failed to build.")
@@ -120,7 +123,6 @@ class Job(object):
                 env = self.envs.pop()
                 env.cleanup()
 
-
         LOG.debug("Done with publishing files")
 
 
@@ -139,7 +141,8 @@ class CR(object):
         publishers = list(self.config.get_publishers(self.run_id, self.event))
         for job_config in self.project_config["jobs"]:
             event = self.event["type"]
-            events = job_config.get("events", ["patchset-created", "comment-added"])
+            events = job_config.get("events", ["patchset-created",
+                                               "comment-added"])
             if event not in events:
                 LOG.debug("%s: skipping job %s" % (event, job_config["name"]))
                 continue
@@ -158,6 +161,6 @@ class CR(object):
             LOG.debug("Publishing %r" % p)
             try:
                 p.publish_summary(self.jobs)
-            except Exception as e:
+            except Exception:
                 LOG.warning("Publishing failed", exc_info=True)
         LOG.debug("Done with publishing")

@@ -4,12 +4,13 @@ import unittest
 
 from rallyci.runners import docker
 
+
 class DockerTestCase(unittest.TestCase):
 
     @mock.patch("rallyci.runners.docker.sshutils")
     def test_build_cache_hit(self, m_ssh):
         ssh = mock.Mock()
-        ssh.execute.side_effect = [(0,0,0), (0,0,0)]
+        ssh.execute.side_effect = [(0, 0, 0), (0, 0, 0)]
         m_ssh.SSH.return_value = ssh
         config = {"ssh": {"user": "root"}}
         global_config = mock.Mock()

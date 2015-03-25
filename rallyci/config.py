@@ -1,6 +1,3 @@
-
-import os
-import copy
 import re
 
 import yaml
@@ -65,18 +62,20 @@ class Config(object):
                 self.glob.get("recheck_regexp", DEFAULT_RECHECK_REGEXP),
                 re.MULTILINE)
 
-        self.stream = self._get_module(self._stream["module"]).\
-                Stream(self._stream)
+        self.stream = self._get_module(
+                self._stream["module"]).Stream(self._stream)
 
     def _init_publishers(self):
         for p in self.publishers:
             if p["module"] not in self.publisher_modules:
-                self.publisher_modules[p["module"]] = self._get_module(p["module"])
+                self.publisher_modules[p["module"]] = \
+                        self._get_module(p["module"])
         LOG.debug("Available publisher modules: %r" % self.publisher_modules)
 
     def get_publishers(self, run_id, event):
         for p in self.publishers:
-            yield self.publisher_modules[p["module"]].Publisher(run_id, event, p)
+            yield self.publisher_modules[p["module"]].Publisher(run_id,
+                                                                event, p)
 
     def _init_environments(self):
         for name, env in self.environments.items():
@@ -102,7 +101,7 @@ class Config(object):
         target = getattr(self, name)
         for item in items:
             if name in target:
-                msg = "Duplicate %s %s" % item_name, item["name"]
+                msg = "Duplicate %s %s" % name, item["name"]
                 LOG.error(msg)
                 raise ConfigError(msg)
             target[item["name"]] = item

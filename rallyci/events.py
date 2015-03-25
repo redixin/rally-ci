@@ -1,9 +1,5 @@
-
-import os.path
 import threading
-import json
 import Queue
-import importlib
 
 from rallyci.job import CR
 from rallyci.queue import Handler
@@ -48,7 +44,6 @@ class EventHandler(object):
         handler = Handler(self.queue)
         thread = threading.Thread(target=handler.run)
         thread.start()
-        restart = True
         stream = None
         try:
             while True:

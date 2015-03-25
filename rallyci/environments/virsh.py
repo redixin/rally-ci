@@ -1,17 +1,9 @@
 
-import base
-from rallyci import sshutils
-from rallyci import utils
+from rallyci.environments import base
 from rallyci.common import virsh
 
-from xmlbuilder import XMLBuilder
-
-import StringIO
-import random
 import re
-import string
 import logging
-import time
 import threading
 
 
@@ -35,7 +27,8 @@ class Environment(base.Environment):
     def build(self):
         with LOCK_GET_SEM:
             if self.name not in SEMS:
-                SEMS[self.name] = threading.Semaphore(self.config["max_threads"])
+                SEMS[self.name] = threading.Semaphore(
+                        self.config["max_threads"])
         LOG.debug(SEMS)
         SEMS[self.name].acquire()
         LOG.debug("acquired %r" % SEMS[self.name])

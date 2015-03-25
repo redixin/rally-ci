@@ -1,8 +1,9 @@
 
-import base
+from rallyci.runners import base
 
 import logging
 LOG = logging.getLogger(__name__)
+
 
 class Runner(base.Runner):
 

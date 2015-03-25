@@ -10,6 +10,7 @@ if len(sys.argv) > 1:
 else:
     logfile = "/var/log/rally-ci/daemon.log"
 
+
 class ThreadNameFilter(logging.Filter):
     def filter(self, record):
         record.thread_name = threading.currentThread().getName()

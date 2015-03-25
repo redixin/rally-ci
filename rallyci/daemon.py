@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 
-import log  # noqa
-import config
-import events
 import signal
 import sys
+
+from rallyci import config
+from rallyci import events
 
 
 cfg = config.Config(sys.argv[1])

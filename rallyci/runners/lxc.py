@@ -4,7 +4,7 @@ import threading
 import logging
 import StringIO
 
-import base
+from rallyci.runners import base
 from rallyci import sshutils
 from rallyci import utils
 
@@ -45,7 +45,6 @@ class Runner(base.Runner):
                        "lxc.network.link = %s\n" % net["bridge"])
 
     def _build(self, stdout_cb):
-        failed = False
         try:
             cmd = "lxc-create -B zfs -t %s -n %s -- %s"
             cmd = cmd % (self.template,
@@ -55,7 +54,8 @@ class Runner(base.Runner):
             conf = StringIO.StringIO()
             self._setup_base_networks(conf)
             conf.seek(0)
-            self.ssh.run("cat >> /var/lib/lxc/%s/config" % self.base_name, stdin=conf)
+            self.ssh.run("cat >> /var/lib/lxc/%s/config" % self.base_name,
+                         stdin=conf)
             self.ssh.run("lxc-start -d -n %s" % self.base_name)
             for s in self.build_scripts:
                 s = self.global_config.scripts[s]
@@ -68,8 +68,9 @@ class Runner(base.Runner):
                     stdin = open(path, "rb")
                 else:
                     stdin = StringIO.StringIO(s["data"])
-                self.ssh.run(cmd, stdin=stdin, **utils.get_stdouterr(stdout_cb))
-        except Exception as e:
+                self.ssh.run(cmd, stdin=stdin,
+                             **utils.get_stdouterr(stdout_cb))
+        except Exception:
             LOG.warning("Failed to build container.")
             self.ssh.execute("lxc-destroy -f -n %s" % self.base_name)
             raise
@@ -84,11 +85,12 @@ class Runner(base.Runner):
         with BUILD_LOCK[self.base_name]:
             LOG.debug("is_locked 2 %r" % BUILD_LOCK[self.base_name].locked())
             LOG.debug("Checking base container")
-            status, out, err = self.ssh.execute("lxc-info -n %s" % self.base_name)
-            if status:
-                LOG.debug("No container %s. Building new one." % self.base_name)
+            s, o, e = self.ssh.execute("lxc-info -n %s" % self.base_name)
+            if s:
+                LOG.debug("No container %s. Building..." % self.base_name)
                 self._build(stdout_callback)
-        LOG.info("Creating container %s as clone of %s" % (self.name, self.base_name))
+        LOG.info("Creating container %s as clone of %s" % (self.name,
+                                                           self.base_name))
         self.ssh.run("lxc-clone -s %s %s" % (self.base_name, self.name))
 
     def boot(self):
@@ -122,6 +124,7 @@ class Runner(base.Runner):
         # https://github.com/lxc/lxc/issues/440
         utils.retry(self.ssh.run, "lxc-destroy -f -n %s" % self.name)
         # https://github.com/lxc/lxc/issues/401
-        self.ssh.execute("zfs destroy tank/lxc/%s@%s" % (self.base_name, self.name))
+        self.ssh.execute("zfs destroy tank/lxc/%s@%s" % (self.base_name,
+                                                         self.name))
         self.ssh.close()
         del(self.ssh)

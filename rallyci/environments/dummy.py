@@ -1,5 +1,5 @@
 
-import base
+from rallyci.enviromnents import base
 
 
 class Environment(base.Environment):

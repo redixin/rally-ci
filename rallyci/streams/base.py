@@ -1,6 +1,7 @@
 
 import abc
 
+
 class Stream:
     __metaclass__ = abc.ABCMeta
 

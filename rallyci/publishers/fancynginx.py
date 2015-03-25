@@ -2,12 +2,13 @@
 import gzip
 import os
 import errno
-import base
 import subprocess
+import logging
+
+from rallyci.publishers import base
 
 from mako.template import Template
 
-import logging
 LOG = logging.getLogger(__name__)
 
 

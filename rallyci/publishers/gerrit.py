@@ -1,11 +1,9 @@
 
 import logging
-
-import base
 import paramiko
-
 from mako.template import Template
 
+from rallyci.publishers import base
 
 LOG = logging.getLogger(__name__)
 

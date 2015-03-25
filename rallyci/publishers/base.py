@@ -1,6 +1,7 @@
 
 import abc
 
+
 class Publisher:
     """Abstract class of Publisher object.
 
