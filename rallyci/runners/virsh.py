@@ -12,7 +12,7 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
-from rallycu.runners import base
+from rallyci.runners import base
 from rallyci.common import virsh
 from rallyci import sshutils
 from rallyci import utils

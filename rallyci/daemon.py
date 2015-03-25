@@ -15,6 +15,7 @@
 import signal
 import sys
 
+from rallyci import log  # noqa
 from rallyci import config
 from rallyci import events
 
