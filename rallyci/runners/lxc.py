@@ -118,7 +118,8 @@ class Runner(base.Runner):
         for k, v in env.items():
             cmd = "%s=%s " % (k, v) + cmd
         LOG.debug("Executing '%s' in container" % cmd)
-        self.ssh.run(cmd, stdin=stdin, **utils.get_stdouterr(stdout_cb))
+        return self.ssh.run(cmd, raise_on_error=False, stdin=stdin,
+                            **utils.get_stdouterr(stdout_cb))
 
     def publish_files(self, job):
         dirs = self.kwargs.get("publish_files", [])
