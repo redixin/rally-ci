@@ -46,9 +46,10 @@ class Publisher:
         pass
 
     @abc.abstractmethod
-    def publish_line(self, stream, line):
+    def publish_line(self, job_name, stream, line):
         """Publish line in stream.
 
+        :param job_name: job name
         :param stream: stream name (script name)
         :line: tuple (number, line) where number is 1 or 2 for stdout or stderr
         """

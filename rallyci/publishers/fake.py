@@ -24,8 +24,9 @@ class Publisher(base.Publisher):
     def check_config(config):
         pass
 
-    def publish_line(self, stream, line):
-        LOG.debug("Publishing line %s in stream %s" % (line, stream))
+    def publish_line(self, job_name, stream, line):
+        LOG.debug("Publishing line %s in stream %s (job: %s)" % (line, stream,
+                                                                 job_name))
         pass
 
     def publish_summary(self, jobs):

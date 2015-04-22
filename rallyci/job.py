@@ -74,7 +74,7 @@ class Job(object):
             for p in self.publishers:
                 # kinda dirty hack: stream_name = file_name
                 # so file name will be actually directory/file
-                p.publish_line(os.path.join(self.name, name), line)
+                p.publish_line(self.name, name, line)
 
         cmd = script["interpreter"]
         path = script.get("path")
@@ -98,7 +98,7 @@ class Job(object):
             for p in self.publishers:
                 # kinda dirty hack: stream_name = file_name
                 # so file name will be actually directory/file
-                p.publish_line(os.path.join(self.name, "00_build"), line)
+                p.publish_line(self.name, "00_build", line)
 
         try:
             try:

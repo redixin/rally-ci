@@ -51,7 +51,7 @@ class Publisher(base.Publisher):
             c.exec_command(cmd)
             c.close()
 
-    def publish_line(self, stream, line):
+    def publish_line(self, job_name, stream, line):
         pass
 
     def check_config(config):

@@ -55,12 +55,15 @@ class Publisher(base.Publisher):
         header = os.path.join(self.path, self.config["header-filename"])
         self._render(header, "header-template", event=self.event)
 
-    def publish_line(self, stream, line):
-        if stream not in self.streams:
-            fname = os.path.join(self.path, stream + ".txt.gz")
+    def publish_line(self, job_name, stream, line):
+        key = job_name + stream
+        if key not in self.streams:
+            prefix = self.config.get("log-dir", "")
+            fname = os.path.join(self.path, job_name, prefix,
+                                 stream + ".txt.gz")
             mkdir(os.path.dirname(fname))
-            self.streams[stream] = gzip.open(fname, "wb", 9)
-        self.streams[stream].write(line[1])
+            self.streams[key] = gzip.open(fname, "wb", 9)
+        self.streams[key].write(line[1])
 
     def publish_summary(self, jobs):
         index = os.path.join(self.path, "index.html")
@@ -79,7 +82,11 @@ class Publisher(base.Publisher):
         cmd = ["scp", "-B", "-o", "StrictHostKeyChecking no",
                "-r", "-P", port, uhp, dst]
         LOG.debug("Calling %r" % cmd)
-        subprocess.call(cmd)
+        mkdir(dst)
+        pipe = subprocess.Popen(cmd, stderr=subprocess.PIPE)
+        error = pipe.communicate()[1]
+        if pipe.returncode:
+            LOG.warning("Failed to copy: %s" % error)
 
     def _render(self, filename, template_name, **kwargs):
         template = Template(filename=self.config[template_name])
