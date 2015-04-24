@@ -52,6 +52,9 @@ LOGGING = {
         "asyncio": {
             "level": "WARNING",
         },
+        "websockets": {
+            "level": "WARNING",
+        },
         "paramiko": {
             "level": "WARNING",
         },

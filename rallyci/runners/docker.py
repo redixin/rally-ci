@@ -27,6 +27,15 @@ BUILD_LOCK = {}
 LOCK = threading.Lock()
 
 
+import async
+from rallyci import base
+
+
+class Class(base.ClassWithLocal):
+
+    def run(self, job):
+
+
 class Runner(base.Runner):
 
     def setup(self, dockerfile):

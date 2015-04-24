@@ -1,21 +1,31 @@
 ---
-stream:
+
+stream_b:
     module: rallyci.streams.gerrit
     username: redixin
     hostname: review.openstack.org
     port: 29418
 
+loggers:
+  file:
+    module: rallyci.loggers.logfile
+    path: /store/logs/rally-ci/
+
+stream:
+    module: rallyci.streams.fake
+    path: tests/functional/gerrit-sample-stream.json
+
 environments:
-  - name: event
+  event:
     module: rallyci.environments.event
     export-event:
       RCI_PROJECT: change.project
       RCI_REF: patchSet.ref
-  - name: dummy
+  dummy:
     module: rallyci.environments.dummy
 
 nodepools:
-  - name: ci49
+  ci49:
     module: rallyci.nodepools.fair
     tasks_per_node: 8
     nodes:
@@ -23,7 +33,7 @@ nodepools:
         username: eye
 
 runners:
-  - name: lxc
+  lxc:
     nodepool: ci49
     module: rallyci.runners.lxc
     nodes:
@@ -32,7 +42,7 @@ runners:
         script: node_ubuntu_dev
 
 scripts:
-  - name: node_ubuntu_dev
+  node_ubuntu_dev:
     interpreter: /bin/bash -xe -s
     data: |
       apt-get update
@@ -43,7 +53,7 @@ scripts:
       git config --global user.name "Mirantis Rally CI"
       git clone git://git.openstack.org/openstack/rally.git
 
-  - name: git_checkout
+  git_checkout:
     interpreter: /bin/bash -xe -s
     data: |
       cd $GERRIT_PROJECT && git checkout master && git pull
@@ -52,13 +62,13 @@ scripts:
       git clean -fxd -e .tox -e *.egg-info
       git diff --name-only master
 
-  - name: tox
+  tox:
     interpreter: /bin/bash -xe -s
     data:
       cd $GERRIT_PROJECT && tox -e$RCI_TOXENV
 
 jobs:
-  - name: py27
+  py27:
     envs:
       - name: event
       - name: dummy
@@ -72,6 +82,6 @@ jobs:
       - tox
 
 projects:
-  - name: openstack/rally
+  "openstack/rally":
     jobs:
      - py27

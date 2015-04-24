@@ -21,17 +21,25 @@ import json
 LOG = logging.getLogger(__name__)
 
 class Job:
-    def __init__(self, config, cfg, event):
+    def __init__(self, cr, name, cfg, event):
+        self.cr = cr
+        self.name = name
         self.event = event
         self.envs = []
         self.env = {}
-        self.config = config
         self.cfg = cfg
         self.status = 255
         self.logers = []
         for env in cfg.get("envs"):
-            env = config.init_class_with_local("environments", env)
+            env = self.cr.config.init_obj_with_local("environments", env)
             self.envs.append(env)
+
+    def to_dict(self):
+        return {"id": id(self), "name": self.name}
+
+    def logger(self, data):
+        """Process script stdout+stderr."""
+        print(data)
 
     @asyncio.coroutine
     def run(self):
@@ -39,7 +47,7 @@ class Job:
         for env in self.envs:
             env.build(self)
         LOG.debug("Built env: %s" % self.env)
-        runner = self.config.init_class_with_local("runners", self.cfg["runner"])
+        runner = self.cr.config.init_obj_with_local("runners", self.cfg["runner"])
         LOG.debug("Runner initialized %r" % runner)
         self.status = runner.run(self)
         return self.status
@@ -55,46 +63,39 @@ class CR:
 
         self.config = config
         self.event = event
-        self.handler = self.get_handler()
+        self.jobs = []
 
-    def get_handler(self):
-        event_type = self.event["type"]
-        LOG.debug("New event. Type: %s" % event_type)
-        if self.project:
-            if event_type == "patchset-created":
-                return self.handle_patchset_created
-            else:
-                LOG.debug("Unknown event type: %s" % self.event["type"])
-        else:
-            LOG.debug("Unknown project %s" % self.project_name)
+        event_type = event["type"]
+        LOG.debug("New event %s" % event_type)
+        if event_type == "ref-updated":
+            #TODO
+            return
 
-    @asyncio.coroutine
-    def run(self):
-        return self.handler()
+        project_name = self.event["change"]["project"]
+        self.project = self.config.data["projects"].get(project_name)
 
-    @property
-    def project_name(self):
-        print(self.event)
-        if self.event["type"] == "ref-updated":
-            print(self.event)
-            return self.event["ref"]["project"]
-        return self.event["change"]["project"]
+        if not self.project:
+            return
 
-    @property
-    def project(self):
-        return self.config.projects.get(self.project_name)
+        if event_type == "patchset-created":
+            self.prepare_jobs()
+
+    def to_dict(self):
+        return {"id": id(self), "jobs": [j.to_dict() for j in self.jobs]}
 
     def job_finished_callback(self, job):
         LOG.debug("Completed job: %r" % job)
 
-    def handle_patchset_created(self):
-        self.jobs = []
+    def prepare_jobs(self):
+        for job_name in self.project["jobs"]:
+            cfg = self.config.data["jobs"][job_name]
+            job = Job(self, job_name, cfg, self.event)
+            self.jobs.append(job)
+
+    @asyncio.coroutine
+    def run(self):
         futures = []
         coroutines = []
-        for job in self.project["jobs"]:
-            cfg = self.config.jobs[job]
-            job = Job(self.config, cfg, self.event)
-            self.jobs.append(job)
         for job in self.jobs:
             future = asyncio.async(job.run(), loop=self.config.root.loop)
             future.add_done_callback(self.job_finished_callback)

@@ -13,6 +13,7 @@
 #    limitations under the License.
 
 import asyncio
+import random
 
 import json
 
@@ -24,7 +25,8 @@ class Class(base.Class):
 
     @asyncio.coroutine
     def run(self):
-        root = self.config.root
-        for line in open(self.cfg["path"]):
-            event = json.loads(line)
-            root.handle(event)
+        while True:
+            for line in open(self.cfg["path"]):
+                yield from asyncio.sleep(random.randint(2, 4))
+                event = json.loads(line)
+                self.config.root.handle(event)
