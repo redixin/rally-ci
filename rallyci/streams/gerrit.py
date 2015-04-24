@@ -12,36 +12,37 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
-from rallyci.streams import base
 
+import asyncio
 import json
 import subprocess
 import logging
 
+from rallyci import base
 
 LOG = logging.getLogger(__name__)
-PIDFILE = "/var/log/rally-ci/gerrit-ssh.pid"
 
 
-class Stream(base.Stream):
+class Class(base.Class):
 
-    def generate(self):
-        cmd = "ssh -p %(port)d %(username)s@%(hostname)s gerrit stream-events" % \
-              self.config["ssh"]
-        pipe = subprocess.Popen(cmd.split(" "),
-                                stdout=subprocess.PIPE,
-                                stderr=subprocess.STDOUT)
-        try:
-            with open(self.config.get("pidfile", PIDFILE), "w") as pidfile:
-                pidfile.write(str(pipe.pid))
-            for line in iter(pipe.stdout.readline, b''):
-                if not line:
-                    break
-                try:
-                    event = json.loads(line)
-                except ValueError:
-                    LOG.warning("Invalid json: %s" % line)
-                    continue
-                yield(event)
-        finally:
-            pipe.terminate()
+    @asyncio.coroutine
+    def run(self):
+        root = self.config.root
+        cfg = self.cfg
+        port = str(cfg["port"])
+        cmd = ["ssh", "-p", port, "%s@%s" % (cfg["username"], cfg["hostname"]),
+                "gerrit", "stream-events"]
+
+        process = yield from asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT
+        )
+        while not process.stdout.at_eof():
+            line = yield from process.stdout.readline()
+            try:
+                event = json.loads(line.decode())
+            except Exception:
+                LOG.error("Unable to decode string: %s" % line)
+                raise
+            root.handle(event)

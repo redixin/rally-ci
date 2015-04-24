@@ -1,0 +1,77 @@
+---
+stream:
+    module: rallyci.streams.gerrit
+    username: redixin
+    hostname: review.openstack.org
+    port: 29418
+
+environments:
+  - name: event
+    module: rallyci.environments.event
+    export-event:
+      RCI_PROJECT: change.project
+      RCI_REF: patchSet.ref
+  - name: dummy
+    module: rallyci.environments.dummy
+
+nodepools:
+  - name: ci49
+    module: rallyci.nodepools.fair
+    tasks_per_node: 8
+    nodes:
+      - host: ci49
+        username: eye
+
+runners:
+  - name: lxc
+    nodepool: ci49
+    module: rallyci.runners.lxc
+    nodes:
+      - name: ubuntu-dev
+        template: ubuntu
+        script: node_ubuntu_dev
+
+scripts:
+  - name: node_ubuntu_dev
+    interpreter: /bin/bash -xe -s
+    data: |
+      apt-get update
+      apt-get -y install git python2.7 bash-completion python-dev \
+                       libffi-dev libxml2-dev libxslt1-dev libssl-dev
+      mkdir -p openstack/rally && cd openstack/rally
+      git config --global user.email "rally-ci@mirantis.com"
+      git config --global user.name "Mirantis Rally CI"
+      git clone git://git.openstack.org/openstack/rally.git
+
+  - name: git_checkout
+    interpreter: /bin/bash -xe -s
+    data: |
+      cd $GERRIT_PROJECT && git checkout master && git pull
+      git fetch https://review.openstack.org/$GERRIT_PROJECT $GERRIT_REF
+      git checkout FETCH_HEAD && git rebase master || true
+      git clean -fxd -e .tox -e *.egg-info
+      git diff --name-only master
+
+  - name: tox
+    interpreter: /bin/bash -xe -s
+    data:
+      cd $GERRIT_PROJECT && tox -e$RCI_TOXENV
+
+jobs:
+  - name: py27
+    envs:
+      - name: event
+      - name: dummy
+        export:
+          RCI_TOXENV: py27
+    runner:
+      name: lxc
+      node: ubuntu-dev
+    scripts:
+      - git_checkout
+      - tox
+
+projects:
+  - name: openstack/rally
+    jobs:
+     - py27

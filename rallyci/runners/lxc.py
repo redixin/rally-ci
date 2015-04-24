@@ -12,21 +12,51 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
-import os
-import threading
-import logging
-import StringIO
+from rallyci import base
 
-from rallyci.runners import base
-from rallyci import sshutils
-from rallyci import utils
+import asyncio
+import os
+import subprocess
+import logging
 
 LOG = logging.getLogger(__name__)
-LOCK = threading.Lock()
-BUILD_LOCK = {}
 
 
-class Runner(base.Runner):
+class AsyncSSH:
+    def __init__(self, job, username, hostname, port=22):
+        self.job = job
+        self.username = username
+        self.hostname = hostname
+        self.port = str(port)
+
+    @asyncio.coroutine
+    def run_cmd(self, command):
+        cmd = ["ssh", "%s@%s" % (self.username, self.hostname), "-p", self.port]
+        cmd += command.split(" ")
+        process = yield from asyncio.create_subprocess_exec(*cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT
+        )
+        while not process.stdout.at_eof():
+            line = yield from process.stdout.readline()
+            print(line)
+        return process.returncode
+
+
+class Class(base.ClassWithLocal):
+
+    def run(self, job):
+        LOG.debug("Cfg: %s" % self.cfg)
+        LOG.debug("Local: %s" % self.local)
+        ssh = AsyncSSH(job, "rally", "ci49", 16622)
+        results = []
+        for script in job.cfg["scripts"]:
+            LOG.debug("Starting script: %s" % script)
+            result = yield from ssh.run_cmd("ping -c 1 ya.ru")
+            results.append(result)
+        return any(results)
+
+class Runner:
 
     def setup(self, name, template, build_scripts, **kwargs):
         self.base_name = name

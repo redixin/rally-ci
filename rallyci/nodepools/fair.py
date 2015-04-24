@@ -14,9 +14,5 @@
 
 from rallyci import base
 
-
-class Class(base.ClassWithLocal):
-
-    def build(self, job):
-        for k, v in self.local["export"].items():
-            job.env[k] = [v]
+class Class(base.Class):
+    pass

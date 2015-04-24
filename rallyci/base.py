@@ -12,11 +12,28 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
-from rallyci import base
+
+class Class:
+
+    def __init__(self, config, cfg):
+        """Constructor of generic RallyCI object
+
+        :param config: Config object
+        :param cfg: section from config file
+        """
+        self.config = config
+        self.cfg = cfg
 
 
-class Class(base.ClassWithLocal):
+class ClassWithLocal:
 
-    def build(self, job):
-        for k, v in self.local["export"].items():
-            job.env[k] = [v]
+    def __init__(self, config, cfg, local):
+        """
+
+        :param config: Config object
+        :param cfg: section from config file
+        :param local: local config
+        """
+        self.config = config
+        self.cfg = cfg
+        self.local = local

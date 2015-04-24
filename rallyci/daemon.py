@@ -12,31 +12,17 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
-import signal
+
+from rallyci import log
+
+import asyncio
 import sys
+from rallyci import root
 
-from rallyci import log  # noqa
-from rallyci import config
-from rallyci import events
+config = sys.argv[1]
 
+loop = asyncio.get_event_loop()
+root = root.Root(loop)
+root.load_config(config)
 
-cfg = config.Config(sys.argv[1])
-
-
-def handle_term(signo, frame):
-    sys.exit(0)
-
-
-def handle_hup(signo, frame):
-    cfg.need_reload = True
-
-
-def run():
-    if len(sys.argv) < 3:
-        print "Usage:\n\t%s <config_file> <log_file>\n" % sys.argv[0]
-        sys.exit(1)
-
-    signal.signal(signal.SIGHUP, handle_hup)
-
-    handler = events.EventHandler(cfg)
-    handler.loop()
+loop.run_forever()

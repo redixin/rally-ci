@@ -12,11 +12,19 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
+import asyncio
+
 import json
-from rallyci.streams import base
+
+from rallyci import base
 
 
-class Stream(base.Stream):
-    def generate(self):
-        for line in open(self.config["path"]):
-            yield(json.loads(line))
+
+class Class(base.Class):
+
+    @asyncio.coroutine
+    def run(self):
+        root = self.config.root
+        for line in open(self.cfg["path"]):
+            event = json.loads(line)
+            root.handle(event)

@@ -12,20 +12,14 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
-from rallyci.environments import base
 
+from rallyci import base
 
-class Environment(base.Environment):
+class Class(base.ClassWithLocal):
 
-    def check_config(config):
-        pass
-
-    def build(self):
-        for k, v in self.config["export-event"].items():
-            value = dict(self.job.cr.event)
+    def build(self, job):
+        for k, v in self.cfg["export-event"].items():
+            value = dict(job.event)
             for key in v.split("."):
                 value = value[key]
-            self.env[k] = value
-
-    def cleanup(self):
-        pass
+            job.env[k] = value
