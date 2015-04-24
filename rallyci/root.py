@@ -42,10 +42,13 @@ class Config:
             module = importlib.import_module(name)
             self._modules[name] = module
         return module
+    
+    def get_class(self, cfg):
+        return self._get_module(cfg["module"]).Class
 
     def init_obj_with_local(self, section, local):
         cfg = self.data[section][local["name"]]
-        return self._get_module(cfg["module"]).Class(self, cfg, local)
+        return self.get_class(cfg)(self, cfg, local)
 
     def init_obj(self, cfg):
         return self._get_module(cfg["module"]).Class(self, cfg)

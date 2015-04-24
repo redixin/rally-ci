@@ -17,6 +17,8 @@ import logging
 
 import json
 
+from rallyci import utils
+
 
 LOG = logging.getLogger(__name__)
 
@@ -26,20 +28,27 @@ class Job:
         self.name = name
         self.event = event
         self.envs = []
+        self.loggers = []
         self.env = {}
         self.cfg = cfg
         self.status = 255
-        self.logers = []
+        self.id = utils.get_rnd_name(prefix="", length=10)
+        self.current_stream = "__none__"
+
         for env in cfg.get("envs"):
             env = self.cr.config.init_obj_with_local("environments", env)
             self.envs.append(env)
+
+        for name, cfg in self.cr.config.data.get("loggers", []).items():
+            self.loggers.append(self.cr.config.get_class(cfg)(self, cfg))
 
     def to_dict(self):
         return {"id": id(self), "name": self.name}
 
     def logger(self, data):
         """Process script stdout+stderr."""
-        print(data)
+        for logger in self.loggers:
+            logger.log(self.current_stream, data)
 
     @asyncio.coroutine
     def run(self):
@@ -64,6 +73,8 @@ class CR:
         self.config = config
         self.event = event
         self.jobs = []
+
+        self.id = utils.get_rnd_name(prefix="", length=10)
 
         event_type = event["type"]
         LOG.debug("New event %s" % event_type)
@@ -100,5 +111,5 @@ class CR:
             future = asyncio.async(job.run(), loop=self.config.root.loop)
             future.add_done_callback(self.job_finished_callback)
             futures.append(future)
-        results = yield from asyncio.gather(*futures, return_exceptions=True)
+        results = yield from asyncio.gather(*futures, return_exceptions=False)
         return results

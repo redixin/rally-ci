@@ -12,6 +12,8 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
+import errno
+import os
 import random
 import string
 import time
@@ -21,7 +23,19 @@ LOG = logging.getLogger(__name__)
 
 
 def get_rnd_name(prefix="rci_", length=12):
-    return prefix + "".join(random.sample(string.letters, length))
+    return prefix + "".join(random.sample(string.ascii_letters, length))
+
+
+def makedirs(*args):
+    """Create directories.
+
+    Do not raise exception if directory already exists.
+    """
+    try:
+        os.makedirs(os.path.join(*args))
+    except OSError as e:
+        if e.errno != errno.EEXIST:
+            raise
 
 
 class Stdout(object):

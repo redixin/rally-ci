@@ -1,19 +1,18 @@
 ---
-
 stream_b:
     module: rallyci.streams.gerrit
     username: redixin
     hostname: review.openstack.org
     port: 29418
 
-loggers:
-  file:
-    module: rallyci.loggers.logfile
-    path: /store/logs/rally-ci/
-
 stream:
     module: rallyci.streams.fake
     path: tests/functional/gerrit-sample-stream.json
+
+loggers:
+  file:
+    module: rallyci.loggers.logfile
+    path: /store/log/rally-ci/
 
 environments:
   event:

@@ -25,7 +25,9 @@ class AsyncSSH:
         self.port = str(port)
 
     def run_cmd(self, command):
-        cmd = ["ssh", "%s@%s" % (self.username, self.hostname), "-p", self.port]
+        cmd = []
+        if self.hostname != "localhost":
+            cmd = ["ssh", "%s@%s" % (self.username, self.hostname), "-p", self.port]
         cmd += command.split(" ")
         process = yield from asyncio.create_subprocess_exec(*cmd,
             stdout=subprocess.PIPE,
