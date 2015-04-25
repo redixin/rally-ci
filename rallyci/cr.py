@@ -109,6 +109,7 @@ class CR:
         coroutines = []
         for job in self.jobs:
             future = asyncio.async(job.run(), loop=self.config.root.loop)
+            job.future = future
             future.add_done_callback(self.job_finished_callback)
             futures.append(future)
         results = yield from asyncio.gather(*futures, return_exceptions=False)

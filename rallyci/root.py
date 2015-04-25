@@ -32,6 +32,11 @@ class Config:
         sections = list(self.data.keys())
         sections.remove("stream")
 
+        self.nodepools = {}
+        for name, cfg in self.data["nodepools"].items():
+            self.nodepools[name] = self.get_class(cfg)(self.root, cfg)
+
+
     def _get_module(self, name):
         """Get module by name.
 

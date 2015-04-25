@@ -12,7 +12,47 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
+import asyncio
+import concurrent.futures
+import logging
+
 from rallyci import base
 
-class Class(base.Class):
-    pass
+
+LOG = logging.getLogger(__name__)
+
+class Node:
+    def __init__(self, cfg):
+        self.cfg = cfg
+
+    def __str__(self):
+        return str(self.cfg)
+
+
+class Class:
+
+    def __init__(self, root, cfg):
+        self.root = root
+        self.cfg = cfg
+        self.tasks_per_node = cfg["tasks_per_node"]
+        self.futures = dict([(Node(node), []) for node in cfg["nodes"]])
+        self.nodes = {}
+
+    def job_done_callback(self, future):
+        node = self.nodes.pop(future)
+        self.futures[node].remove(future)
+        LOG.debug("Deleted future %s from node %s" % (future, node))
+
+    @asyncio.coroutine
+    def get_node(self, job):
+        while True:
+            node, tasks = min(self.futures.items(), key=lambda x: len(x[1]))
+            if len(tasks) < self.tasks_per_node:
+                self.nodes[job.future] = node
+                self.futures[node].append(job.future)
+                job.future.add_done_callback(self.job_done_callback)
+                LOG.debug("New busy node %s" % node)
+                return node
+            LOG.debug("No nodes available. Waiting for any node to release.")
+            yield from asyncio.wait(list(self.nodes.keys()),
+                                    return_when=concurrent.futures.FIRST_COMPLETED)

@@ -24,17 +24,16 @@ environments:
     module: rallyci.environments.dummy
 
 nodepools:
-  ci49:
+  localdocker:
     module: rallyci.nodepools.fair
-    tasks_per_node: 8
+    tasks_per_node: 2
     nodes:
-      - host: ci49
-        username: eye
+      - host: localhost
 
 runners:
-  lxc:
-    nodepool: ci49
-    module: rallyci.runners.lxc
+  localdocker:
+    nodepool: localdocker
+    module: rallyci.runners.docker
     nodes:
       - name: ubuntu-dev
         template: ubuntu
@@ -74,7 +73,7 @@ jobs:
         export:
           RCI_TOXENV: py27
     runner:
-      name: lxc
+      name: localdocker
       node: ubuntu-dev
     scripts:
       - git_checkout

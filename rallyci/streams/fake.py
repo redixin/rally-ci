@@ -27,6 +27,6 @@ class Class(base.Class):
     def run(self):
         while True:
             for line in open(self.cfg["path"]):
-                yield from asyncio.sleep(random.randint(2, 4))
+                yield from asyncio.sleep(random.randint(1, 2))
                 event = json.loads(line)
                 self.config.root.handle(event)

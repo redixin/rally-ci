@@ -15,7 +15,6 @@
 import threading
 import os.path
 
-from rallyci import sshutils
 from rallyci import utils
 from rallyci.runners import base
 
@@ -27,16 +26,19 @@ BUILD_LOCK = {}
 LOCK = threading.Lock()
 
 
-import async
+import asyncio
 from rallyci import base
 
 
 class Class(base.ClassWithLocal):
 
     def run(self, job):
+        node = yield from self.config.nodepools[self.cfg["nodepool"]].get_node(job)
+        yield from asyncio.sleep(2)
+        return 0
 
 
-class Runner(base.Runner):
+class Runner:
 
     def setup(self, dockerfile):
         self.ssh = sshutils.SSH(**self.config["ssh"])
