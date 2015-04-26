@@ -12,16 +12,15 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
-import os.path
-
-from rallyci import utils
-from rallyci.runners import base
-
-import logging
-LOG = logging.getLogger(__name__)
-
 import asyncio
+from concurrent.futures import FIRST_COMPLETED
+import os.path
+import logging
+
 from rallyci import base
+from rallyci import utils
+
+LOG = logging.getLogger(__name__)
 
 
 class Class(base.ClassWithLocal):
@@ -33,6 +32,7 @@ class Class(base.ClassWithLocal):
         filedir = filedir.strip()
         self.image = self.local["image"]
         dockerfile = self.cfg["images"][self.image]
+
         yield from self.ssh.run("tee %s/Dockerfile" % filedir, stdin=dockerfile, cb=print)
         yield from self.ssh.run("docker build -t %s %s" % (self.image, filedir))
 
