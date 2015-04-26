@@ -12,28 +12,44 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
-
 import asyncio
 import subprocess
+import tempfile
+import logging
 
+
+LOG = logging.getLogger(__name__)
 
 class AsyncSSH:
-    def __init__(self, job, username, hostname, port=22):
-        self.job = job
+    def __init__(self, username=None, hostname=None, port=22):
         self.username = username
         self.hostname = hostname
         self.port = str(port)
 
-    def run_cmd(self, command):
+    def run(self, command, stdin=None, cb=None, return_output=False):
+        output = b""
+        if isinstance(stdin, str):
+            f = tempfile.TemporaryFile()
+            f.write(stdin.encode())
+            f.flush()
+            f.seek(0)
+            stdin = f
         cmd = []
         if self.hostname != "localhost":
             cmd = ["ssh", "%s@%s" % (self.username, self.hostname), "-p", self.port]
         cmd += command.split(" ")
         process = yield from asyncio.create_subprocess_exec(*cmd,
+            stdin=stdin,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT
         )
         while not process.stdout.at_eof():
             line = yield from process.stdout.readline()
-            self.job.logger(line)
+            LOG.debug(line)
+            if cb is not None:
+                cb(line)
+            if return_output:
+                output += line
+        if return_output:
+            return output.decode()
         return process.returncode

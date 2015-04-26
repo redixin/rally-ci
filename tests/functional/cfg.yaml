@@ -28,29 +28,25 @@ nodepools:
     module: rallyci.nodepools.fair
     tasks_per_node: 2
     nodes:
-      - host: localhost
+      - hostname: localhost
 
 runners:
   localdocker:
     nodepool: localdocker
     module: rallyci.runners.docker
-    nodes:
-      - name: ubuntu-dev
-        template: ubuntu
-        script: node_ubuntu_dev
+    images:
+      ubuntu-dev: |
+        FROM ubuntu:14.04
+        MAINTAINER Sergey Skripnick <sskripnick@mirantis.com>
+        RUN apt-get update
+        RUN apt-get -y install git python2.7 bash-completion python-dev libffi-dev \
+                               libxml2-dev libxslt1-dev libssl-dev
+        RUN git config --global user.email "rally-ci@mirantis.com" && \
+            git config --global user.name "Mirantis Rally CI" && \
+            mkdir openstack && cd openstack && \
+            git clone git://git.openstack.org/openstack/rally.git
 
 scripts:
-  node_ubuntu_dev:
-    interpreter: /bin/bash -xe -s
-    data: |
-      apt-get update
-      apt-get -y install git python2.7 bash-completion python-dev \
-                       libffi-dev libxml2-dev libxslt1-dev libssl-dev
-      mkdir -p openstack/rally && cd openstack/rally
-      git config --global user.email "rally-ci@mirantis.com"
-      git config --global user.name "Mirantis Rally CI"
-      git clone git://git.openstack.org/openstack/rally.git
-
   git_checkout:
     interpreter: /bin/bash -xe -s
     data: |
@@ -59,7 +55,6 @@ scripts:
       git checkout FETCH_HEAD && git rebase master || true
       git clean -fxd -e .tox -e *.egg-info
       git diff --name-only master
-
   tox:
     interpreter: /bin/bash -xe -s
     data:
@@ -74,7 +69,7 @@ jobs:
           RCI_TOXENV: py27
     runner:
       name: localdocker
-      node: ubuntu-dev
+      image: ubuntu-dev
     scripts:
       - git_checkout
       - tox

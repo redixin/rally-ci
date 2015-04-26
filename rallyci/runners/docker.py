@@ -12,7 +12,6 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
-import threading
 import os.path
 
 from rallyci import utils
@@ -21,20 +20,25 @@ from rallyci.runners import base
 import logging
 LOG = logging.getLogger(__name__)
 
-
-BUILD_LOCK = {}
-LOCK = threading.Lock()
-
-
 import asyncio
 from rallyci import base
 
 
 class Class(base.ClassWithLocal):
 
-    def run(self, job):
-        node = yield from self.config.nodepools[self.cfg["nodepool"]].get_node(job)
-        yield from asyncio.sleep(2)
+    def build(self, job):
+        self.job = job
+        self.ssh = yield from self.config.nodepools[self.cfg["nodepool"]].get_ssh(job)
+        filedir = yield from self.ssh.run("mktemp -d", return_output=True)
+        filedir = filedir.strip()
+        self.image = self.local["image"]
+        dockerfile = self.cfg["images"][self.image]
+        yield from self.ssh.run("tee %s/Dockerfile" % filedir, stdin=dockerfile, cb=print)
+        yield from self.ssh.run("docker build -t %s %s" % (self.image, filedir))
+
+    def run(self, script):
+        LOG.debug("Starting script %s" % script)
+        yield from self.ssh.run("cat", stdin="sup", cb=print)
         return 0
 
 
@@ -49,20 +53,6 @@ class Runner:
         self.tag = "rallyci:" + tag
         self.dockerfile = os.path.expanduser(dockerfile)
         self.current = self.tag
-
-    def _run(self, cmd, stdout_callback, stdin=None):
-        LOG.debug("Running cmd: %r" % cmd)
-
-        class Stdout(object):
-            def write(self, line):
-                stdout_callback((1, line))
-
-        class Stderr(object):
-            def write(self, line):
-                stdout_callback((2, line))
-
-        return self.ssh.run(" ".join(cmd), stdout=Stdout(), stderr=Stderr(),
-                            stdin=stdin, raise_on_error=False)
 
     def _build(self, stdout_callback):
         LOG.debug("Uploading dockerfile")

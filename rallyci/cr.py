@@ -58,7 +58,10 @@ class Job:
         LOG.debug("Built env: %s" % self.env)
         runner = self.cr.config.init_obj_with_local("runners", self.cfg["runner"])
         LOG.debug("Runner initialized %r" % runner)
-        self.status = runner.run(self)
+        status = yield from runner.build(self)
+        for script in self.cfg["scripts"]:
+            script = self.cr.config.data["scripts"][script]
+            self.status = yield from runner.run(script)
         return self.status
 
 

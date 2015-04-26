@@ -47,7 +47,7 @@ class Config:
             module = importlib.import_module(name)
             self._modules[name] = module
         return module
-    
+
     def get_class(self, cfg):
         return self._get_module(cfg["module"]).Class
 

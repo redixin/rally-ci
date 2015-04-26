@@ -17,17 +17,10 @@ import concurrent.futures
 import logging
 
 from rallyci import base
+from rallyci.common import asyncssh
 
 
 LOG = logging.getLogger(__name__)
-
-class Node:
-    def __init__(self, cfg):
-        self.cfg = cfg
-
-    def __str__(self):
-        return str(self.cfg)
-
 
 class Class:
 
@@ -35,7 +28,7 @@ class Class:
         self.root = root
         self.cfg = cfg
         self.tasks_per_node = cfg["tasks_per_node"]
-        self.futures = dict([(Node(node), []) for node in cfg["nodes"]])
+        self.futures = dict([(asyncssh.AsyncSSH(**c), []) for c in cfg["nodes"]])
         self.nodes = {}
 
     def job_done_callback(self, future):
@@ -44,7 +37,7 @@ class Class:
         LOG.debug("Deleted future %s from node %s" % (future, node))
 
     @asyncio.coroutine
-    def get_node(self, job):
+    def get_ssh(self, job):
         while True:
             node, tasks = min(self.futures.items(), key=lambda x: len(x[1]))
             if len(tasks) < self.tasks_per_node:
