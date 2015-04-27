@@ -29,80 +29,36 @@ class Class(base.ClassWithLocal):
     def build(self, job):
         self.job = job
         self.ssh = yield from self.config.nodepools[self.cfg["nodepool"]].get_ssh(job)
+        self.name = utils.get_rnd_name()
         self.image = self.local["image"]
+        self.images = []
+        self.containers = []
         build_key = (self.ssh.hostname, self.image)
         BUILDING_IMAGES.setdefault(build_key, asyncio.Lock())
         with (yield from BUILDING_IMAGES[build_key]):
             filedir = yield from self.ssh.run("mktemp -d", return_output=True)
-            filedir = filedir.strip()
             dockerfile = self.cfg["images"][self.image]
             yield from self.ssh.run("tee %s/Dockerfile" % filedir, stdin=dockerfile, cb=print)
             yield from self.ssh.run("docker build -t %s %s" % (self.image, filedir))
-            yield from asyncio.sleep(10)
 
     def run(self, script):
         LOG.debug("Starting script %s" % script)
-        yield from self.ssh.run("cat", stdin="sup", cb=print)
-        return 0
+        cmd = "docker run -i --name %s" % self.name
+        for env in self.job.env.items():
+            cmd += " -e %s=%s" % (env)
+        cmd += " %s %s" % (self.image, script["interpreter"])
+        result = yield from self.ssh.run(cmd, stdin=script["data"], cb=self.job.logger)
+        self.image = yield from self.ssh.run("docker commit %s" % self.name, return_output=True)
+        yield from self.ssh.run("docker rename %s for_%s" % (self.name, self.image))
+        self.images.append(self.image)
+        self.containers.append("for_%s" % self.image)
 
-
-class Runner:
-
-    def setup(self, dockerfile):
-        self.ssh = sshutils.SSH(**self.config["ssh"])
-        self.names = []
-        self.number = 0
-        tag = dockerfile.replace("/", "_")
-        tag = tag.replace("~", "_")
-        self.tag = "rallyci:" + tag
-        self.dockerfile = os.path.expanduser(dockerfile)
-        self.current = self.tag
-
-    def _build(self, stdout_callback):
-        LOG.debug("Uploading dockerfile")
-        tmpdir = utils.get_rnd_name()
-        tmpdir = os.path.join("/tmp", tmpdir)
-        self.ssh.run("mkdir %s" % tmpdir)
-        self.ssh.run("cat > %s/Dockerfile" % tmpdir,
-                     stdin=open(self.dockerfile, "rb"))
-        LOG.debug("Building image %r" % self.tag)
-        return self._run(["docker", "build", "--no-cache",
-                          "-t", self.tag, tmpdir],
-                         stdout_callback)
-
-    def build(self, stdout_callback):
-        with LOCK:
-            lock = BUILD_LOCK.get(self.tag)
-            if not lock:
-                lock = threading.Lock()
-                BUILD_LOCK[self.tag] = lock
-        with lock:
-            LOG.debug("Checking docker image")
-            status, out, err = self.ssh.execute("docker history %s" % self.tag)
-            if status:
-                return self._build(stdout_callback)
-
-    def run(self, cmd, stdout_callback, stdin=None, env=None):
-        name = utils.get_rnd_name()
-        self.names.append(name)
-        command = ["docker", "run", "--name", name]
-        if stdin:
-            command += ["-i"]
-        if env:
-            for k, v in env.items():
-                command += ["-e", "\"%s=%s\"" % (k, v)]
-        command += [self.current]
-        command += cmd.split(" ")
-        LOG.debug("Running command %r" % command)
-        returncode = self._run(command, stdout_callback, stdin=stdin)
-        LOG.debug("Exit status: %d" % returncode)
-        status, self.current, err = self.ssh.execute("docker commit %s" % name)
-        self.current = self.current.strip()
-        return returncode
-
+    @asyncio.coroutine
     def cleanup(self):
-        for name in self.names:
-            self.ssh.run("docker rm %s" % name)
-        self.ssh.run("docker rmi %s" % self.current)
-        self.ssh.close()
-        del(self.ssh)
+        LOG.info("Starting cleanup %s" % self.name)
+        for container in self.containers:
+            yield from self.ssh.run("docker rm %s" % container)
+        yield from self.ssh.run("docker rm %s" % self.name)
+        for image in self.images:
+            yield from self.ssh.run("docker rmi %s" % image)
+        LOG.info("Cleanup %s completed" % self.name)

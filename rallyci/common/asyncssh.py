@@ -26,7 +26,7 @@ class AsyncSSH:
         self.hostname = hostname
         self.port = str(port)
 
-    def run(self, command, stdin=None, cb=None, return_output=False):
+    def run(self, command, stdin=None, cb=None, return_output=False, strip_output=True):
         output = b""
         if isinstance(stdin, str):
             f = tempfile.TemporaryFile()
@@ -43,13 +43,16 @@ class AsyncSSH:
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT
         )
+        LOG.debug("Running '%s'" % cmd)
         while not process.stdout.at_eof():
             line = yield from process.stdout.readline()
-            LOG.debug(line)
             if cb is not None:
                 cb(line)
             if return_output:
                 output += line
         if return_output:
-            return output.decode()
+            output = output.decode()
+            if strip_output:
+                return output.strip()
+            return output
         return process.returncode

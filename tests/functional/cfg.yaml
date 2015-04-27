@@ -18,8 +18,8 @@ environments:
   event:
     module: rallyci.environments.event
     export-event:
-      RCI_PROJECT: change.project
-      RCI_REF: patchSet.ref
+      GERRIT_PROJECT: change.project
+      GERRIT_REF: patchSet.ref
   dummy:
     module: rallyci.environments.dummy
 
@@ -40,16 +40,22 @@ runners:
         MAINTAINER Sergey Skripnick <sskripnick@mirantis.com>
         RUN apt-get update
         RUN apt-get -y install git python2.7 bash-completion python-dev libffi-dev \
-                               libxml2-dev libxslt1-dev libssl-dev
+        libxml2-dev libxslt1-dev libssl-dev libpq-dev
+        RUN apt-get -y install python-pip
+        RUN pip install tox==1.6
+        RUN useradd -u 65510 -m rally
+        USER rally
+        WORKDIR /home/rally
         RUN git config --global user.email "rally-ci@mirantis.com" && \
-            git config --global user.name "Mirantis Rally CI" && \
-            mkdir openstack && cd openstack && \
+            git config --global user.name "Mirantis Rally CI"
+        RUN mkdir openstack && cd openstack && \
             git clone git://git.openstack.org/openstack/rally.git
 
 scripts:
   git_checkout:
     interpreter: /bin/bash -xe -s
     data: |
+      env
       cd $GERRIT_PROJECT && git checkout master && git pull
       git fetch https://review.openstack.org/$GERRIT_PROJECT $GERRIT_REF
       git checkout FETCH_HEAD && git rebase master || true

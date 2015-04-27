@@ -29,9 +29,9 @@ class Job:
         self.event = event
         self.envs = []
         self.loggers = []
+        self.status = "init"
         self.env = {}
         self.cfg = cfg
-        self.status = 255
         self.id = utils.get_rnd_name(prefix="", length=10)
         self.current_stream = "__none__"
 
@@ -43,12 +43,15 @@ class Job:
             self.loggers.append(self.cr.config.get_class(cfg)(self, cfg))
 
     def to_dict(self):
-        return {"id": id(self), "name": self.name}
+        return {"id": id(self), "name": self.name, "status": self.status}
 
     def logger(self, data):
         """Process script stdout+stderr."""
         for logger in self.loggers:
             logger.log(self.current_stream, data)
+
+    def set_status(self, status):
+        self.status = status
 
     @asyncio.coroutine
     def run(self):
@@ -59,10 +62,15 @@ class Job:
         runner = self.cr.config.init_obj_with_local("runners", self.cfg["runner"])
         LOG.debug("Runner initialized %r" % runner)
         status = yield from runner.build(self)
+        if status:
+            return status
+        statuses = []
         for script in self.cfg["scripts"]:
             script = self.cr.config.data["scripts"][script]
-            self.status = yield from runner.run(script)
-        return self.status
+            status = yield from runner.run(script)
+            statuses.append(status)
+        asyncio.async(runner.cleanup(), loop=self.cr.config.root.loop)
+        return any(statuses)
 
 
 class CR:

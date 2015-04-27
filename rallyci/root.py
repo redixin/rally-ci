@@ -69,8 +69,7 @@ class WebSocket:
             asyncio.async(client.send(json.dumps(data)), loop=self.root.loop)
 
     def cr_started(self, cr):
-        jobs = [(id(job), job.name) for job in cr.jobs]
-        data = {"task-started": str(cr), "jobs": jobs}
+        data = {"task-started": cr.to_dict()}
         self.send(self.root_listeners, data)
 
     def cr_finished(self, cr):
