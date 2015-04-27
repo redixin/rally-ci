@@ -21,6 +21,7 @@ from rallyci import base
 from rallyci import utils
 
 LOG = logging.getLogger(__name__)
+BUILDING_IMAGES = {}
 
 
 class Class(base.ClassWithLocal):
@@ -28,13 +29,16 @@ class Class(base.ClassWithLocal):
     def build(self, job):
         self.job = job
         self.ssh = yield from self.config.nodepools[self.cfg["nodepool"]].get_ssh(job)
-        filedir = yield from self.ssh.run("mktemp -d", return_output=True)
-        filedir = filedir.strip()
         self.image = self.local["image"]
-        dockerfile = self.cfg["images"][self.image]
-
-        yield from self.ssh.run("tee %s/Dockerfile" % filedir, stdin=dockerfile, cb=print)
-        yield from self.ssh.run("docker build -t %s %s" % (self.image, filedir))
+        build_key = (self.ssh.hostname, self.image)
+        BUILDING_IMAGES.setdefault(build_key, asyncio.Lock())
+        with (yield from BUILDING_IMAGES[build_key]):
+            filedir = yield from self.ssh.run("mktemp -d", return_output=True)
+            filedir = filedir.strip()
+            dockerfile = self.cfg["images"][self.image]
+            yield from self.ssh.run("tee %s/Dockerfile" % filedir, stdin=dockerfile, cb=print)
+            yield from self.ssh.run("docker build -t %s %s" % (self.image, filedir))
+            yield from asyncio.sleep(10)
 
     def run(self, script):
         LOG.debug("Starting script %s" % script)
