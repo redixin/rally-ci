@@ -19,6 +19,9 @@ import asyncio
 import sys
 from rallyci import root
 
+if len(sys.argv) < 2:
+    print("Usage\n\t%s <config.yaml>\n\n")
+    sys.exit(1)
 config = sys.argv[1]
 
 loop = asyncio.get_event_loop()

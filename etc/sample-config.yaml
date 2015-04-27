@@ -1,13 +1,9 @@
 ---
-stream_b:
+stream:
     module: rallyci.streams.gerrit
-    username: redixin
+    username: CHANGEME
     hostname: review.openstack.org
     port: 29418
-
-stream:
-    module: rallyci.streams.fake
-    path: tests/functional/gerrit-sample-stream.json
 
 loggers:
   file:
