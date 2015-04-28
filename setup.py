@@ -6,5 +6,5 @@ setup(
     data_files=[("/etc/rally-ci/", ["etc/sample-config.yaml",])],
     packages=find_packages(),
     install_requires=["pyyaml", "websockets"],
-    entry_points={"console_scripts": ["rallyci = rallyci.daemon:run"]}
+    entry_points={"console_scripts": ["rally-ci = rallyci.daemon:run"]}
 )
