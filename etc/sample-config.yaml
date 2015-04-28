@@ -8,7 +8,7 @@ stream:
 loggers:
   file:
     module: rallyci.loggers.logfile
-    path: /home/rally/ci-logs/
+    path: /home/rally/jobs-logs/
 
 environments:
   event:

@@ -264,13 +264,12 @@ Next you need to create a volume-directory for configuration and logs::
 
 And run container::
  
-    $ docker run -p 10022:22 -p 10080:80 -p 18000:8000 -v ~/rally-ci:/home/rally rallyforge/rally-ci
+    $ docker run -p 10022:22 -p 10080:80 -v ~/rally-ci:/home/rally rallyforge/rally-ci
 
 The rally-ci service will be accessible via 3 tcp ports:
 
- * 10022 ssh service
- * 10080 web service where logs and service status can be found
- * 18000 websocket for sharing real time status information
+ * 10022 ssh service (for emergency situations)
+ * 10080 web service (jobs logs and realtime status of the service)
 
 Example full configuration::
 

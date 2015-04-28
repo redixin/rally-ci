@@ -61,6 +61,7 @@ class Config:
 
 class WebSocket:
     def __init__(self, root):
+        self.root_path = "/ws/"
         self.root = root
         self.root_listeners = []
 
@@ -69,43 +70,45 @@ class WebSocket:
             asyncio.async(client.send(json.dumps(data)), loop=self.root.loop)
 
     def cr_started(self, cr):
-        data = {"task-started": cr.to_dict()}
+        data = {"type": "task-started", "task": cr.to_dict()}
         self.send(self.root_listeners, data)
 
     def cr_finished(self, cr):
-        data = {"task-finished": str(cr)}
+        data = {"type": "task-finished", "id": cr.id}
         self.send(self.root_listeners, data)
 
     def send_all_tasks(self, client):
         data = [c.to_dict() for c in self.root.crs.values()]
-        asyncio.async(client.send(json.dumps(data)), loop=self.root.loop)
+        asyncio.async(client.send(
+            json.dumps({"type": "all-tasks", "tasks": data})), loop=self.root.loop)
 
     def new_line(self, job, line):
         pass
 
     def accept(self, client, path):
         LOG.debug("New WS connection %r, %s" % (client, path))
-        if path == "/":
+        if path == self.root_path:
             self.root_listeners.append(client)
             self.send_all_tasks(client)
         data = yield from client.recv()
         LOG.debug("Received data: %r" % data)
-        if path == "/":
+        if path == self.root_path:
             LOG.debug("Removed root listener %r" % client)
             self.root_listeners.remove(client)
 
     def start(self, host, port):
         import websockets
         self.future = websockets.serve(self.accept, host, port)
-        asyncio.async(self.future, loop=self.root.loop)
+        return asyncio.async(self.future, loop=self.root.loop)
 
 
 class Root:
     def __init__(self, loop):
+        self.cleanup_tasks = []
         self.crs = {}
         self.loop = loop
         self.ws = WebSocket(self)
-        self.ws.start("0.0.0.0", 8000)
+        self.ws_future = self.ws.start("0.0.0.0", 8000)
 
     def load_config(self, filename):
         self.config = Config(self, filename)
@@ -126,5 +129,13 @@ class Root:
 
     def init_stream(self, stream):
         self.stream = stream
-        self.stream_status = asyncio.Future()
-        asyncio.async(self.stream.run(), loop=self.loop)
+        self.stream_future = asyncio.async(self.stream.run(), loop=self.loop)
+
+    def stop(self):
+        self.stream_future.cancel()
+        self.ws_future.cancel()
+        tasks = list(self.crs.keys()) + self.cleanup_tasks
+        LOG.info("Interrupted. Waiting for tasks %r." % tasks)
+        yield from asyncio.gather(*tasks, return_exceptions=False)
+        LOG.info("All tasks finished. Exiting.")
+        self.loop.stop()

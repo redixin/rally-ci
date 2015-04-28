@@ -17,15 +17,19 @@ from rallyci import log
 
 import asyncio
 import sys
+import signal
 from rallyci import root
 
-if len(sys.argv) < 2:
-    print("Usage\n\t%s <config.yaml>\n\n")
-    sys.exit(1)
-config = sys.argv[1]
 
-loop = asyncio.get_event_loop()
-root = root.Root(loop)
-root.load_config(config)
-
-loop.run_forever()
+def run():
+    if len(sys.argv) < 2:
+        print("Usage\n\t%s <config.yaml>\n\n")
+        sys.exit(1)
+    config = sys.argv[1]
+    loop = asyncio.get_event_loop()
+    r = root.Root(loop)
+    r.load_config(config)
+    for signame in ("SIGINT", ):
+        loop.add_signal_handler(getattr(signal, signame),
+                                asyncio.async, r.stop())
+    loop.run_forever()

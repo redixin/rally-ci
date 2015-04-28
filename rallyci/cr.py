@@ -43,7 +43,7 @@ class Job:
             self.loggers.append(self.cr.config.get_class(cfg)(self, cfg))
 
     def to_dict(self):
-        return {"id": id(self), "name": self.name, "status": self.status}
+        return {"id": self.id, "name": self.name, "status": self.status}
 
     def logger(self, data):
         """Process script stdout+stderr."""
@@ -69,7 +69,8 @@ class Job:
             script = self.cr.config.data["scripts"][script]
             status = yield from runner.run(script)
             statuses.append(status)
-        asyncio.async(runner.cleanup(), loop=self.cr.config.root.loop)
+        task = asyncio.async(runner.cleanup(), loop=self.cr.config.root.loop)
+        self.cr.config.root.cleanup_tasks.append(task)
         return any(statuses)
 
 
@@ -103,7 +104,7 @@ class CR:
             self.prepare_jobs()
 
     def to_dict(self):
-        return {"id": id(self), "jobs": [j.to_dict() for j in self.jobs]}
+        return {"id": self.id, "jobs": [j.to_dict() for j in self.jobs]}
 
     def job_finished_callback(self, job):
         LOG.debug("Completed job: %r" % job)
