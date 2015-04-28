@@ -260,16 +260,18 @@ Next you need to create a volume-directory for configuration and logs::
 
     $ mkdir rally-ci # create a volume-directory 
     $ sudo chown 65510 rally-ci
+    $ sudo chmod g+w rally-ci
+    $ ssh-keygen -f rally-ci/.ssh/id_rsa
     $ vi rally-ci/config.yaml # create configuration
 
 And run container::
  
     $ docker run -p 10022:22 -p 10080:80 -v ~/rally-ci:/home/rally rallyforge/rally-ci
 
-The rally-ci service will be accessible via 3 tcp ports:
+The rally-ci service will listen tcp ports:
 
- * 10022 ssh service (for emergency situations)
- * 10080 web service (jobs logs and realtime status of the service)
+* 10022 ssh service (for emergency situations)
+* 10080 web service (jobs logs and realtime status of the service)
 
 Example full configuration::
 
