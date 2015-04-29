@@ -255,7 +255,7 @@ Pull docker image::
 
     $ docker pull rallyforge/rally-ci
 
-Or you may want to build rally image from source::
+Or you may want to build rally-ci image from source::
 
     $ cd ~/sources/rally-ci # cd to rally-ci sources on your system
     $ docker build -t myrally .
@@ -288,7 +288,7 @@ You should create a ssh key and upload it to gerrit (https://review.openstack.or
 
 And run container::
  
-    $ docker run -p 10022:22 -p 10080:80 -v ~/rally-ci:/home/rally rallyforge/rally-ci
+    $ docker run -p 10022:22 -p 10080:80 -v $HOME/rally-ci:/home/rally rallyforge/rally-ci
 
 All logs may be found in ~/rally-ci/. You may want to see the rally-ci logs in real time::
 

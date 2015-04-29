@@ -1,0 +1,14 @@
+2015-04-29 22:53:54,462 CRIT Supervisor running as root (no user in config file)
+2015-04-29 22:53:54,465 INFO supervisord started with pid 1
+2015-04-29 22:53:55,468 INFO spawned: 'nginx' with pid 8
+2015-04-29 22:53:55,470 INFO spawned: 'sshd' with pid 9
+2015-04-29 22:53:55,472 INFO spawned: 'rally-ci' with pid 10
+2015-04-29 22:53:55,836 INFO exited: rally-ci (exit status 1; not expected)
+2015-04-29 22:53:56,837 INFO success: nginx entered RUNNING state, process has stayed up for > than 1 seconds (startsecs)
+2015-04-29 22:53:56,838 INFO success: sshd entered RUNNING state, process has stayed up for > than 1 seconds (startsecs)
+2015-04-29 22:53:56,839 INFO spawned: 'rally-ci' with pid 15
+2015-04-29 22:53:57,196 INFO exited: rally-ci (exit status 1; not expected)
+2015-04-29 22:53:59,158 WARN received SIGINT indicating exit request
+2015-04-29 22:53:59,159 INFO waiting for nginx, sshd to die
+2015-04-29 22:54:00,162 INFO stopped: sshd (exit status 0)
+2015-04-29 22:54:00,169 INFO stopped: nginx (exit status 0)
