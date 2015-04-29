@@ -29,7 +29,6 @@ class Class(base.ClassWithLocal):
     def build(self, job):
         self.job = job
         self.ssh = yield from self.config.nodepools[self.cfg["nodepool"]].get_ssh(job)
-        self.name = utils.get_rnd_name()
         self.image = self.local["image"]
         self.images = []
         self.containers = []
@@ -38,27 +37,28 @@ class Class(base.ClassWithLocal):
         with (yield from BUILDING_IMAGES[build_key]):
             filedir = yield from self.ssh.run("mktemp -d", return_output=True)
             dockerfile = self.cfg["images"][self.image]
-            yield from self.ssh.run("tee %s/Dockerfile" % filedir, stdin=dockerfile, cb=print)
-            yield from self.ssh.run("docker build -t %s %s" % (self.image, filedir))
+            yield from self.ssh.run("tee %s/Dockerfile" % filedir,
+                                    stdin=dockerfile, cb=self.job.logger)
+            yield from self.ssh.run("docker build -t %s %s" % (self.image, filedir),
+                                    cb=self.job.logger)
 
     def run(self, script):
+        name = utils.get_rnd_name()
         LOG.debug("Starting script %s" % script)
-        cmd = "docker run -i --name %s" % self.name
+        cmd = "docker run -i --name %s" % name
         for env in self.job.env.items():
             cmd += " -e %s=%s" % (env)
         cmd += " %s %s" % (self.image, script["interpreter"])
         result = yield from self.ssh.run(cmd, stdin=script["data"], cb=self.job.logger)
-        self.image = yield from self.ssh.run("docker commit %s" % self.name, return_output=True)
-        yield from self.ssh.run("docker rename %s for_%s" % (self.name, self.image))
+        self.image = yield from self.ssh.run("docker commit %s" % name, return_output=True)
         self.images.append(self.image)
-        self.containers.append("for_%s" % self.image)
+        self.containers.append(name)
 
     @asyncio.coroutine
     def cleanup(self):
-        LOG.info("Starting cleanup %s" % self.name)
+        LOG.info("Starting cleanup %s" % self.job.id)
         for container in self.containers:
             yield from self.ssh.run("docker rm %s" % container)
-        yield from self.ssh.run("docker rm %s" % self.name)
         for image in self.images:
             yield from self.ssh.run("docker rmi %s" % image)
-        LOG.info("Cleanup %s completed" % self.name)
+        LOG.info("Cleanup %s completed" % self.job.id)

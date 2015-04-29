@@ -61,12 +61,14 @@ class Job:
         LOG.debug("Built env: %s" % self.env)
         runner = self.cr.config.init_obj_with_local("runners", self.cfg["runner"])
         LOG.debug("Runner initialized %r" % runner)
+        self.current_stream = "build"
         status = yield from runner.build(self)
         if status:
             return status
         statuses = []
-        for script in self.cfg["scripts"]:
-            script = self.cr.config.data["scripts"][script]
+        for script_name in self.cfg["scripts"]:
+            script = self.cr.config.data["scripts"][script_name]
+            self.current_stream = script_name
             status = yield from runner.run(script)
             statuses.append(status)
         task = asyncio.async(runner.cleanup(), loop=self.cr.config.root.loop)

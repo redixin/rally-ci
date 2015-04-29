@@ -30,7 +30,7 @@ class Class(base.Class):
         root = self.config.root
         cfg = self.cfg
         port = str(cfg["port"])
-        cmd = ["ssh", "-o", "StrictHostKeyChecking=no", "-p", port,
+        cmd = ["ssh", "-q", "-o", "StrictHostKeyChecking=no", "-p", port,
                 "%s@%s" % (cfg["username"], cfg["hostname"]), "gerrit", "stream-events"]
 
         process = yield from asyncio.create_subprocess_exec(

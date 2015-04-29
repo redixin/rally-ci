@@ -132,7 +132,7 @@ class Root:
             future.add_done_callback(self.cr_done)
             self.ws.cr_started(cr_instance)
         else:
-            LOG.debug("No jobs. Ignoring event.")
+            LOG.debug("No jobs. Skipping event.")
             del(cr_instance)
 
     def init_stream(self, stream):

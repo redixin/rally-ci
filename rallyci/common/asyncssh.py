@@ -20,13 +20,17 @@ import logging
 
 LOG = logging.getLogger(__name__)
 
+class SSHError(Exception):
+    pass
+
 class AsyncSSH:
     def __init__(self, username=None, hostname=None, port=22):
         self.username = username
         self.hostname = hostname
         self.port = str(port)
 
-    def run(self, command, stdin=None, cb=None, return_output=False, strip_output=True):
+    def run(self, command, stdin=None, cb=None, return_output=False,
+            strip_output=True, raise_on_error=True):
         output = b""
         if isinstance(stdin, str):
             f = tempfile.TemporaryFile()
@@ -36,7 +40,8 @@ class AsyncSSH:
             stdin = f
         cmd = []
         if self.hostname != "localhost":
-            cmd = ["ssh", "%s@%s" % (self.username, self.hostname), "-p", self.port]
+            cmd = ["ssh", "-q", "-o", "StrictHostKeyChecking=no",
+                   "%s@%s" % (self.username, self.hostname), "-p", self.port]
         cmd += command.split(" ")
         process = yield from asyncio.create_subprocess_exec(*cmd,
             stdin=stdin,
@@ -55,4 +60,6 @@ class AsyncSSH:
             if strip_output:
                 return output.strip()
             return output
+        if process.returncode and raise_on_error:
+            raise SSHError("Cmd '%s' failed. Exit code: %d" % (" ".join(cmd), process.returncode))
         return process.returncode
