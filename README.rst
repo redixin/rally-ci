@@ -259,10 +259,11 @@ Or you may want to build rally image from source::
 Next you need to create a volume-directory for configuration and logs::
 
     $ mkdir rally-ci # create a volume-directory 
-    $ sudo chown 65510 rally-ci
-    $ sudo chmod g+w rally-ci
-    $ ssh-keygen -f rally-ci/.ssh/id_rsa
+    $ ssh-keygen -f rally-ci/.ssh/id_rsa # create ssh keypair
     $ vi rally-ci/config.yaml # create configuration
+    $ sudo chown -R 65510 rally-ci
+    $ sudo chmod -R g+w rally-ci
+    $ cat rally-ci/.ssh/id_rsa.pub # paste this key to review.openstack.org
 
 And run container::
  

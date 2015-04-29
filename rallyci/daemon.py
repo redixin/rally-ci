@@ -13,13 +13,16 @@
 #    limitations under the License.
 
 
+from rallyci import root
 from rallyci import log
 
 import asyncio
 import sys
 import signal
-from rallyci import root
+import logging
 
+
+LOG = logging.getLogger(__name__)
 
 def run():
     if len(sys.argv) < 2:
@@ -32,4 +35,5 @@ def run():
     for signame in ("SIGINT", ):
         loop.add_signal_handler(getattr(signal, signame),
                                 asyncio.async, r.stop())
+    LOG.info("Daemon started. Entering event loop.")
     loop.run_forever()

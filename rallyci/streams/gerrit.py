@@ -30,8 +30,8 @@ class Class(base.Class):
         root = self.config.root
         cfg = self.cfg
         port = str(cfg["port"])
-        cmd = ["ssh", "-p", port, "%s@%s" % (cfg["username"], cfg["hostname"]),
-                "gerrit", "stream-events"]
+        cmd = ["ssh", "-o", "StrictHostKeyChecking=no", "-p", port,
+                "%s@%s" % (cfg["username"], cfg["hostname"]), "gerrit", "stream-events"]
 
         process = yield from asyncio.create_subprocess_exec(
             *cmd,
@@ -44,5 +44,5 @@ class Class(base.Class):
                 event = json.loads(line.decode())
             except Exception:
                 LOG.error("Unable to decode string: %s" % line)
-                raise
-            root.handle(event)
+            else:
+                root.handle(event)
