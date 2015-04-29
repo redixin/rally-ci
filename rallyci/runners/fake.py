@@ -12,25 +12,29 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
-from rallyci.runners import base
-
+import asyncio
+import random
 import logging
+
+from rallyci import base
+
 LOG = logging.getLogger(__name__)
 
 
-class Runner(base.Runner):
+class Class(base.ClassWithLocal):
 
-    def build(self):
-        pass
+    def build(self, job):
+        self.job = job
+        sleep = self.cfg.get("sleep-build", (1, 2))
+        LOG.debug("Sleeping %s" % str(sleep))
+        yield from asyncio.sleep(random.randint(*sleep))
+
+    def run(self, script):
+        sleep = self.cfg.get("sleep-run", (1, 2))
+        LOG.debug("Sleeping %s" % str(sleep))
+        yield from asyncio.sleep(random.randint(*sleep))
 
     def cleanup(self):
-        pass
-
-    def init(self, **kwargs):
-        pass
-
-    def run(self, cmd, stdout_handler, stdin=None, env=None):
-        stdout_handler((1, "line1\n"))
-        stdout_handler((1, "line2\n"))
-        stdout_handler((2, "err1\n"))
-        stdout_handler((1, "line3\n"))
+        sleep = self.cfg.get("sleep-cleanup", (2, 4))
+        LOG.debug("Sleeping %s" % str(sleep))
+        yield from asyncio.sleep(random.randint(*sleep))

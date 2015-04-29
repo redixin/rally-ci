@@ -1,0 +1,77 @@
+---
+stream:
+    module: rallyci.streams.fake
+    path: /var/lib/rally-ci/gerrit-sample-stream.json
+
+loggers:
+  file:
+    module: rallyci.loggers.logfile
+    path: /home/rally/simulation-logs/
+
+environments:
+  event:
+    module: rallyci.environments.event
+    export-event:
+      GERRIT_PROJECT: change.project
+      GERRIT_REF: patchSet.ref
+  dummy:
+    module: rallyci.environments.dummy
+
+nodepools:
+  test:
+    module: rallyci.nodepools.fair
+    tasks_per_node: 8
+    nodes:
+      - hostname: host1
+        username: user1
+      - hostname: host2
+        username: user2
+      - hostname: host3
+        username: user3
+
+runners:
+  fake:
+    nodepool: test
+    module: rallyci.runners.fake
+    sleep-build: [1, 2]
+    sleep-run: [10, 20]
+
+scripts:
+  script1:
+    interpreter: /bin/bash -xe -s
+    data: |
+      echo "script 1"
+  script2:
+    interpreter: /bin/bash -xe -s
+    data:
+      echo "script 2"
+
+jobs:
+  job1:
+    envs:
+      - name: event
+      - name: dummy
+        export:
+          RCI_TOXENV: py27
+    runner:
+      name: fake
+    scripts:
+      - script1
+      - script2
+  job2:
+    envs:
+      - name: event
+      - name: dummy
+        export:
+          RCI_TOXENV: py34
+    runner:
+      name: fake
+    scripts:
+      - script1
+
+projects:
+  "openstack/rally":
+    jobs: ["job1", "job2"]
+
+  "openstack/neutron":
+    jobs: ["job1"]

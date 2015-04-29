@@ -110,8 +110,10 @@ class CR:
             return
 
         if event_type == "comment-added":
-            m = re.search(self.config.data["recheck"]["regexp"],
-                          event["comment"], re.MULTILINE)
+            regexp = self.config.data.get("recheck", {}).get("regexp")
+            if not regexp:
+                return
+            m = re.search(regexp, re.MULTILINE)
             if m:
                 LOG.info("Recheck requested.")
                 self.prepare_jobs()

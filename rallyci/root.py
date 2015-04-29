@@ -90,9 +90,10 @@ class WebSocket:
     def accept(self, client, path):
         LOG.debug("New WS connection %r, %s" % (client, path))
         self.send_all_tasks(client)
+        if path == self.root_path:
+            self.root_listeners.append(client)
+
         while True:
-            if path == self.root_path:
-                self.root_listeners.append(client)
             data = yield from client.recv()
             if data is None:
                 break
@@ -142,9 +143,15 @@ class Root:
             LOG.debug("No jobs. Skipping event.")
             del(cr_instance)
 
+    def handle_end_of_stream(self, future):
+        LOG.info("Stream exited. Restarting in 4 seconds.")
+        self.loop.call_later(4, self.init_stream, self.stream)
+
     def init_stream(self, stream):
+        LOG.info("Starting stream.")
         self.stream = stream
         self.stream_future = asyncio.async(self.stream.run(), loop=self.loop)
+        self.stream_future.add_done_callback(self.handle_end_of_stream)
 
     def stop(self):
         self.stream_future.cancel()

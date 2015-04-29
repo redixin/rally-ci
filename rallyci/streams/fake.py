@@ -13,6 +13,7 @@
 #    limitations under the License.
 
 import asyncio
+import logging
 import random
 
 import json
@@ -20,13 +21,16 @@ import json
 from rallyci import base
 
 
+LOG = logging.getLogger(__name__)
 
 class Class(base.Class):
 
     @asyncio.coroutine
     def run(self):
-        while True:
-            for line in open(self.cfg["path"]):
+        try:
+            for line in open(self.cfg["path"], encoding="utf-8"):
                 yield from asyncio.sleep(random.randint(1, 2))
                 event = json.loads(line)
                 self.config.root.handle(event)
+        except Exception:
+            LOG.exception("Stream error.")

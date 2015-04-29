@@ -27,7 +27,6 @@ class Class(base.Class):
 
     @asyncio.coroutine
     def run(self):
-        root = self.config.root
         cfg = self.cfg
         port = str(cfg["port"])
         cmd = ["ssh", "-q", "-o", "StrictHostKeyChecking=no", "-p", port,
@@ -45,4 +44,4 @@ class Class(base.Class):
             except Exception:
                 LOG.error("Unable to decode string: %s" % line)
             else:
-                root.handle(event)
+                self.config.root.handle(event)
