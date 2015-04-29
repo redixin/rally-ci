@@ -84,13 +84,20 @@ class WebSocket:
     def new_line(self, job, line):
         pass
 
+    def on_data(self, data):
+        LOG.debug("Received data: %r" % data)
+
     def accept(self, client, path):
         LOG.debug("New WS connection %r, %s" % (client, path))
-        if path == self.root_path:
-            self.root_listeners.append(client)
-            self.send_all_tasks(client)
-        data = yield from client.recv()
-        LOG.debug("Received data: %r" % data)
+        self.send_all_tasks(client)
+        while True:
+            if path == self.root_path:
+                self.root_listeners.append(client)
+            data = yield from client.recv()
+            if data is None:
+                break
+            self.on_data(data)
+
         if path == self.root_path:
             LOG.debug("Removed root listener %r" % client)
             self.root_listeners.remove(client)
@@ -144,6 +151,6 @@ class Root:
         self.ws_future.cancel()
         tasks = list(self.crs.keys()) + self.cleanup_tasks
         LOG.info("Interrupted. Waiting for tasks %r." % tasks)
-        yield from asyncio.gather(*tasks, return_exceptions=False)
+        yield from asyncio.gather(*tasks, return_exceptions=True)
         LOG.info("All tasks finished. Exiting.")
         self.loop.stop()

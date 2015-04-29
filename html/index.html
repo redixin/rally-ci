@@ -4,7 +4,6 @@
 <script src="//ajax.googleapis.com/ajax/libs/jquery/1.11.2/jquery.min.js"></script>
 <script type="text/javascript">
 
-var ws = new WebSocket("ws://" + window.location.host + "/ws/");
 
 function add_task(t) {
     var jobs = "Here will be jobs";
@@ -15,23 +14,46 @@ function add_task(t) {
     $('#jobs > tbody:last').append(html);
 }
 
-ws.onmessage = function(e) {
-    var d = JSON.parse(e.data);
-    switch(d["type"]) {
-        case "task-started":
-            add_task(d["task"]);
-            break;
-        case "task-finished":
-            $("#" + d["id"]).remove();
-            break;
-        case "all-tasks":
-            for (var i=0, item; item = d["tasks"][i]; i++) {
-                add_task(item);
-            }
-        default:
-            console.log(d);
+function connect_ws() {
+
+    var ws = new WebSocket("ws://" + window.location.host + "/ws/");
+    var interval;
+
+    ws.onmessage = function(e) {
+        var d = JSON.parse(e.data);
+        switch(d["type"]) {
+            case "task-started":
+                add_task(d["task"]);
+                break;
+            case "task-finished":
+                $("#" + d["id"]).remove();
+                break;
+            case "all-tasks":
+                $("#jobs > tbody > tr").remove();
+                for (var i=0, item; item = d["tasks"][i]; i++) {
+                    add_task(item);
+                }
+            default:
+                console.log(d);
+        }
+    };
+
+    ws.onopen = function(e) {
+        interval = setInterval(function () {ws.send("ping")}, 50000);
     }
-};
+
+    ws.onerror = function(e) {
+        console.log(e);
+    }
+
+    ws.onclose = function(e) {
+        console.log("Websocket is closed. Reconnecting in 1 second.");
+        clearInterval(interval);
+        window.setTimeout(connect_ws, 1000);
+    }
+}
+
+connect_ws();
 
 </script>
 </head>
