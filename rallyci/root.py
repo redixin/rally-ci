@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 #
 #    Licensed under the Apache License, Version 2.0 (the "License");
 #    you may not use this file except in compliance with the License.
@@ -120,12 +119,21 @@ class Root:
         del(self.crs[future])
 
     def handle(self, event):
-        cr_instance = cr.CR(self.config, event)
+        LOG.debug("Creating cr instance.")
+        try:
+            cr_instance = cr.CR(self.config, event)
+        except Exception as e:
+            LOG.exception("Failed to create cr instance.")
+            return
+        LOG.debug("Instance created %r" % cr_instance)
         if cr_instance.jobs:
             future = asyncio.async(cr_instance.run())
             self.crs[future] = cr_instance
             future.add_done_callback(self.cr_done)
             self.ws.cr_started(cr_instance)
+        else:
+            LOG.debug("No jobs. Ignoring event.")
+            del(cr_instance)
 
     def init_stream(self, stream):
         self.stream = stream

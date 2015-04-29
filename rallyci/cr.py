@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 #
 #    Licensed under the Apache License, Version 2.0 (the "License");
 #    you may not use this file except in compliance with the License.
@@ -13,6 +12,7 @@
 #    limitations under the License.
 
 import asyncio
+import re
 import logging
 
 import json
@@ -91,6 +91,7 @@ class CR:
         event_type = event["type"]
         LOG.debug("New event %s" % event_type)
         if event_type == "ref-updated":
+            LOG.debug("Ref updated.")
             #TODO
             return
 
@@ -98,10 +99,21 @@ class CR:
         self.project = self.config.data["projects"].get(project_name)
 
         if not self.project:
+            LOG.debug("Unknown project %s" % project_name)
             return
 
         if event_type == "patchset-created":
+            LOG.debug("Patchset created for project %s" % self.project)
             self.prepare_jobs()
+            return
+
+        if event_type == "comment-added":
+            m = re.search(self.config.data["recheck"]["regexp"],
+                          event["comment"], re.MULTILINE)
+            if m:
+                LOG.info("Recheck requested.")
+                self.prepare_jobs()
+        LOG.debug("Unknown event-type %s" % event_type)
 
     def to_dict(self):
         return {"id": self.id, "jobs": [j.to_dict() for j in self.jobs]}
@@ -112,8 +124,11 @@ class CR:
     def prepare_jobs(self):
         for job_name in self.project["jobs"]:
             cfg = self.config.data["jobs"][job_name]
+            LOG.debug("Preparing job %s" % job_name)
             job = Job(self, job_name, cfg, self.event)
+            LOG.debug("Prepared job %r" % job)
             self.jobs.append(job)
+        LOG.debug("Prepared jobs: %r" % self.jobs)
 
     @asyncio.coroutine
     def run(self):
