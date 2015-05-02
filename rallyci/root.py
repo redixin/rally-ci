@@ -76,6 +76,10 @@ class WebSocket:
         data = {"type": "task-finished", "id": cr.id}
         self.send(self.root_listeners, data)
 
+    def job_status(self, job):
+        data = {"type": "job-status-update", "job": job.to_dict()}
+        self.send(self.root_listeners, data)
+
     def send_all_tasks(self, client):
         data = [c.to_dict() for c in self.root.crs.values()]
         asyncio.async(client.send(
@@ -143,6 +147,9 @@ class Root:
             LOG.debug("No jobs. Skipping event.")
             del(cr_instance)
 
+    def handle_job_status(self, job):
+        self.ws.job_status(job)
+
     def handle_end_of_stream(self, future):
         LOG.info("Stream exited. Restarting in 4 seconds.")
         self.loop.call_later(4, self.init_stream, self.stream)
@@ -154,6 +161,7 @@ class Root:
         self.stream_future.add_done_callback(self.handle_end_of_stream)
 
     def stop(self):
+        self.stream_future.remove_done_callback(self.handle_end_of_stream)
         self.stream_future.cancel()
         self.ws_future.cancel()
         tasks = list(self.crs.keys()) + self.cleanup_tasks

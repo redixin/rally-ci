@@ -2,14 +2,32 @@
 <head>
 <title>Rally-CI</title>
 <script src="//ajax.googleapis.com/ajax/libs/jquery/1.11.2/jquery.min.js"></script>
+<style type="text/css">
+
+body {font-family: sans;}
+table#jobs thead tr th:nth-child(1) {width: 5em; }
+table#jobs thead tr th:nth-child(2) {width: 12em; }
+table#jobs thead tr th:nth-child(4) {width: 34em; }
+table#jobs { width: 90%; border-collapse: collapse; }
+table#jobs tbody tr td { font-family: monospace; }
+table tr td { border: 1px solid; padding: 1pt 2pt; }
+
+</style>
 <script type="text/javascript">
 
+function render_job(job) {
+    return "<span id='"+ job.id +"'>"+ job.name +"("+ job.status +"),</span>";
+}
 
 function add_task(t) {
-    var jobs = "Here will be jobs";
-    var html = "<tr id='"+ t["id"] +"'>";
-    html += "<td>"+t["id"]+"</td><td>Here will be commmit message</td>";
-    html += "<td>"+jobs+"</td>"
+    var jobs = "";
+    for (var i=0, job; job = t["jobs"][i]; i++) {
+        jobs += render_job(job);
+    }
+    var html = "<tr id='"+t.id+"'><td>"+t.id+"</td>";
+    html += "<td>"+t.project+"</td>";
+    html += "<td>"+t.subject+"</td>";
+    html += "<td>"+jobs+"</td>";
     html += "</tr>";
     $('#jobs > tbody:last').append(html);
 }
@@ -21,6 +39,7 @@ function connect_ws() {
 
     ws.onmessage = function(e) {
         var d = JSON.parse(e.data);
+        console.log(d);
         switch(d["type"]) {
             case "task-started":
                 add_task(d["task"]);
@@ -33,6 +52,11 @@ function connect_ws() {
                 for (var i=0, item; item = d["tasks"][i]; i++) {
                     add_task(item);
                 }
+                break;
+            case "job-status-update":
+                var job = d["job"];
+                $("#" + job.id).replaceWith(render_job(job));
+                break;
             default:
                 console.log(d);
         }
@@ -40,6 +64,7 @@ function connect_ws() {
 
     ws.onopen = function(e) {
         interval = setInterval(function () {ws.send("ping")}, 50000);
+        document.title = "RallyCI (online)";
     }
 
     ws.onerror = function(e) {
@@ -47,9 +72,10 @@ function connect_ws() {
     }
 
     ws.onclose = function(e) {
-        console.log("Websocket is closed. Reconnecting in 1 second.");
+        console.log("Websocket is closed. Reconnecting in 3 seconds.");
         clearInterval(interval);
-        window.setTimeout(connect_ws, 1000);
+        window.setTimeout(connect_ws, 3000);
+        document.title = "RallyCI (offline)";
     }
 }
 
@@ -63,7 +89,7 @@ connect_ws();
 <h3>Active jobs</h3>
 
 <table id="jobs">
-    <thead><tr><th>Id</th><th>Description</th><th>Jobs</th></th></thead>
+    <thead><tr><th>Id</th><th>Project</th><th>Subject</th><th>Jobs</th></th></thead>
     <tbody></tbody>
 </table>
 

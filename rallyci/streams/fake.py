@@ -32,5 +32,7 @@ class Class(base.Class):
                 yield from asyncio.sleep(random.randint(1, 2))
                 event = json.loads(line)
                 self.config.root.handle(event)
+        except asyncio.CancelledError:
+            raise
         except Exception:
             LOG.exception("Stream error.")

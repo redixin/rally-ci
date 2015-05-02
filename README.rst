@@ -259,18 +259,18 @@ Or you may want to build rally-ci image from source::
 
     $ cd ~/sources/rally-ci # cd to rally-ci sources on your system
     $ docker build -t myrally .
-    $ mkdir ~/rally-ci # create a volume-directory
+    $ mkdir ~/rally-ci-volume # create a volume-directory
 
 Run in simulation mode
 **********************
 
 ::
 
-    $ cd ~/rally-ci
+    $ cd ~/rally-ci-volume
     $ ln -s /etc/rally-ci/simulation-config.yaml config.yaml
-    $ docker run -p 10022:22 -p 10080:80 -v ~/rally-ci:/home/rally rallyforge/rally-ci
+    $ docker run -p 10022:22 -p 10080:80 -v $HOME/rally-ci-volume:/home/rally rallyforge/rally-ci
 
-Now you can point your browser to http://localhost:10080/ and see a real time status of service.
+Now you can point your browser to http://localhost:10080/ and see a real time status of the service.
 
 
 Run in production mode
@@ -278,21 +278,21 @@ Run in production mode
 
 You should create a ssh key and upload it to gerrit (https://review.openstack.org/)::
 
-    $ cd ~/rally-ci
+    $ cd ~/rally-ci-volume
     $ mkdir ~/.ssh
     $ ssh-keygen -f .ssh/id_rsa # create ssh keypair
     $ vi config.yaml # create configuration file
     $ sudo chown -R 65510 .
     $ sudo chmod -R g+w .
-    $ cat rally-ci/.ssh/id_rsa.pub # copy and paste this key to gerrit
+    $ cat .ssh/id_rsa.pub # copy and paste this key to gerrit
 
 And run container::
  
-    $ docker run -p 10022:22 -p 10080:80 -v $HOME/rally-ci:/home/rally rallyforge/rally-ci
+    $ docker run -p 10022:22 -p 10080:80 -v $HOME/rally-ci-volume:/home/rally rallyforge/rally-ci
 
 All logs may be found in ~/rally-ci/. You may want to see the rally-ci logs in real time::
 
-    $ tail -f ~/rally-ci/rally-ci.err.log
+    $ tail -f ~/rally-ci-volume/rally-ci.err.log
 
 The rally-ci service will listen tcp ports:
 

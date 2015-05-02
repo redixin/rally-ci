@@ -12,6 +12,7 @@
 #    limitations under the License.
 
 import asyncio
+import cgi
 import re
 import logging
 
@@ -29,7 +30,7 @@ class Job:
         self.event = event
         self.envs = []
         self.loggers = []
-        self.status = "init"
+        self.status = "queued"
         self.env = {}
         self.cfg = cfg
         self.id = utils.get_rnd_name(prefix="", length=10)
@@ -52,27 +53,33 @@ class Job:
 
     def set_status(self, status):
         self.status = status
+        self.cr.config.root.handle_job_status(self)
 
     @asyncio.coroutine
     def run(self):
         LOG.debug("Started job %s" % self)
+        self.set_status("env building")
         for env in self.envs:
             env.build(self)
         LOG.debug("Built env: %s" % self.env)
         runner = self.cr.config.init_obj_with_local("runners", self.cfg["runner"])
         LOG.debug("Runner initialized %r" % runner)
         self.current_stream = "build"
+        self.set_status("building")
         status = yield from runner.build(self)
         if status:
             return status
         statuses = []
         for script_name in self.cfg["scripts"]:
+            self.set_status("running %s" % script_name)
             script = self.cr.config.data["scripts"][script_name]
             self.current_stream = script_name
             status = yield from runner.run(script)
             statuses.append(status)
         task = asyncio.async(runner.cleanup(), loop=self.cr.config.root.loop)
         self.cr.config.root.cleanup_tasks.append(task)
+        task.add_done_callback(self.cr.config.root.cleanup_tasks.remove)
+        self.set_status("failed" if any(statuses) else "success")
         return any(statuses)
 
 
@@ -113,14 +120,19 @@ class CR:
             regexp = self.config.data.get("recheck", {}).get("regexp")
             if not regexp:
                 return
-            m = re.search(regexp, re.MULTILINE)
+            m = re.search(regexp, event["comment"], re.MULTILINE)
             if m:
                 LOG.info("Recheck requested.")
                 self.prepare_jobs()
         LOG.debug("Unknown event-type %s" % event_type)
 
     def to_dict(self):
-        return {"id": self.id, "jobs": [j.to_dict() for j in self.jobs]}
+        data = {"id": self.id, "jobs": [j.to_dict() for j in self.jobs]}
+        subject = self.event.get("change", {}).get("subject", "")
+        project = self.event.get("change", {}).get("project", "")
+        data["subject"] = cgi.escape(subject)
+        data["project"] = cgi.escape(project)
+        return data
 
     def job_finished_callback(self, job):
         LOG.debug("Completed job: %r" % job)

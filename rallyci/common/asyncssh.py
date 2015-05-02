@@ -49,12 +49,20 @@ class AsyncSSH:
             stderr=subprocess.STDOUT
         )
         LOG.debug("Running '%s'" % cmd)
-        while not process.stdout.at_eof():
-            line = yield from process.stdout.readline()
-            if cb is not None:
-                cb(line)
-            if return_output:
-                output += line
+
+        try:
+
+            while not process.stdout.at_eof():
+                line = yield from process.stdout.readline()
+                if cb is not None:
+                    cb(line)
+                if return_output:
+                    output += line
+        except asyncio.CancelledError:
+            process.terminate()
+            asyncio.async(process.wait(), loop=asyncio.get_event_loop())
+            raise
+
         if return_output:
             output = output.decode()
             if strip_output:
