@@ -15,6 +15,7 @@
 from rallyci.streams import base
 
 import json
+import time
 import subprocess
 import logging
 
@@ -25,23 +26,27 @@ PIDFILE = "/var/log/rally-ci/gerrit-ssh.pid"
 
 class Stream(base.Stream):
 
-    def generate(self):
+    def start_client(self):
         cmd = "ssh -p %(port)d %(username)s@%(hostname)s gerrit stream-events" % \
               self.config["ssh"]
-        pipe = subprocess.Popen(cmd.split(" "),
-                                stdout=subprocess.PIPE,
-                                stderr=subprocess.STDOUT)
+        self.pipe = subprocess.Popen(cmd.split(" "),
+                                     stdout=subprocess.PIPE,
+                                     stderr=subprocess.STDOUT)
+
+    def generate(self):
         try:
-            with open(self.config.get("pidfile", PIDFILE), "w") as pidfile:
-                pidfile.write(str(pipe.pid))
-            for line in iter(pipe.stdout.readline, b''):
-                if not line:
-                    break
-                try:
-                    event = json.loads(line)
-                except ValueError:
-                    LOG.warning("Invalid json: %s" % line)
-                    continue
-                yield(event)
+            while True:
+                for line in self._gen():
+                    yield line
+                time.sleep(10)
         finally:
-            pipe.terminate()
+            self.pipe.terminate()
+
+    def _gen(self):
+        self.start_client()
+        with open(self.config.get("pidfile", PIDFILE), "w") as pidfile:
+            pidfile.write(str(self.pipe.pid))
+        for line in iter(self.pipe.stdout.readline, b''):
+            if not line:
+                break
+            yield(json.loads(line))
