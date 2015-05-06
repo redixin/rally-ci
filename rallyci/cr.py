@@ -58,29 +58,25 @@ class Job:
     @asyncio.coroutine
     def run(self):
         LOG.debug("Started job %s" % self)
-        self.set_status("env building")
-        for env in self.envs:
-            env.build(self)
-        LOG.debug("Built env: %s" % self.env)
-        runner = self.cr.config.init_obj_with_local("runners", self.cfg["runner"])
-        LOG.debug("Runner initialized %r" % runner)
-        self.current_stream = "build"
-        self.set_status("building")
-        status = yield from runner.build(self)
-        if status:
-            return status
-        statuses = []
-        for script_name in self.cfg["scripts"]:
-            self.set_status("running %s" % script_name)
-            script = self.cr.config.data["scripts"][script_name]
-            self.current_stream = script_name
-            status = yield from runner.run(script)
-            statuses.append(status)
-        task = asyncio.async(runner.cleanup(), loop=self.cr.config.root.loop)
-        self.cr.config.root.cleanup_tasks.append(task)
-        task.add_done_callback(self.cr.config.root.cleanup_tasks.remove)
-        self.set_status("failed" if any(statuses) else "success")
-        return any(statuses)
+        try:
+            self.set_status("env building")
+            for env in self.envs:
+                env.build(self)
+            LOG.debug("Built env: %s" % self.env)
+            self.runner = self.cr.config.init_obj_with_local("runners", self.cfg["runner"])
+            LOG.debug("Runner initialized %r" % self.runner)
+            future = asyncio.async(self.runner.run(self), loop=asyncio.get_event_loop())
+            future.add_done_callback(self.cleanup)
+            result = yield from asyncio.wait_for(future, None)
+            return result
+        except Exception:
+            LOG.exception("Unhandled exception in job %s" % self.name)
+            return 254
+
+    def cleanup(self, future):
+        f = asyncio.async(self.runner.cleanup(), loop=self.cr.config.root.loop)
+        self.cr.config.root.cleanup_tasks.append(f)
+        f.add_done_callback(self.cr.config.root.cleanup_tasks.remove)
 
 
 class CR:

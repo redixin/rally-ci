@@ -55,9 +55,9 @@ jobs:
           RCI_TOXENV: py27
     runner:
       name: fake
-    scripts:
-      - script1
-      - script2
+      scripts:
+        - script1
+        - script2
   job2:
     envs:
       - name: event
@@ -66,8 +66,8 @@ jobs:
           RCI_TOXENV: py34
     runner:
       name: fake
-    scripts:
-      - script1
+      scripts:
+        - script1
 
 projects:
   "openstack/rally":

@@ -24,17 +24,18 @@ LOG = logging.getLogger(__name__)
 BUILDING_IMAGES = {}
 
 
-class Class(base.ClassWithLocal):
+class Class(base.ClassWithLocal, base.GenericRunnerMixin):
 
-    def build(self, job):
-        self.job = job
-        self.ssh = yield from self.config.nodepools[self.cfg["nodepool"]].get_ssh(job)
+    @asyncio.coroutine
+    def build(self):
+        self.ssh = yield from self.config.nodepools[self.cfg["nodepool"]].get_ssh(self.job)
         self.image = self.local["image"]
         self.images = []
         self.containers = []
         build_key = (self.ssh.hostname, self.image)
         BUILDING_IMAGES.setdefault(build_key, asyncio.Lock())
         with (yield from BUILDING_IMAGES[build_key]):
+            self.job.set_status("building")
             filedir = yield from self.ssh.run("mktemp -d", return_output=True)
             dockerfile = self.cfg["images"][self.image]
             yield from self.ssh.run("tee %s/Dockerfile" % filedir,
@@ -42,7 +43,8 @@ class Class(base.ClassWithLocal):
             yield from self.ssh.run("docker build -t %s %s" % (self.image, filedir),
                                     cb=self.job.logger)
 
-    def run(self, script):
+    @asyncio.coroutine
+    def run_script(self, script):
         name = utils.get_rnd_name()
         LOG.debug("Starting script %s" % script)
         cmd = "docker run -i --name %s" % name
@@ -53,12 +55,13 @@ class Class(base.ClassWithLocal):
         self.image = yield from self.ssh.run("docker commit %s" % name, return_output=True)
         self.images.append(self.image)
         self.containers.append(name)
+        return result
 
     @asyncio.coroutine
     def cleanup(self):
         LOG.info("Starting cleanup %s" % self.job.id)
         for container in self.containers:
             yield from self.ssh.run("docker rm %s" % container)
-        for image in self.images:
-            yield from self.ssh.run("docker rmi %s" % image)
+        for image in self.images[::-1]:
+            yield from self.ssh.run("docker rmi %s" % image, raise_on_error=False)
         LOG.info("Cleanup %s completed" % self.job.id)

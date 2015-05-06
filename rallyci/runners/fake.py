@@ -21,15 +21,14 @@ from rallyci import base
 LOG = logging.getLogger(__name__)
 
 
-class Class(base.ClassWithLocal):
+class Class(base.ClassWithLocal, base.GenericRunnerMixin):
 
-    def build(self, job):
-        self.job = job
+    def build(self):
         sleep = self.cfg.get("sleep-build", (1, 2))
         LOG.debug("Sleeping %s" % str(sleep))
         yield from asyncio.sleep(random.randint(*sleep))
 
-    def run(self, script):
+    def run_script(self, script):
         sleep = self.cfg.get("sleep-run", (1, 2))
         LOG.debug("Sleeping %s" % str(sleep))
         yield from asyncio.sleep(random.randint(*sleep))

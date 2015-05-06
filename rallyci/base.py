@@ -12,6 +12,11 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
+import asyncio
+import logging
+
+LOG = logging.getLogger(__name__)
+
 
 class Class:
 
@@ -37,3 +42,24 @@ class ClassWithLocal:
         self.config = config
         self.cfg = cfg
         self.local = local
+
+
+class GenericRunnerMixin:
+    """Generic runner with build and run_script methods."""
+
+    @asyncio.coroutine
+    def run(self, job):
+        self.job = job
+        job.set_status("building")
+        status = yield from self.build()
+        if status:
+            job.set_status("failed")
+            return status
+        for script_name in self.local["scripts"]:
+            job.set_status("running %s" % script_name)
+            script = self.config.data["scripts"][script_name]
+            status = yield from self.run_script(script)
+            if status:
+                job.set_status("failed %s" % script_name)
+                return status
+        job.set_status("success")
