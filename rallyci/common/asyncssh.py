@@ -17,14 +17,16 @@ import subprocess
 import tempfile
 import logging
 
-
 LOG = logging.getLogger(__name__)
+
 
 class SSHError(Exception):
     pass
 
+
 class AsyncSSH:
-    def __init__(self, username=None, hostname=None, port=22):
+    def __init__(self, username=None, hostname=None, key=None, port=22):
+        self.key = key
         self.username = username
         self.hostname = hostname
         self.port = str(port)
@@ -42,6 +44,8 @@ class AsyncSSH:
         if self.hostname != "localhost":
             cmd = ["ssh", "-q", "-o", "StrictHostKeyChecking=no",
                    "%s@%s" % (self.username, self.hostname), "-p", self.port]
+        if self.key:
+            cmd += ["-i", self.key]
         cmd += command.split(" ")
         process = yield from asyncio.create_subprocess_exec(*cmd,
             stdin=stdin,
@@ -51,7 +55,6 @@ class AsyncSSH:
         LOG.debug("Running '%s'" % cmd)
 
         try:
-
             while not process.stdout.at_eof():
                 line = yield from process.stdout.readline()
                 if cb is not None:
