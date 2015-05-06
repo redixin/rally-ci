@@ -54,8 +54,8 @@ class Config:
         cfg = self.data[section][local["name"]]
         return self.get_class(cfg)(self, cfg, local)
 
-    def init_obj(self, cfg):
-        return self._get_module(cfg["module"]).Class(self, cfg)
+    def init_obj(self, cfg, *args, **kwargs):
+        return self._get_module(cfg["module"]).Class(self, cfg, *args, **kwargs)
 
 
 class WebSocket:
