@@ -1,3 +1,65 @@
+Installing and Usage
+####################
+
+The simplest way to install rally-ci is pull docker image.
+
+First you need to install docker. Installing docker in ubuntu may be done by following::
+
+    $ sudo apt-get update
+    $ sudo apt-get install docker.io
+    $ sudo usermod -a -G docker `id -u -n` # add yourself to docker group
+
+NOTE: re login is required to apply users groups changes and actually use docker.
+
+Pull docker image::
+
+    $ docker pull rallyforge/rally-ci
+
+Or you may want to build rally-ci image from source::
+
+    $ cd ~/sources/rally-ci # cd to rally-ci sources on your system
+    $ docker build -t myrally .
+    $ mkdir ~/rally-ci-volume # create a volume-directory
+
+Run in simulation mode
+**********************
+
+::
+
+    $ cd ~/rally-ci-volume
+    $ ln -s /etc/rally-ci/simulation-config.yaml config.yaml
+    $ docker run -p 10022:22 -p 10080:80 -v $HOME/rally-ci-volume:/home/rally rallyforge/rally-ci
+
+Now you can point your browser to http://localhost:10080/ and see a real time status of the service.
+
+Run in production mode
+**********************
+
+You should create a ssh key and upload it to gerrit (https://review.openstack.org/)::
+
+    $ cd ~/rally-ci-volume
+    $ mkdir ~/.ssh
+    $ ssh-keygen -f .ssh/id_rsa # create ssh keypair
+    $ vi config.yaml # create configuration file
+    $ sudo chown -R 65510 .
+    $ sudo chmod -R g+w .
+    $ cat .ssh/id_rsa.pub # copy and paste this key to gerrit
+
+And run container::
+ 
+    $ docker run -p 10022:22 -p 10080:80 -v $HOME/rally-ci-volume:/home/rally rallyforge/rally-ci
+
+All logs may be found in ~/rally-ci-volume/. You may want to see the rally-ci logs in real time::
+
+    $ tail -f ~/rally-ci-volume/rally-ci.err.log
+
+The rally-ci service will listen tcp ports:
+
+* 10022 ssh service (for emergency situations)
+* 10080 web service (jobs logs and realtime status of the service)
+
+You may expose web and ssh ports to any numbers. Just use "-p 8080:80" to expose web to
+port 8080 instead of 10080.
 
 Configuration file
 ##################
@@ -123,6 +185,7 @@ Sample configuraion::
             port: 33
           - hostname: worker1.net
             username: admin
+            key: /home/rally/.ssh/superkey
 
 The config above has two nodes in pool. First node has non standard ssh port.
 
@@ -157,6 +220,11 @@ Run jobs in docker containers. Build images from dockerfiles hardcoded in config
                 git clone git://git.openstack.org/openstack/rally.git
 
 
+rallyci.runners.fake
+--------------------
+
+Used for testing. Does nothing but sleeping random delays. Always returns success.
+
 rallyci.runners.lxc
 -------------------
 
@@ -166,11 +234,6 @@ rallyci.runners.virsh
 ---------------------
 
 Work in progress.
-
-rallyci.runners.fake
---------------------
-
-Used for testing. Does nothing but sleeping random delays. Always returns success.
 
 Scripts section
 ***************
@@ -201,7 +264,6 @@ Configuration consist of following sections:
 
 * envs
 * runner
-* scripts
 
 Sample jobs section::
 
@@ -215,9 +277,9 @@ Sample jobs section::
         runner:
           name: localdocker
           image: ubuntu-dev
-        scripts:
-          - git_checkout
-          - run_tox
+          scripts:
+            - git_checkout
+            - run_tox
 
 
 Projects section
@@ -236,71 +298,6 @@ This sections descibes which jobs run for which projects::
           - rally
 
 Full working sample may be found in source code tree in file etc/sample-config.yaml.
-
-
-Installing and Usage
-####################
-
-The simplest way to install is pulling docker image.
-
-First you need to install docker. Installing docker in ubuntu may be done by following::
-
-    $ sudo apt-get update
-    $ sudo apt-get install docker.io
-    $ sudo usermod -a -G docker `id -u -n` # add yourself to docker group
-
-NOTE: re login is required to apply users groups changes and actually use docker.
-
-Pull docker image::
-
-    $ docker pull rallyforge/rally-ci
-
-Or you may want to build rally-ci image from source::
-
-    $ cd ~/sources/rally-ci # cd to rally-ci sources on your system
-    $ docker build -t myrally .
-    $ mkdir ~/rally-ci-volume # create a volume-directory
-
-Run in simulation mode
-**********************
-
-::
-
-    $ cd ~/rally-ci-volume
-    $ ln -s /etc/rally-ci/simulation-config.yaml config.yaml
-    $ docker run -p 10022:22 -p 10080:80 -v $HOME/rally-ci-volume:/home/rally rallyforge/rally-ci
-
-Now you can point your browser to http://localhost:10080/ and see a real time status of the service.
-
-
-Run in production mode
-**********************
-
-You should create a ssh key and upload it to gerrit (https://review.openstack.org/)::
-
-    $ cd ~/rally-ci-volume
-    $ mkdir ~/.ssh
-    $ ssh-keygen -f .ssh/id_rsa # create ssh keypair
-    $ vi config.yaml # create configuration file
-    $ sudo chown -R 65510 .
-    $ sudo chmod -R g+w .
-    $ cat .ssh/id_rsa.pub # copy and paste this key to gerrit
-
-And run container::
- 
-    $ docker run -p 10022:22 -p 10080:80 -v $HOME/rally-ci-volume:/home/rally rallyforge/rally-ci
-
-All logs may be found in ~/rally-ci/. You may want to see the rally-ci logs in real time::
-
-    $ tail -f ~/rally-ci-volume/rally-ci.err.log
-
-The rally-ci service will listen tcp ports:
-
-* 10022 ssh service (for emergency situations)
-* 10080 web service (jobs logs and realtime status of the service)
-
-You may expose web and ssh ports to any numbers. Just use "-p 8080:80" to expose web to
-port 8080 instead of 10080 in startup command.
 
 Example full configuration::
 
@@ -378,9 +375,9 @@ Example full configuration::
         runner:
           name: localdocker
           image: ubuntu-dev
-        scripts:
-          - git_checkout
-          - tox
+          scripts:
+            - git_checkout
+            - tox
 
     projects:
       "openstack/rally":
