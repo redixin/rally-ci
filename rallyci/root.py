@@ -164,8 +164,10 @@ class Root:
         self.stream_future.remove_done_callback(self.handle_end_of_stream)
         self.stream_future.cancel()
         self.ws_future.cancel()
-        tasks = list(self.crs.keys()) + self.cleanup_tasks
+        tasks = list(self.crs.keys())
         LOG.info("Interrupted. Waiting for tasks %r." % tasks)
         yield from asyncio.gather(*tasks, return_exceptions=True)
-        LOG.info("All tasks finished. Exiting.")
+        LOG.info("All tasks finished. Waiting for cleanup tasks %r." % self.cleanup_tasks)
+        yield from asyncio.gather(*self.cleanup_tasks, return_exceptions=True)
+        LOG.info("All cleanup tasks finished. Stopping loop.")
         self.loop.stop()
