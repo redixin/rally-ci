@@ -28,7 +28,7 @@ class Class(base.ClassWithLocal, base.GenericRunnerMixin):
       module: ...
       nodepool: ...
       vms:
-        img1:
+        vm1:
           build-scripts: ["s1", "s2"]
           dataset: /tank/ds
           source: img@s
@@ -42,7 +42,7 @@ class Class(base.ClassWithLocal, base.GenericRunnerMixin):
     def build(self):
         ssh = yield from self.config.nodepools[self.cfg["nodepool"]].get_ssh(self.job)
         self.vm = virsh.VM(ssh, self.local["image"], self.cfg)
-        yield from self.vm.build()
+        yield from self.vm.build(self.config)
 
     @asyncio.coroutine
     def boot(self):

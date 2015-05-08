@@ -23,10 +23,12 @@ import logging
 import time
 from xml.etree import ElementTree as et
 
+from rallyci.common import asyncssh
 from rallyci import utils
 
 LOG = logging.getLogger(__name__)
 IFACE_RE = re.compile("\d+: ([a-z]+)([0-9]+): .*")
+IP_RE = re.compile(r"(\d+\.\d+\.\d+\.\d+)\s")
 NETWORKS = set()
 BUILDING_IMAGES = {}
 
@@ -75,23 +77,66 @@ class ZFSVolume:
     def get_disks(self):
         cmd = "ls /%s/%s" % (self.dataset, self.cur_name)
         files = yield from self.ssh.run(cmd, return_output=True)
-        return files.splitlines()
+        return ["/%s/%s/%s" % (self.dataset, self.cur_name, f) for f in files.splitlines()]
 
 
 class VM:
 
     def __init__(self, ssh, vm_name, cfg):
+        """
+        :param cfg: vm config
+        """
         self.h_ssh = ssh
         self.cfg = cfg
         self.vm_config = cfg["vms"][vm_name]
         self.volume = ZFSVolume(ssh, vm_name, self.vm_config)
+        self.macs = []
 
-    def boot(self):
-        files = yield from self.volume.get_disks()
-        LOG.debug("files: %r" % files)
+    def _get_rnd_mac(self):
+        mac5 = ["%02x" % random.randint(0, 255) for i in range(5)]
+        return "52:" + ":".join(mac5)
 
     @asyncio.coroutine
-    def build(self):
+    def _get_ip(self):
+        macs = "|".join(self.macs)
+        cmd = "egrep -i '%s' /proc/net/arp" % macs
+        while True:
+            yield from asyncio.sleep(4)
+            data = yield from self.h_ssh.run(cmd, return_output=True)
+            for line in data.splitlines():
+                m = IP_RE.match(line)
+                if m:
+                    return m.group(1)
+
+    @asyncio.coroutine
+    def boot(self):
+        files = yield from self.volume.get_disks()
+
+        for path in files:
+            dev = os.path.split(path)[1].split(".")[0]
+            self.xml.add_disk(dev, path)
+
+        for net in self.vm_config["net"]:
+            mac = net.get("mac", self._get_rnd_mac())
+            self.macs.append(mac)
+            self.xml.add_net(net["bridge"], mac)
+
+        with self.xml.fd() as fd:
+            conf = utils.get_rnd_name()
+            conf = "/tmp/.conf.%s.xml" % conf
+            yield from self.h_ssh.run("cat > %s" % conf, stdin=fd)
+        yield from self.h_ssh.run("virsh create %s" % conf)
+        yield from self.h_ssh.run("rm %s"% conf)
+        self.ip = yield from asyncio.wait_for(self._get_ip(), 120)
+        LOG.debug("Got ip: %s" % self.ip)
+        self.ssh = asyncssh.AsyncSSH(hostname=self.ip, username="root",
+                                     key=self.vm_config.get("key"))
+        yield from asyncio.sleep(4)
+        yield from self.ssh.run("echo ok")
+
+    @asyncio.coroutine
+    def build(self, config):
+        self.xml = XML(self.vm_config)
         build_key = (self.h_ssh.hostname, self.volume.name)
         BUILDING_IMAGES.setdefault(build_key, asyncio.Lock())
         with (yield from BUILDING_IMAGES[build_key]):
@@ -100,20 +145,36 @@ class VM:
                 yield from self.volume.create()
                 yield from self.boot()
                 for script in self.vm_config.get("build-scripts", []):
-                    error = yield from self.run_script(script)
-                    if error:
-                        self.cleanup()
-                        return error
+                    script = config.data["scripts"][script]
+                    yield from self.run_script(script)
+                yield from self.shutdown()
                 yield from self.volume.commit()
                 yield from self.volume.init()
-        self.xml = XML(self.vm_config)
 
     @asyncio.coroutine
     def run_script(self, script):
-        yield from self.h_ssh.run("echo ooke")
+        LOG.debug("script: %s" % script)
+        yield from self.ssh.run(script["interpreter"], stdin=script["data"])
+
+    @asyncio.coroutine
+    def shutdown(self, timeout=30):
+        yield from self.ssh.run("shutdown -h now")
+        start = time.time()
+        while True:
+            yield from asyncio.sleep(4)
+            cmd = "virsh list | grep -q %s" % self.xml.name
+            error = yield from self.h_ssh.run(cmd, raise_on_error=False)
+            if error:
+                return
+            elif time.time() - start > timeout:
+                cmd = "virsh destroy %s" % self.xml.name
+                yield from self.h_ssh.run(cmd)
+                yield from asyncio.sleep(4)
+                return
 
     @asyncio.coroutine
     def cleanup(self):
+        yield from self.h_ssh.run("virsh destroy %s" % self.xml.name, raise_on_error=False)
         yield from self.volume.cleanup()
 
 
@@ -138,16 +199,17 @@ class XML:
 
     def __init__(self, cfg):
         self.cfg = cfg
+        self.name = utils.get_rnd_name() + "_new"
         x = XMLElement(None, "domain", type="kvm")
         self.x = x
-        x.se("name").x.text = utils.get_rnd_name()
+        x.se("name").x.text = self.name
         for mem in ("memory", "currentMemory"):
-            x.se("memory", unit="MiB").x.text = cfg["memory"]
+            x.se(mem, unit="MiB").x.text = str(cfg["memory"])
         x.se("vcpu", placement="static").x.text = "1"
         cpu = x.se("cpu", mode="host-model")
         cpu.se("model", fallback="forbid")
         os = x.se("os")
-        os.se("type", arch="x86_64", machine="pc-0.1").x.text = "hvm"
+        os.se("type", arch="x86_64", machine="pc-1.0").x.text = "hvm"
         features = x.se("features")
         features.se("acpi")
         features.se("apic")
@@ -171,18 +233,15 @@ class XML:
         finally:
             fd.close()
 
-    def add_disk(self, path, dev):
+    def add_disk(self, dev, path):
         disk = self.devices.se("disk", device="disk", type="file")
         disk.se("driver", name="qemu", type="qcow2", cache="unsafe")
         disk.se("source", file=path)
         disk.se("target", dev=dev, bus="virtio")
 
-    def add_net(self, iface, mac=None):
-        if mac is None:
-            mac5 = ["%02x" % random.randint(0, 255) for i in range(5)]
-            mac = "00:" + ":".join(mac5)
+    def add_net(self, bridge, mac):
         net = self.devices.se("interface", type="bridge")
-        net.se("source", bridge=iface)
+        net.se("source", bridge=bridge)
         net.se("model", type="virtio")
         net.se("mac", address=mac)
 

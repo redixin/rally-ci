@@ -51,20 +51,26 @@ class GenericRunnerMixin:
     def run(self, job):
         self.job = job
         job.set_status("building")
-        error = yield from self.build()
-        if error:
+        try:
+            yield from self.build()
+        except Exception:
+            LOG.exception("Failed to build.")
             job.set_status("build failed")
-            return error
+            return True
         job.set_status("booting")
-        erorr = yield from self.boot()
-        if error:
+        try:
+            yield from self.boot()
+        except:
+            LOG.exception("Failed to boot.")
             job.set_status("boot failed")
-            return error
+            return True
         for script_name in self.local["scripts"]:
             job.set_status("running %s" % script_name)
             script = self.config.data["scripts"][script_name]
-            error = yield from self.run_script(script)
-            if error:
+            try:
+                yield from self.run_script(script)
+            except:
+                LOG.exception("Failed to run %s" % script_name)
                 job.set_status("failed %s" % script_name)
-                return error
+                return True
         job.set_status("success")
