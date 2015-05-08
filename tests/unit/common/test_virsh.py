@@ -34,6 +34,25 @@ SAMPLE_IP_LINK_LIST = """
 SAMPLE_CONFIG = {"ssh": {"user": "root", "host": "example.net"}}
 
 
+class XMLElementTestCase(unittest.TestCase):
+
+    def test_se(self):
+        x = virsh.XMLElement(None, "root")
+        x.se("se", attr="ok")
+        self.assertEqual(b'<root><se attr="ok" /></root>', x.tostring())
+
+
+class XMLTestCase(unittest.TestCase):
+
+    def test_fd(self):
+        cfg = {"memory": "123"}
+        x = virsh.XML("test_name", cfg)
+        with x.fd() as fd:
+            data = fd.read()
+        self.assertTrue(b"memballoon" in data)
+        self.assertTrue(b"memory" in data)
+
+
 class VMTestCase(unittest.TestCase):
 
     def test__get_bridge(self):

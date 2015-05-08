@@ -27,9 +27,20 @@ nodepools:
       - hostname: localhost
 
 runners:
+  virsh:
+    module: rallyci.runners.virsh
+    nodepool: mirantis-servers
+    images:
+      - name: dsvm
+        memory: 4096
+        build-scripts: ["install_dsvm"]
+        storage: rallyci.storages.zfs
+          dataset: /tank/qcow
+          source: u1404_dsvm@clean
+
   localdocker:
-    nodepool: localdocker
     module: rallyci.runners.docker
+    nodepool: localdocker
     images:
       ubuntu-dev: |
         FROM ubuntu:14.04
@@ -59,8 +70,15 @@ scripts:
       git diff --name-only master
   tox:
     interpreter: /bin/bash -xe -s
-    data:
+    data: |
       cd $GERRIT_PROJECT && tox -e$RCI_TOXENV
+  install_dsvm:
+    interpreter: /bin/bash -xe -s
+    data: |
+      apt-get update
+      apt-get --force-yes -y install git python2.7 bash-completion python-dev libffi-dev libxml2-dev libxslt1-dev libssl-dev libpq-dev python-pip
+      pip install tox==1.6
+      useradd -u 65510 -m rally
 
 jobs:
   py27:
@@ -75,8 +93,16 @@ jobs:
     scripts:
       - git_checkout
       - tox
+  rally-dsvm:
+    envs:
+      - name: event
+    runner:
+      name: virsh
+      image: dsvm
+    scripts:
+      - rally_gate
 
 projects:
   "openstack/rally":
     jobs:
-     - py27
+      - rally-dsvm

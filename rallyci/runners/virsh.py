@@ -12,53 +12,46 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
-from rallyci.runners import base
-from rallyci.common import virsh
-from rallyci import sshutils
-from rallyci import utils
+import asyncio
 import logging
 
+from rallyci import base
+from rallyci.common import virsh
+from rallyci import utils
 
 LOG = logging.getLogger(__name__)
 
 
-class Runner(base.Runner):
+class Class(base.ClassWithLocal, base.GenericRunnerMixin):
+    """
+    self.cfg is entry from runners section
+      module: ...
+      nodepool: ...
+      vms:
+        img1:
+          build-scripts: ["s1", "s2"]
+          dataset: /tank/ds
+          source: img@s
+    self.local is runner section from jobs section
+      name: runner-name
+      image: runner-image
+      scripts: ["s1", "s2"]
+    """
 
-    def setup(self, user, **kwargs):
-        self.user = user
-        self.kwargs = kwargs
+    @asyncio.coroutine
+    def build(self):
+        ssh = yield from self.config.nodepools[self.cfg["nodepool"]].get_ssh(self.job)
+        self.vm = virsh.VM(ssh, self.local["image"], self.cfg)
+        yield from self.vm.build()
 
-    def build(self, stdout_cb):
-        self.vm = virsh.VM(self.global_config, self.config)
-        self.vm.build()
-
+    @asyncio.coroutine
     def boot(self):
-        self.sshconf = {"user": self.user, "host": self.ip}
-        LOG.debug("Connecting to %r" % self.sshconf)
-        self.ssh = sshutils.SSH(**self.sshconf)
-        self.ssh.wait()
+        yield from self.vm.boot()
 
-    @property
-    def ip(self):
-        if not hasattr(self, "_ip"):
-            self._ip = self.vm.get_ip()
-        return self._ip
+    @asyncio.coroutine
+    def run_script(self, script):
+        yield from self.vm.run_script(script)
 
-    def run(self, cmd, stdout_cb, stdin, env):
-        for k, v in env.items():
-            cmd = "%s=%s " % (k, v) + cmd
-        self.ssh.run(cmd, stdin=stdin, **utils.get_stdouterr(stdout_cb))
-
+    @asyncio.coroutine
     def cleanup(self):
-        self.vm.cleanup()
-
-    def publish_files(self, job):
-        dirs = self.kwargs.get("publish_files", [])
-        if not dirs:
-            return
-        for p in job.publishers:
-            publisher = getattr(p, "publish_files", None)
-            if publisher:
-                for src, dst in dirs:
-                    dst = "%s/%s" % (job.name, dst)
-                    publisher(self.sshconf, src, dst)
+        yield from self.vm.cleanup()

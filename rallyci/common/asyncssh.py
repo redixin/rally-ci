@@ -57,6 +57,7 @@ class AsyncSSH:
         try:
             while not process.stdout.at_eof():
                 line = yield from process.stdout.readline()
+                LOG.debug(line)
                 if cb is not None:
                     cb(line)
                 if return_output:
@@ -72,5 +73,6 @@ class AsyncSSH:
                 return output.strip()
             return output
         if process.returncode and raise_on_error:
+            LOG.error("Command failed: %s" % line)
             raise SSHError("Cmd '%s' failed. Exit code: %d" % (" ".join(cmd), process.returncode))
         return process.returncode

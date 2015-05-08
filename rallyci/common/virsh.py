@@ -12,24 +12,179 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
-from xmlbuilder import XMLBuilder
-
-import StringIO
-import threading
+import asyncio
+import contextlib
+import tempfile
 import os
 import random
 import re
 import string
 import logging
 import time
+from xml.etree import ElementTree as et
 
-from rallyci import sshutils
 from rallyci import utils
 
 LOG = logging.getLogger(__name__)
 IFACE_RE = re.compile("\d+: ([a-z]+)([0-9]+): .*")
 NETWORKS = set()
-LOCK = threading.Lock()
+BUILDING_IMAGES = {}
+
+
+class ZFSVolume:
+
+    def __init__(self, ssh, name, cfg):
+        self.ssh = ssh
+        self.name = name
+        self.cfg = cfg
+        self.dataset = cfg["dataset"]
+        self.src = cfg["source"]
+
+    @asyncio.coroutine
+    def _clone(self, src, dst):
+        src = "%s/%s" % (self.dataset, src)
+        dst = "%s/%s" % (self.dataset, dst)
+        cmd = "zfs clone %s %s" % (src, dst)
+        retval = yield from self.ssh.run(cmd, raise_on_error=False)
+        return retval
+
+    @asyncio.coroutine
+    def init(self):
+        self.cur_name = utils.get_rnd_name()
+        retval = yield from self._clone(self.name + "@1", self.cur_name)
+        return retval
+
+    @asyncio.coroutine
+    def create(self):
+        retval = yield from self._clone(self.src, self.name)
+        if retval:
+            raise Exception("No source image")
+        self.cur_name = self.name
+
+    @asyncio.coroutine
+    def commit(self, name="1"):
+        yield from self.ssh.run("zfs snapshot %s/%s@%s" % (self.dataset, self.name, name))
+
+    @asyncio.coroutine
+    def cleanup(self):
+        # https://bugzilla.redhat.com/show_bug.cgi?id=1178150
+        yield from asyncio.sleep(10)
+        yield from self.ssh.run("zfs destroy %s/%s" % (self.dataset, self.cur_name))
+
+    @asyncio.coroutine
+    def get_disks(self):
+        cmd = "ls /%s/%s" % (self.dataset, self.cur_name)
+        files = yield from self.ssh.run(cmd, return_output=True)
+        return files.splitlines()
+
+
+class VM:
+
+    def __init__(self, ssh, vm_name, cfg):
+        self.h_ssh = ssh
+        self.cfg = cfg
+        self.vm_config = cfg["vms"][vm_name]
+        self.volume = ZFSVolume(ssh, vm_name, self.vm_config)
+
+    def boot(self):
+        files = yield from self.volume.get_disks()
+        LOG.debug("files: %r" % files)
+
+    @asyncio.coroutine
+    def build(self):
+        build_key = (self.h_ssh.hostname, self.volume.name)
+        BUILDING_IMAGES.setdefault(build_key, asyncio.Lock())
+        with (yield from BUILDING_IMAGES[build_key]):
+            error = yield from self.volume.init()
+            if error:
+                yield from self.volume.create()
+                yield from self.boot()
+                for script in self.vm_config.get("build-scripts", []):
+                    error = yield from self.run_script(script)
+                    if error:
+                        self.cleanup()
+                        return error
+                yield from self.volume.commit()
+                yield from self.volume.init()
+        self.xml = XML(self.vm_config)
+
+    @asyncio.coroutine
+    def run_script(self, script):
+        yield from self.h_ssh.run("echo ooke")
+
+    @asyncio.coroutine
+    def cleanup(self):
+        yield from self.volume.cleanup()
+
+
+class XMLElement:
+
+    def __init__(self, parent, *args, **kwargs):
+        if parent is not None:
+            self.x = et.SubElement(parent, *args, **kwargs)
+        else:
+            self.x = et.Element(*args, **kwargs)
+
+    def se(self, *args, **kwargs):
+        return XMLElement(self.x, *args, **kwargs)
+
+    def write(self, fd):
+        et.ElementTree(self.x).write(fd)
+
+    def tostring(self):
+        return et.tostring(self.x)
+
+class XML:
+
+    def __init__(self, cfg):
+        self.cfg = cfg
+        x = XMLElement(None, "domain", type="kvm")
+        self.x = x
+        x.se("name").x.text = utils.get_rnd_name()
+        for mem in ("memory", "currentMemory"):
+            x.se("memory", unit="MiB").x.text = cfg["memory"]
+        x.se("vcpu", placement="static").x.text = "1"
+        cpu = x.se("cpu", mode="host-model")
+        cpu.se("model", fallback="forbid")
+        os = x.se("os")
+        os.se("type", arch="x86_64", machine="pc-0.1").x.text = "hvm"
+        features = x.se("features")
+        features.se("acpi")
+        features.se("apic")
+        features.se("pae")
+        self.devices = x.se("devices")
+        self.devices.se("emulator").x.text = "/usr/bin/kvm"
+        self.devices.se("controller", type="pci", index="0", model="pci-root")
+        self.devices.se("graphics", type="spice", autoport="yes")
+        mb = self.devices.se("memballoon", model="virtio")
+        mb.se("address", type="pci", domain="0x0000", bus="0x00",
+              slot="0x09", function="0x0")
+
+    @contextlib.contextmanager
+    def fd(self):
+        xmlfile = tempfile.NamedTemporaryFile()
+        try:
+            fd = open(xmlfile.name, "w+b")
+            et.ElementTree(self.x.x).write(fd)
+            fd.seek(0)
+            yield fd
+        finally:
+            fd.close()
+
+    def add_disk(self, path, dev):
+        disk = self.devices.se("disk", device="disk", type="file")
+        disk.se("driver", name="qemu", type="qcow2", cache="unsafe")
+        disk.se("source", file=path)
+        disk.se("target", dev=dev, bus="virtio")
+
+    def add_net(self, iface, mac=None):
+        if mac is None:
+            mac5 = ["%02x" % random.randint(0, 255) for i in range(5)]
+            mac = "00:" + ":".join(mac5)
+        net = self.devices.se("interface", type="bridge")
+        net.se("source", bridge=iface)
+        net.se("model", type="virtio")
+        net.se("mac", address=mac)
 
 
 class DevVolMixin(object):
@@ -69,7 +224,7 @@ class ZFS(DevVolMixin):
         del(self.ssh)
 
 
-class ZFSFile(object):
+class ZFSDir(object):
     num = 0
 
     def __init__(self, ssh, dataset, source, **kwargs):
@@ -84,62 +239,22 @@ class ZFSFile(object):
                                                        dst=self.name)
         self.ssh.run(cmd)
 
-    def gen_xml(self, xml):
-        path = ("/%s/%s" % (self.dataset, self.source)).split("@")[0]
-        status, out, err = self.ssh.execute("ls %s" % path)
-        for img in out.splitlines():
-            with xml.disk(type="file", device="disk"):
-                xml.driver(name="qemu", type="qcow2", cache="unsafe")
-                xml.source(file="/%s/%s/%s" % (self.dataset, self.name, img))
-                xml.target(dev="vd%s" % string.lowercase[self.num],
-                           bus="virtio")
-            self.num += 1
 
     def cleanup(self):
         self.ssh.run("zfs destroy %s/%s" % (self.dataset, self.name))
 
 
-class LVM(DevVolMixin):
-    conf_type = "raw"
-    conf_cache = "directsync"
 
-    def __init__(self, ssh, source, vg, size, **kwargs):
-        self.ssh = ssh
-        self.vg = vg
-        self.source = source
-        self.size = size
-
-    def build(self):
-        self.name = utils.get_rnd_name()
-        self.dev = os.path.join("/dev", self.vg, self.name)
-        cmd_t = "lvcreate -n%s -L%s -s /dev/%s/%s"
-        cmd = cmd_t % (self.name, self.size, self.vg, self.source)
-        self.ssh.run(cmd)
-
-    def cleanup(self):
-        cmd = "lvremove -f /dev/%s/%s" % (self.vg, self.name)
-        self.ssh.run(cmd)
-        self.ssh.close()
-        del(self.ssh)
-
-
-DRIVERS = {"lvm": LVM, "zfs": ZFS, "zfsf": ZFSFile}
-
-
-class VM(object):
-
-    def __init__(self, global_config, config, env=None):
+class OLDVM:
+    def __init__(self, config, host_ssh):
+        self.host_ssh = host_ssh
         self.volumes = []
         self.ifs = []
-        self.global_config = global_config
         self.config = config
         self.ssh = sshutils.SSH(**config["ssh"])
         self.name = utils.get_rnd_name()
         self.env = env
 
-    def _get_rnd_mac(self):
-        mac5 = ["%02x" % random.randint(0, 255) for i in range(5)]
-        return "00:" + ":".join(mac5)
 
     def _get_bridge(self, prefix):
         iface = self.env.ifs.get(prefix)
@@ -164,62 +279,22 @@ class VM(object):
                 self.env.ifs[prefix] = iface
             return iface
 
-    def gen_xml(self):
-        self.xml = XMLBuilder("domain", type="kvm")
-        self.xml.name(self.name)
-        self.xml.memory("%d" % self.config["memory"], unit="KiB")
-        self.xml.currentMemory("%d" % self.config["memory"], unit="KiB")
-
-        self.xml.vcpu("1", placement="static")
-        with self.xml.cpu(mode="host-model"):
-            self.xml.model(fallback="forbid")
-        self.xml.os.type("hvm", arch="x86_64", machine="pc-i440fx-2.0")
-        with self.xml.features:
-            self.xml.acpi
-            self.xml.apic
-            self.xml.pae
-
-        with self.xml.devices:
-            self.xml.emulator("/usr/bin/kvm")
-            self.xml.controller(type="pci", index="0", model="pci-root")
-            self.xml.graphics(type="spice", autoport="yes")
-
-            with self.xml.memballoon(model="virtio"):
-                self.xml.address(type="pci", domain="0x0000", bus="0x00",
-                                 slot="0x09", function="0x0")
-
-            for vol in self.volumes:
-                vol.gen_xml(self.xml)
-
-            for net in self.config["networks"]:
-                net = net.split(" ")
-                mac = self._get_rnd_mac() if len(net) < 2 else net[1]
-                iface = net[0]
-                if iface.endswith("%"):
-                    iface = self._get_bridge(iface[:-1])
-                with self.xml.interface(type="bridge"):
-                    self.xml.source(bridge=iface)
-                    self.xml.model(type="virtio")
-                    self.xml.mac(address=mac)
-
-    def get_ip(self, timeout=120):
+    @asyncio.coroutine
+    def get_ip(self):
         e = ~self.xml
-        start = time.time()
-        while 1:
-            time.sleep(4)
-            ifs = e.find("devices").find("interface")
-            mac = ifs.find("mac").get("address")
-            mac = mac.lower()
+        ifs = e.find("devices").find("interface")
+        mac = ifs.find("mac").get("address").lower()
+        while True:
+            yield from asyncio.sleep(2)
             LOG.debug("Searching for mac %s" % mac)
-            s, out, err = self.ssh.execute("cat /var/lib/dhcp/dhcpd.leases")
+            cmd = "cat /var/lib/dhcp/dhcpd.leases"
+            out = yield from self.h_ssh.run(cmd, return_output=True)
             for l in out.splitlines():
                 l = l.lower()
                 if l.startswith("lease "):
                     ip = l.split(" ")[1]
                 elif ("hardware ethernet %s;" % mac) in l:
                     return ip
-            if time.time() - start > timeout:
-                raise Exception('timeout')
 
     def build(self):
         for v in self.config["volumes"]:
