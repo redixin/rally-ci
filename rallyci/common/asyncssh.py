@@ -14,24 +14,29 @@
 
 import asyncio
 import subprocess
+import sys
 import tempfile
 import logging
 
 LOG = logging.getLogger(__name__)
 
 
+def cb(line):
+    sys.stdout.write(line.decode())
+
 class SSHError(Exception):
     pass
 
 
 class AsyncSSH:
-    def __init__(self, username=None, hostname=None, key=None, port=22):
+    def __init__(self, username=None, hostname=None, key=None, port=22, cb=cb):
+        self.cb = cb
         self.key = key
         self.username = username
         self.hostname = hostname
         self.port = str(port)
 
-    def run(self, command, stdin=None, cb=None, return_output=False,
+    def run(self, command, stdin=None, return_output=False,
             strip_output=True, raise_on_error=True):
         output = b""
         if isinstance(stdin, str):
@@ -57,9 +62,7 @@ class AsyncSSH:
         try:
             while not process.stdout.at_eof():
                 line = yield from process.stdout.readline()
-                LOG.debug(line)
-                if cb is not None:
-                    cb(line)
+                self.cb(line)
                 if return_output:
                     output += line
         except asyncio.CancelledError:

@@ -1,4 +1,2 @@
-mako
 pyyaml
-paramiko
-xmlbuilder
+websockets

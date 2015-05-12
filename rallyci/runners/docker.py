@@ -39,9 +39,8 @@ class Class(base.ClassWithLocal, base.GenericRunnerMixin):
             filedir = yield from self.ssh.run("mktemp -d", return_output=True)
             dockerfile = self.cfg["images"][self.image]
             yield from self.ssh.run("tee %s/Dockerfile" % filedir,
-                                    stdin=dockerfile, cb=self.job.logger)
-            yield from self.ssh.run("docker build -t %s %s" % (self.image, filedir),
-                                    cb=self.job.logger)
+                                    stdin=dockerfile)
+            yield from self.ssh.run("docker build -t %s %s" % (self.image, filedir))
 
     @asyncio.coroutine
     def run_script(self, script):
@@ -51,7 +50,7 @@ class Class(base.ClassWithLocal, base.GenericRunnerMixin):
         for env in self.job.env.items():
             cmd += " -e %s=%s" % (env)
         cmd += " %s %s" % (self.image, script["interpreter"])
-        result = yield from self.ssh.run(cmd, stdin=script["data"], cb=self.job.logger)
+        result = yield from self.ssh.run(cmd, stdin=script["data"])
         self.image = yield from self.ssh.run("docker commit %s" % name, return_output=True)
         self.images.append(self.image)
         self.containers.append(name)

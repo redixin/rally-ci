@@ -41,7 +41,7 @@ class Class(base.ClassWithLocal, base.GenericRunnerMixin):
     @asyncio.coroutine
     def build(self):
         ssh = yield from self.config.nodepools[self.cfg["nodepool"]].get_ssh(self.job)
-        self.vm = virsh.VM(ssh, self.local["image"], self.cfg)
+        self.vm = virsh.VM(ssh, self.local["image"], self.cfg, self.job)
         yield from self.vm.build(self.config)
 
     @asyncio.coroutine

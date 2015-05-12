@@ -28,7 +28,7 @@ class Class:
         self.root = root
         self.cfg = cfg
         self.tasks_per_node = cfg["tasks_per_node"]
-        self.futures = dict([(asyncssh.AsyncSSH(**c), []) for c in cfg["nodes"]])
+        self.futures = dict([(tuple(c.items()), []) for c in cfg["nodes"]])
         self.nodes = {}
 
     def job_done_callback(self, future):
@@ -44,8 +44,8 @@ class Class:
                 self.nodes[job.future] = node
                 self.futures[node].append(job.future)
                 job.future.add_done_callback(self.job_done_callback)
-                LOG.debug("New busy node %s" % node)
-                return node
+                LOG.debug("New busy node %s" % str(node))
+                return asyncssh.AsyncSSH(cb=job.logger, **dict(node))
             LOG.debug("No nodes available. Waiting for any node to release.")
             yield from asyncio.wait(list(self.nodes.keys()),
                                     return_when=concurrent.futures.FIRST_COMPLETED)

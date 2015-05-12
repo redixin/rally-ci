@@ -47,20 +47,20 @@ class ZFSVolume:
         src = "%s/%s" % (self.dataset, src)
         dst = "%s/%s" % (self.dataset, dst)
         cmd = "zfs clone %s %s" % (src, dst)
-        retval = yield from self.ssh.run(cmd, raise_on_error=False)
-        return retval
+        yield from self.ssh.run(cmd)
 
     @asyncio.coroutine
     def init(self):
         self.cur_name = utils.get_rnd_name()
-        retval = yield from self._clone(self.name + "@1", self.cur_name)
-        return retval
+        try:
+            yield from self._clone(self.name + "@1", self.cur_name)
+        except:
+            LOG.exception("Unable to clone %s" % self.name)
+            return 254
 
     @asyncio.coroutine
     def create(self):
-        retval = yield from self._clone(self.src, self.name)
-        if retval:
-            raise Exception("No source image")
+        yield from self._clone(self.src, self.name)
         self.cur_name = self.name
 
     @asyncio.coroutine
@@ -70,8 +70,10 @@ class ZFSVolume:
     @asyncio.coroutine
     def cleanup(self):
         # https://bugzilla.redhat.com/show_bug.cgi?id=1178150
-        yield from asyncio.sleep(10)
-        yield from self.ssh.run("zfs destroy %s/%s" % (self.dataset, self.cur_name))
+        cmd = "zfs destroy %s/%s" % (self.dataset, self.cur_name)
+        yield from asyncio.sleep(4)
+        data = yield from self.ssh.run(cmd, return_output=True, raise_on_error=False)
+        LOG.debug(data)
 
     @asyncio.coroutine
     def get_disks(self):
@@ -82,10 +84,11 @@ class ZFSVolume:
 
 class VM:
 
-    def __init__(self, ssh, vm_name, cfg):
+    def __init__(self, ssh, vm_name, cfg, job):
         """
         :param cfg: vm config
         """
+        self.job = job
         self.h_ssh = ssh
         self.cfg = cfg
         self.vm_config = cfg["vms"][vm_name]
@@ -110,6 +113,7 @@ class VM:
 
     @asyncio.coroutine
     def boot(self):
+        self.xml = XML(self.vm_config)
         files = yield from self.volume.get_disks()
 
         for path in files:
@@ -130,31 +134,37 @@ class VM:
         self.ip = yield from asyncio.wait_for(self._get_ip(), 120)
         LOG.debug("Got ip: %s" % self.ip)
         self.ssh = asyncssh.AsyncSSH(hostname=self.ip, username="root",
-                                     key=self.vm_config.get("key"))
+                                     key=self.vm_config.get("key"), cb=self.job.logger)
         yield from asyncio.sleep(4)
         yield from self.ssh.run("echo ok")
 
     @asyncio.coroutine
     def build(self, config):
-        self.xml = XML(self.vm_config)
         build_key = (self.h_ssh.hostname, self.volume.name)
         BUILDING_IMAGES.setdefault(build_key, asyncio.Lock())
         with (yield from BUILDING_IMAGES[build_key]):
             error = yield from self.volume.init()
             if error:
                 yield from self.volume.create()
-                yield from self.boot()
-                for script in self.vm_config.get("build-scripts", []):
-                    script = config.data["scripts"][script]
-                    yield from self.run_script(script)
-                yield from self.shutdown()
-                yield from self.volume.commit()
-                yield from self.volume.init()
+                try:
+                    yield from self.boot()
+                    for script in self.vm_config.get("build-scripts", []):
+                        script = config.data["scripts"][script]
+                        yield from self.run_script(script)
+                    yield from self.shutdown()
+                    yield from self.volume.commit()
+                    yield from self.volume.init()
+                except:
+                    LOG.exception("Error building image.")
+                    yield from self.cleanup()
+                    raise
 
     @asyncio.coroutine
     def run_script(self, script):
         LOG.debug("script: %s" % script)
-        yield from self.ssh.run(script["interpreter"], stdin=script["data"])
+        cmd = "".join(["%s='%s' " % env for env in self.job.env.items()])
+        cmd += script["interpreter"]
+        yield from self.ssh.run(cmd, stdin=script["data"])
 
     @asyncio.coroutine
     def shutdown(self, timeout=30):

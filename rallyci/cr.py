@@ -14,6 +14,7 @@
 import asyncio
 import cgi
 import re
+import string
 import logging
 
 import json
@@ -21,7 +22,14 @@ import json
 from rallyci import utils
 
 
+SAFE_CHARS = string.ascii_letters + string.digits + "_"
 LOG = logging.getLogger(__name__)
+
+
+def _get_valid_filename(name):
+    name = name.replace(" ", "_")
+    return "".join([c for c in name if c in SAFE_CHARS])
+
 
 class Job:
     def __init__(self, cr, name, cfg, event):
@@ -35,6 +43,7 @@ class Job:
         self.cfg = cfg
         self.id = utils.get_rnd_name(prefix="", length=10)
         self.current_stream = "__none__"
+        self.stream_number = 0
 
         for env in cfg.get("envs"):
             env = self.cr.config.init_obj_with_local("environments", env)
@@ -51,7 +60,10 @@ class Job:
         for logger in self.loggers:
             logger.log(self.current_stream, data)
 
+
     def set_status(self, status):
+        self.stream_number += 1
+        self.current_stream = "%02d-%s.txt" % (self.stream_number, _get_valid_filename(status))
         self.status = status
         self.cr.config.root.handle_job_status(self)
 
