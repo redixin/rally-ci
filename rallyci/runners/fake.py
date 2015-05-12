@@ -23,16 +23,24 @@ LOG = logging.getLogger(__name__)
 
 class Class(base.ClassWithLocal, base.GenericRunnerMixin):
 
+    @asyncio.coroutine
+    def boot(self):
+        sleep = self.cfg.get("sleep-build", (1, 2))
+        yield from asyncio.sleep(random.randint(*sleep))
+
+    @asyncio.coroutine
     def build(self):
         sleep = self.cfg.get("sleep-build", (1, 2))
         LOG.debug("Sleeping %s" % str(sleep))
         yield from asyncio.sleep(random.randint(*sleep))
 
+    @asyncio.coroutine
     def run_script(self, script):
         sleep = self.cfg.get("sleep-run", (1, 2))
         LOG.debug("Sleeping %s" % str(sleep))
         yield from asyncio.sleep(random.randint(*sleep))
 
+    @asyncio.coroutine
     def cleanup(self):
         sleep = self.cfg.get("sleep-cleanup", (2, 4))
         LOG.debug("Sleeping %s" % str(sleep))
