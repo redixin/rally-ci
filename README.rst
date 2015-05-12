@@ -19,7 +19,12 @@ Or you may want to build rally-ci image from source::
 
     $ cd ~/sources/rally-ci # cd to rally-ci sources on your system
     $ docker build -t myrally .
-    $ mkdir ~/rally-ci-volume # create a volume-directory
+
+Create volume-directory::
+
+    $ mkdir ~/rally-ci-volume
+
+This directory will be used to store configuration and logs.
 
 Run in simulation mode
 **********************

@@ -27,6 +27,11 @@ BUILDING_IMAGES = {}
 class Class(base.ClassWithLocal, base.GenericRunnerMixin):
 
     @asyncio.coroutine
+    def boot(self):
+        """Nothing to be done here."""
+        pass
+
+    @asyncio.coroutine
     def build(self):
         self.ssh = yield from self.config.nodepools[self.cfg["nodepool"]].get_ssh(self.job)
         self.image = self.local["image"]

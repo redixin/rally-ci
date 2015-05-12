@@ -29,9 +29,10 @@ class Class(base.Class):
     def run(self):
         try:
             for line in open(self.cfg["path"], encoding="utf-8"):
+                sleep = self.cfg.get("sleep", (2, 4))
                 event = json.loads(line)
                 self.config.root.handle(event)
-                yield from asyncio.sleep(random.randint(220, 230))
+                yield from asyncio.sleep(random.randint(*sleep))
         except asyncio.CancelledError:
             raise
         except Exception:
