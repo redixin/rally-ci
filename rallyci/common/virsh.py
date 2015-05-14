@@ -27,7 +27,7 @@ from rallyci.common import asyncssh
 from rallyci import utils
 
 LOG = logging.getLogger(__name__)
-IFACE_RE = re.compile("\d+: ([a-z]+)([0-9]+): .*")
+IFACE_RE = re.compile(r"\d+: (.+)(\d+): .*")
 IP_RE = re.compile(r"(\d+\.\d+\.\d+\.\d+)\s")
 NETWORKS = set()
 BUILDING_IMAGES = {}

@@ -24,7 +24,7 @@ function add_task(t) {
     for (var i=0, job; job = t["jobs"][i]; i++) {
         jobs += render_job(job);
     }
-    var html = "<tr id='"+t.id+"'><td>"+t.id+"</td>";
+    var html = "<tr id='"+t.id+"'><td><a href='/logs/"+t.id+"/'>"+t.id+"</a></td>";
     html += "<td>"+t.project+"</td>";
     html += "<td>"+t.subject+"</td>";
     html += "<td>"+jobs+"</td>";
