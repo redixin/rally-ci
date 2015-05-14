@@ -47,7 +47,7 @@ class AsyncSSH:
             stdin = f
         cmd = []
         if self.hostname != "localhost":
-            cmd = ["ssh", "-q", "-o", "StrictHostKeyChecking=no",
+            cmd = ["ssh", "-o", "StrictHostKeyChecking=no",
                    "%s@%s" % (self.username, self.hostname), "-p", self.port]
         if self.key:
             cmd += ["-i", self.key]
@@ -61,7 +61,8 @@ class AsyncSSH:
 
         try:
             while not process.stdout.at_eof():
-                line = yield from process.stdout.readline()
+                line = yield from process.stdout.read()
+                LOG.debug(line)
                 self.cb(line)
                 if return_output:
                     output += line

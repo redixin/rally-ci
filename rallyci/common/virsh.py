@@ -31,7 +31,7 @@ IFACE_RE = re.compile("\d+: ([a-z]+)([0-9]+): .*")
 IP_RE = re.compile(r"(\d+\.\d+\.\d+\.\d+)\s")
 NETWORKS = set()
 BUILDING_IMAGES = {}
-
+DYNAMIC_BRIDGE_LOCK = asyncio.Lock()
 
 class ZFSVolume:
 
@@ -84,16 +84,19 @@ class ZFSVolume:
 
 class VM:
 
-    def __init__(self, ssh, vm_name, cfg, job):
+    def __init__(self, ssh, name, cfg, local, job, config):
         """
         :param cfg: vm config
         """
+        self.name = name
+        self.config = config
+        self.local = local
         self.job = job
         self.h_ssh = ssh
         self.cfg = cfg
-        self.vm_config = cfg["vms"][vm_name]
-        self.volume = ZFSVolume(ssh, vm_name, self.vm_config)
+        self.volume = ZFSVolume(ssh, name, cfg)
         self.macs = []
+        job.virsh_dynamic_bridges = {}
 
     def _get_rnd_mac(self):
         mac5 = ["%02x" % random.randint(0, 255) for i in range(5)]
@@ -101,8 +104,7 @@ class VM:
 
     @asyncio.coroutine
     def _get_ip(self):
-        macs = "|".join(self.macs)
-        cmd = "egrep -i '%s' /proc/net/arp" % macs
+        cmd = "egrep -i '%s' /proc/net/arp" % self.macs[0]
         while True:
             yield from asyncio.sleep(4)
             data = yield from self.h_ssh.run(cmd, return_output=True)
@@ -111,19 +113,48 @@ class VM:
                 if m:
                     return m.group(1)
 
+    def _get_dynamic_bridge(self, prefix):
+        br = self.job.virsh_dynamic_bridges.get(prefix)
+        if not br:
+            with (yield from DYNAMIC_BRIDGE_LOCK):
+                data = yield from self.h_ssh.run("ip link list", return_output=True)
+                nums = set()
+                for line in data.splitlines():
+                    m = IFACE_RE.match(line)
+                    if m:
+                        if m.group(1) == prefix:
+                            nums.add(int(m.group(2)))
+                for i in range(len(nums) + 1):
+                    if i not in nums:
+                        br = "%s%d" % (prefix, i)
+                        break
+                yield from self.h_ssh.run("ip link add %s type bridge" % br)
+                yield from self.h_ssh.run("ip link set %s up" % br)
+        self.job.virsh_dynamic_bridges[prefix] = br
+        return br
+
+    @asyncio.coroutine
+    def _setup_network(self):
+        for net in self.cfg["net"]:
+            mac = net.get("mac", self._get_rnd_mac())
+            br = net.get("bridge")
+            if not br:
+                br = self._get_dynamic_bridge(net["dynamic-bridge"])
+                if asyncio.iscoroutine(br):
+                    br = yield from br
+            self.macs.append(mac)
+            self.xml.add_net(br, mac)
+
     @asyncio.coroutine
     def boot(self):
-        self.xml = XML(self.vm_config)
+        self.xml = XML(self.cfg)
         files = yield from self.volume.get_disks()
 
         for path in files:
             dev = os.path.split(path)[1].split(".")[0]
             self.xml.add_disk(dev, path)
 
-        for net in self.vm_config["net"]:
-            mac = net.get("mac", self._get_rnd_mac())
-            self.macs.append(mac)
-            self.xml.add_net(net["bridge"], mac)
+        yield from self._setup_network()
 
         with self.xml.fd() as fd:
             conf = utils.get_rnd_name()
@@ -131,15 +162,17 @@ class VM:
             yield from self.h_ssh.run("cat > %s" % conf, stdin=fd)
         yield from self.h_ssh.run("virsh create %s" % conf)
         yield from self.h_ssh.run("rm %s"% conf)
-        self.ip = yield from asyncio.wait_for(self._get_ip(), 120)
-        LOG.debug("Got ip: %s" % self.ip)
-        self.ssh = asyncssh.AsyncSSH(hostname=self.ip, username="root",
-                                     key=self.vm_config.get("key"), cb=self.job.logger)
+        if not self.cfg.get("no_ip"):
+            self.ip = yield from asyncio.wait_for(self._get_ip(), 120)
+            LOG.debug("Got ip: %s" % self.ip)
+            ip_env_var = self.local.get("ip_env_var")
+            if ip_env_var:
+                self.job.env[ip_env_var] = self.ip
+        username = self.cfg.get("user", "root")
         yield from asyncio.sleep(4)
-        yield from self.ssh.run("echo ok")
 
     @asyncio.coroutine
-    def build(self, config):
+    def build(self):
         build_key = (self.h_ssh.hostname, self.volume.name)
         BUILDING_IMAGES.setdefault(build_key, asyncio.Lock())
         with (yield from BUILDING_IMAGES[build_key]):
@@ -148,8 +181,8 @@ class VM:
                 yield from self.volume.create()
                 try:
                     yield from self.boot()
-                    for script in self.vm_config.get("build-scripts", []):
-                        script = config.data["scripts"][script]
+                    for script in self.cfg.get("build-scripts", []):
+                        script = self.config.data["scripts"][script]
                         yield from self.run_script(script)
                     yield from self.shutdown()
                     yield from self.volume.commit()
@@ -164,11 +197,19 @@ class VM:
         LOG.debug("script: %s" % script)
         cmd = "".join(["%s='%s' " % env for env in self.job.env.items()])
         cmd += script["interpreter"]
-        yield from self.ssh.run(cmd, stdin=script["data"])
+        ssh = asyncssh.AsyncSSH(hostname=self.ip,
+                                username=script.get("user", "root"),
+                                key=self.cfg.get("key"),
+                                cb=self.job.logger)
+        yield from ssh.run(cmd, stdin=script["data"])
 
     @asyncio.coroutine
     def shutdown(self, timeout=30):
-        yield from self.ssh.run("shutdown -h now")
+        ssh = asyncssh.AsyncSSH(hostname=self.ip,
+                                username="root",
+                                key=self.cfg.get("key"),
+                                cb=self.job.logger)
+        yield from ssh.run("shutdown -h now")
         start = time.time()
         while True:
             yield from asyncio.sleep(4)
@@ -186,6 +227,9 @@ class VM:
     def cleanup(self):
         yield from self.h_ssh.run("virsh destroy %s" % self.xml.name, raise_on_error=False)
         yield from self.volume.cleanup()
+        for br in self.job.virsh_dynamic_bridges.values():
+            yield from self.h_ssh.run("ip link del %s" % br)
+        self.job.virsh_dynamic_bridges = {}
 
 
 class XMLElement:
@@ -254,134 +298,3 @@ class XML:
         net.se("source", bridge=bridge)
         net.se("model", type="virtio")
         net.se("mac", address=mac)
-
-
-class DevVolMixin(object):
-    num = 0
-
-    def gen_xml(self, xml):
-        with xml.disk(type="block", device="disk"):
-            xml.driver(name="qemu", type="raw",
-                       cache="directsync", io="native")
-            xml.source(dev=self.dev)
-            xml.target(dev="vd%s" % string.lowercase[self.num], bus="virtio")
-        self.num += 1
-
-
-class ZFS(DevVolMixin):
-    def __init__(self, ssh, source, **kwargs):
-        self.ssh = ssh
-        self.dataset, self.source = source.rsplit("/", 1)
-        self.name = utils.get_rnd_name()
-        self.dev = os.path.join("/dev/zvol", self.dataset, self.name)
-
-    def build(self):
-        LOG.info("Creating zfs volume %s" % self.name)
-        cmd = "zfs clone %(dataset)s/%(src)s %(dataset)s/%(dst)s" % {
-                "src": self.source, "dst": self.name, "dataset": self.dataset}
-        self.ssh.run(cmd)
-
-    def cleanup(self):
-        time.sleep(5)
-        # remove sleep when (if) this is fixed:
-        # https://bugzilla.redhat.com/show_bug.cgi?id=1178150
-        LOG.info("Removing zfs volume %s" % self.name)
-        cmd = "zfs destroy %(dataset)s/%(name)s" % {
-                "name": self.name, "dataset": self.dataset}
-        self.ssh.run(cmd)
-        self.ssh.close()
-        del(self.ssh)
-
-
-class ZFSDir(object):
-    num = 0
-
-    def __init__(self, ssh, dataset, source, **kwargs):
-        self.ssh = ssh
-        self.dataset = dataset
-        self.source = source
-        self.name = utils.get_rnd_name()
-
-    def build(self):
-        cmd = "zfs clone {ds}/{src} {ds}/{dst}".format(ds=self.dataset,
-                                                       src=self.source,
-                                                       dst=self.name)
-        self.ssh.run(cmd)
-
-
-    def cleanup(self):
-        self.ssh.run("zfs destroy %s/%s" % (self.dataset, self.name))
-
-
-
-class OLDVM:
-    def __init__(self, config, host_ssh):
-        self.host_ssh = host_ssh
-        self.volumes = []
-        self.ifs = []
-        self.config = config
-        self.ssh = sshutils.SSH(**config["ssh"])
-        self.name = utils.get_rnd_name()
-        self.env = env
-
-
-    def _get_bridge(self, prefix):
-        iface = self.env.ifs.get(prefix)
-        if iface:
-            return iface
-        nums = set()
-        with LOCK:
-            s, o, e = self.ssh.execute("ip link list")
-            for l in o.splitlines():
-                m = IFACE_RE.match(l)
-                if m:
-                    if m.group(1) == prefix:
-                        nums.add(int(m.group(2)))
-            for i in range(len(nums) + 1):
-                if i not in nums:
-                    iface = "%s%d" % (prefix, i)
-                    break
-            self.ssh.run("ip link add %s type bridge" % iface)
-            self.ssh.run("ip link set %s up" % iface)
-            self.ifs.append(iface)
-            if self.env:
-                self.env.ifs[prefix] = iface
-            return iface
-
-    @asyncio.coroutine
-    def get_ip(self):
-        e = ~self.xml
-        ifs = e.find("devices").find("interface")
-        mac = ifs.find("mac").get("address").lower()
-        while True:
-            yield from asyncio.sleep(2)
-            LOG.debug("Searching for mac %s" % mac)
-            cmd = "cat /var/lib/dhcp/dhcpd.leases"
-            out = yield from self.h_ssh.run(cmd, return_output=True)
-            for l in out.splitlines():
-                l = l.lower()
-                if l.startswith("lease "):
-                    ip = l.split(" ")[1]
-                elif ("hardware ethernet %s;" % mac) in l:
-                    return ip
-
-    def build(self):
-        for v in self.config["volumes"]:
-            volume = DRIVERS[v["driver"]](self.ssh, **v)
-            volume.build()
-            self.volumes.append(volume)
-
-        self.gen_xml()
-        xml = StringIO.StringIO(str(self.xml))
-        self.ssh.run("cat > /tmp/%s.xml" % self.name, stdin=xml)
-        self.ssh.run("virsh create /tmp/%s.xml" % self.name)
-
-    def cleanup(self):
-        self.ssh.run("virsh destroy %s" % self.name)
-        while self.volumes:
-            v = self.volumes.pop()
-            v.cleanup()
-        for i in self.ifs:
-            self.ssh.run("ip link del %s" % i)
-        self.ssh.close()
-        del(self.ssh)

@@ -22,36 +22,67 @@ from rallyci import utils
 LOG = logging.getLogger(__name__)
 
 
-class Class(base.ClassWithLocal, base.GenericRunnerMixin):
+class Class(base.ClassWithLocal):
     """
     self.cfg is entry from runners section
       module: ...
       nodepool: ...
       vms:
         vm1:
+          memory: 2048
           build-scripts: ["s1", "s2"]
           dataset: /tank/ds
           source: img@s
-    self.local is runner section from jobs section
+          net:
+            - static-bridge: "br5"
+            - dynamic-bridge: "dyn_br%d"
+
+    self.local is runner section from jobs section:
+
       name: runner-name
-      image: runner-image
-      scripts: ["s1", "s2"]
+      vms:
+        - vm: vm-1-name
+          scripts: ["s1", "s2"]
+        - vm: vm-2-name
+          ip_env_var: RCI_VM2_IP
+
     """
+
 
     @asyncio.coroutine
     def build(self):
-        ssh = yield from self.config.nodepools[self.cfg["nodepool"]].get_ssh(self.job)
-        self.vm = virsh.VM(ssh, self.local["image"], self.cfg, self.job)
-        yield from self.vm.build(self.config)
+        self.vms = []
+        for vm_conf in self.local["vms"]:
+            vm_name = vm_conf["vm"]
+            cfg = self.cfg["vms"][vm_name]
+            vm = virsh.VM(self.ssh, vm_name, cfg, vm_conf, self.job, self.config)
+            self.job.set_status("building %s" % vm_name)
+            yield from vm.build()
+            self.vms.append(vm)
 
     @asyncio.coroutine
     def boot(self):
-        yield from self.vm.boot()
+        for vm in self.vms:
+            self.job.set_status("booting %s" % vm.name)
+            yield from vm.boot()
 
     @asyncio.coroutine
-    def run_script(self, script):
-        yield from self.vm.run_script(script)
+    def run(self):
+        self.job.set_status("queued")
+        self.ssh = yield from self.config.nodepools[self.cfg["nodepool"]].get_ssh(self.job)
+        self.job.set_status("building")
+        yield from self.build()
+        self.job.set_status("booting")
+        yield from self.boot()
+        for vm in self.vms:
+            for s in vm.local.get("scripts", []):
+                script = self.config.data["scripts"][s]
+                self.job.set_status("%s: running %s" % (vm.name, s))
+                status = yield from vm.run_script(script)
+                if status:
+                    return status
 
     @asyncio.coroutine
     def cleanup(self):
-        yield from self.vm.cleanup()
+        for vm in self.vms:
+            yield from vm.cleanup()

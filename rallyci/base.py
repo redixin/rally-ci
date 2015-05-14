@@ -48,8 +48,8 @@ class GenericRunnerMixin:
     """Generic runner with build and run_script methods."""
 
     @asyncio.coroutine
-    def run(self, job):
-        self.job = job
+    def run(self):
+        job = self.job
         job.set_status("building")
         try:
             yield from self.build()
