@@ -225,7 +225,8 @@ class VM:
 
     @asyncio.coroutine
     def cleanup(self):
-        yield from self.h_ssh.run("virsh destroy %s" % self.xml.name, raise_on_error=False)
+        if hasattr(self, "xml"):
+            yield from self.h_ssh.run("virsh destroy %s" % self.xml.name, raise_on_error=False)
         yield from self.volume.cleanup()
         for br in self.job.virsh_dynamic_bridges.values():
             yield from self.h_ssh.run("ip link del %s" % br)
