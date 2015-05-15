@@ -57,6 +57,9 @@ class Job:
         for name, cfg in self.cr.config.data.get("loggers", []).items():
             self.loggers.append(self.cr.config.get_class(cfg)(self, cfg))
 
+        self.log_root = self.cr.config.data["loggers"]["file"]["path"]
+        self.log_path = os.path.join(self.log_root, self.cr.id, self.id)
+
     def to_dict(self):
         return {"id": self.id, "name": self.name, "status": self.status}
 
@@ -81,7 +84,7 @@ class Job:
                 env.build(self)
             LOG.debug("Built env: %s" % self.env)
             self.runner = self.cr.config.init_obj_with_local("runners", self.cfg["runner"])
-            self.runner.job = self
+            self.runner.job = self #FIXME
             LOG.debug("Runner initialized %r" % self.runner)
             future = asyncio.async(self.runner.run(), loop=asyncio.get_event_loop())
             future.add_done_callback(self.cleanup)

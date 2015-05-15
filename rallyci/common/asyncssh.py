@@ -36,6 +36,7 @@ class AsyncSSH:
         self.hostname = hostname
         self.port = str(port)
 
+    @asyncio.coroutine
     def run(self, command, stdin=None, return_output=False,
             strip_output=True, raise_on_error=True):
         output = b""
@@ -62,7 +63,6 @@ class AsyncSSH:
         try:
             while not process.stdout.at_eof():
                 line = yield from process.stdout.read()
-                LOG.debug(line)
                 self.cb(line)
                 if return_output:
                     output += line
@@ -79,4 +79,26 @@ class AsyncSSH:
         if process.returncode and raise_on_error:
             LOG.error("Command failed: %s" % line)
             raise SSHError("Cmd '%s' failed. Exit code: %d" % (" ".join(cmd), process.returncode))
+        return process.returncode
+
+    @asyncio.coroutine
+    def scp_get(self, src, dst):
+        cmd = ["scp", "-o", "StrictHostKeyChecking=no"]
+        if self.key:
+            cmd += ["-i", self.key]
+        cmd += ["%s@%s:%s" % (self.username, self.hostname, src), "-p", self.port, dst]
+        LOG.debug("Runnung %s" % cmd)
+        process = yield from asyncio.create_subprocess_exec(*cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT
+        )
+
+        try:
+            while not process.stdout.at_eof():
+                line = yield from process.stdout.read()
+                LOG.debug("scp: %s" % line)
+        except asyncio.CancelledError:
+            process.terminate()
+            asyncio.async(process.wait(), loop=asyncio.get_event_loop())
+            raise
         return process.returncode

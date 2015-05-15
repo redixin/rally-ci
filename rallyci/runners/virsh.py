@@ -13,6 +13,7 @@
 #    limitations under the License.
 
 import asyncio
+import os
 import logging
 
 from rallyci import base
@@ -67,6 +68,20 @@ class Class(base.ClassWithLocal):
             yield from vm.boot()
 
     @asyncio.coroutine
+    def _run_vm(self, vm):
+        status = 0
+        for s in vm.local.get("scripts", []):
+            script = self.config.data["scripts"][s]
+            self.job.set_status("%s: running %s" % (vm.name, s))
+            status = yield from vm.run_script(script, raise_on_error=False)
+            if status:
+                break
+        for src, dst in vm.local.get("scp", []):
+            dst = os.path.join(self.job.log_path, dst)
+            yield from vm.get_ssh().scp_get(src, dst)
+        return status
+
+    @asyncio.coroutine
     def run(self):
         self.job.set_status("queued")
         self.ssh = yield from self.config.nodepools[self.cfg["nodepool"]].get_ssh(self.job)
@@ -75,12 +90,9 @@ class Class(base.ClassWithLocal):
         self.job.set_status("booting")
         yield from self.boot()
         for vm in self.vms:
-            for s in vm.local.get("scripts", []):
-                script = self.config.data["scripts"][s]
-                self.job.set_status("%s: running %s" % (vm.name, s))
-                status = yield from vm.run_script(script)
-                if status:
-                    return status
+            status = yield from self._run_vm(vm)
+            if status:
+                return status
 
     @asyncio.coroutine
     def cleanup(self):

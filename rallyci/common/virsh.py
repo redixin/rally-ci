@@ -192,16 +192,19 @@ class VM:
                     yield from self.cleanup()
                     raise
 
+    def get_ssh(self, username="root"):
+        return asyncssh.AsyncSSH(hostname=self.ip,
+                                 username=username,
+                                 key=self.cfg.get("key"),
+                                 cb=self.job.logger)
+
     @asyncio.coroutine
-    def run_script(self, script):
+    def run_script(self, script, raise_on_error=True):
         LOG.debug("script: %s" % script)
         cmd = "".join(["%s='%s' " % env for env in self.job.env.items()])
         cmd += script["interpreter"]
-        ssh = asyncssh.AsyncSSH(hostname=self.ip,
-                                username=script.get("user", "root"),
-                                key=self.cfg.get("key"),
-                                cb=self.job.logger)
-        yield from ssh.run(cmd, stdin=script["data"])
+        ssh = self.get_ssh(script.get("user", "root"))
+        yield from ssh.run(cmd, stdin=script["data"], raise_on_error=raise_on_error)
 
     @asyncio.coroutine
     def shutdown(self, timeout=30):
