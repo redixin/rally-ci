@@ -1,12 +1,6 @@
 
 * graceful reload
-* add run_id to all generated names
-* start cleanup in separate thread
-* specify user in runner somehow
-* apply envs to scripts
-* add timestamps to stdouts
 * job timeout
-* add ability to incude config file
-* limit number of active jobs
+* incude config files
 * validate event values
 * validate config

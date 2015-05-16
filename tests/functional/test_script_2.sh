@@ -1,1 +1,0 @@
-echo SCRIPT_2
