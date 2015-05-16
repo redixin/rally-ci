@@ -49,6 +49,7 @@ class Job:
         self.id = utils.get_rnd_name(prefix="", length=10)
         self.current_stream = "__none__"
         self.stream_number = 0
+        self.queued_at = int(time.time())
 
         for env in cfg.get("envs"):
             env = self.cr.config.init_obj_with_local("environments", env)
@@ -61,7 +62,11 @@ class Job:
         self.log_path = os.path.join(self.log_root, self.cr.id, self.id)
 
     def to_dict(self):
-        return {"id": self.id, "name": self.name, "status": self.status}
+        return {"id": self.id,
+                "name": self.name,
+                "status": self.status,
+                "seconds": int(time.time()) - self.queued_at,
+        }
 
     def logger(self, data):
         """Process script stdout+stderr."""
@@ -89,10 +94,11 @@ class Job:
             future = asyncio.async(self.runner.run(), loop=asyncio.get_event_loop())
             future.add_done_callback(self.cleanup)
             result = yield from asyncio.wait_for(future, None)
-            return result
         except Exception:
             LOG.exception("Unhandled exception in job %s" % self.name)
-            return 254
+            result = 254
+        self.completed_at = int(time.time())
+        return result
 
     def cleanup(self, future):
         f = asyncio.async(self.runner.cleanup(), loop=self.cr.config.root.loop)
