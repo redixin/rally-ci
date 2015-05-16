@@ -49,7 +49,6 @@ class Class(base.ClassWithLocal):
 
     """
 
-
     @asyncio.coroutine
     def build(self):
         self.vms = []
@@ -92,7 +91,9 @@ class Class(base.ClassWithLocal):
         for vm in self.vms:
             status = yield from self._run_vm(vm)
             if status:
+                self.job.set_status("failed")
                 return status
+        self.job.set_status("success")
 
     @asyncio.coroutine
     def cleanup(self):

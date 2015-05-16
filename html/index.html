@@ -4,32 +4,35 @@
 <script src="//ajax.googleapis.com/ajax/libs/jquery/1.11.2/jquery.min.js"></script>
 <style type="text/css">
 
-body {font-family: sans;}
-table#jobs thead tr th:nth-child(1) {width: 5em; }
-table#jobs thead tr th:nth-child(2) {width: 12em; }
-table#jobs thead tr th:nth-child(4) {width: 34em; }
-table#jobs { width: 90%; border-collapse: collapse; }
-table#jobs tbody tr td { font-family: monospace; }
-table tr td { border: 1px solid; padding: 1pt 2pt; }
+body {font-family: sans-serif; margin: 0; padding: 0;}
+#jobs { width: 100%; }
+#jobs div { width: 40em; border-collapse: collapse; margin: 1em; float: left; margin: 2pt; padding: 0; }
+#jobs div table { width: 100%; margin: 0; padding: 0; border-collapse: collapse; }
+#jobs div table tr td:nth-child(1) { width: 20em; }
+#jobs div table tr td { font-family: monospace; border: 1px solid; margin: 0; }
 
 </style>
 <script type="text/javascript">
 
-function render_job(job) {
-    return "<span id='"+ job.id +"'>"+ job.name +"("+ job.status +"),</span>";
+function add_task(t) {
+    var html = "<div id='"+t.id+"'>";
+    html += "<table>";
+    html += "<tr><td colspan=2><a href='/logs/"+t.id+"/'>"+t.subject+"</a></td></tr>";
+    for (var i=0, job; job = t["jobs"][i]; i++) {
+        html += "<tr><td>"+job.name+"</td><td id='"+job.id+"'>"+job.status+"</td></tr>";
+    }
+    html += "<tr></tr>";
+    html += "</table>";
+    html += "</div>";
+    $('#jobs').append(html);
 }
 
-function add_task(t) {
-    var jobs = "";
-    for (var i=0, job; job = t["jobs"][i]; i++) {
-        jobs += render_job(job);
-    }
-    var html = "<tr id='"+t.id+"'><td><a href='/logs/"+t.id+"/'>"+t.id+"</a></td>";
-    html += "<td>"+t.project+"</td>";
-    html += "<td>"+t.subject+"</td>";
-    html += "<td>"+jobs+"</td>";
-    html += "</tr>";
-    $('#jobs > tbody:last').append(html);
+function update_job(job) {
+    $("#"+job.id).html(job.status);
+}
+
+function ci_status_update(ci_status) {
+    document.title = "RallyCI ("+ci_status+")";
 }
 
 function connect_ws() {
@@ -55,7 +58,7 @@ function connect_ws() {
                 break;
             case "job-status-update":
                 var job = d["job"];
-                $("#" + job.id).replaceWith(render_job(job));
+                update_job(job);
                 break;
             default:
                 console.log(d);
@@ -64,7 +67,7 @@ function connect_ws() {
 
     ws.onopen = function(e) {
         interval = setInterval(function () {ws.send("ping")}, 50000);
-        document.title = "RallyCI (online)";
+        ci_status_update("online");
     }
 
     ws.onerror = function(e) {
@@ -75,7 +78,7 @@ function connect_ws() {
         console.log("Websocket is closed. Reconnecting in 3 seconds.");
         clearInterval(interval);
         window.setTimeout(connect_ws, 3000);
-        document.title = "RallyCI (offline)";
+        ci_status_update("offline");
     }
 }
 
@@ -85,13 +88,8 @@ connect_ws();
 </head>
 
 <body>
-
-<h3>Active jobs</h3>
-
-<table id="jobs">
-    <thead><tr><th>Id</th><th>Project</th><th>Subject</th><th>Jobs</th></th></thead>
-    <tbody></tbody>
-</table>
+<h1>Rally CI</h1>
+<div id="jobs"></div>
 
 </body>
 </html>

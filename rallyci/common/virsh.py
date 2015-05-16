@@ -95,7 +95,6 @@ class VM:
         self.h_ssh = ssh
         self.cfg = cfg
         self.volume = ZFSVolume(ssh, name, cfg)
-        self.macs = []
         job.virsh_dynamic_bridges = {}
 
     def _get_rnd_mac(self):
@@ -104,7 +103,7 @@ class VM:
 
     @asyncio.coroutine
     def _get_ip(self):
-        cmd = "egrep -i '%s' /proc/net/arp" % self.macs[0]
+        cmd = "egrep -i '%s' /proc/net/arp" % "|".join(self.macs) #FIXME
         while True:
             yield from asyncio.sleep(4)
             data = yield from self.h_ssh.run(cmd, return_output=True)
@@ -135,6 +134,7 @@ class VM:
 
     @asyncio.coroutine
     def _setup_network(self):
+        self.macs = []
         for net in self.cfg["net"]:
             mac = net.get("mac", self._get_rnd_mac())
             br = net.get("bridge")
@@ -204,7 +204,9 @@ class VM:
         cmd = "".join(["%s='%s' " % env for env in self.job.env.items()])
         cmd += script["interpreter"]
         ssh = self.get_ssh(script.get("user", "root"))
-        yield from ssh.run(cmd, stdin=script["data"], raise_on_error=raise_on_error)
+        status = yield from ssh.run(cmd, stdin=script["data"],
+                                    raise_on_error=raise_on_error)
+        return status
 
     @asyncio.coroutine
     def shutdown(self, timeout=30):
