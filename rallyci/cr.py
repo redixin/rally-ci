@@ -81,13 +81,19 @@ class CR:
     def job_finished_callback(self, job):
         LOG.debug("Completed job: %r" % job)
 
+    def _prepare_job(self, job_name, voting=True):
+        cfg = self.config.data["jobs"][job_name]
+        LOG.debug("Preparing job %s" % job_name)
+        job = Job(self, job_name, cfg, self.event)
+        job.voting = voting
+        LOG.debug("Prepared job %r" % job)
+        self.jobs.append(job)
+
     def prepare_jobs(self):
-        for job_name in self.project["jobs"]:
-            cfg = self.config.data["jobs"][job_name]
-            LOG.debug("Preparing job %s" % job_name)
-            job = Job(self, job_name, cfg, self.event)
-            LOG.debug("Prepared job %r" % job)
-            self.jobs.append(job)
+        for job_name in self.project.get("jobs", []):
+            self._prepare_job(job_name, voting=True)
+        for job_name in self.project.get("non-voting-jobs", []):
+            self._prepare_job(job_name, voting=False)
         LOG.debug("Prepared jobs: %r" % self.jobs)
 
     @asyncio.coroutine
@@ -100,4 +106,8 @@ class CR:
             future.add_done_callback(self.job_finished_callback)
             futures.append(future)
         results = yield from asyncio.gather(*futures, return_exceptions=True)
+        publisher_cfg = self.config.data.get("publisher")
+        if publisher_cfg:
+            publisher = self.config.init_obj(publisher_cfg)
+            publisher.publish(self)
         return results

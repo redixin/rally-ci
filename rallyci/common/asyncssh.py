@@ -88,15 +88,11 @@ class AsyncSSH:
             cmd += ["-i", self.key]
         cmd += ["-P", self.port]
         cmd += ["-r", "%s@%s:%s" % (self.username, self.hostname, src), dst]
-        LOG.debug("Runnung %s" % cmd)
         LOG.debug("Runnung %s" % " ".join(cmd))
-        data = yield from self.run("ls %s" % src, return_output=True)
-        LOG.debug(data)
         process = yield from asyncio.create_subprocess_exec(*cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT
         )
-
         try:
             while not process.stdout.at_eof():
                 line = yield from process.stdout.read()

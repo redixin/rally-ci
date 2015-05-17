@@ -44,7 +44,8 @@ class Job:
         self.envs = []
         self.loggers = []
         self.status = "queued"
-        self.success = "failed"
+        self.success = "FAIL"
+        self.failed = True
         self.env = {}
         self.cfg = cfg
         self.id = utils.get_rnd_name(prefix="", length=10)
@@ -95,12 +96,13 @@ class Job:
             LOG.debug("Runner initialized %r" % self.runner)
             future = asyncio.async(self.runner.run(), loop=asyncio.get_event_loop())
             future.add_done_callback(self.cleanup)
-            result = yield from asyncio.wait_for(future, None)
+            self.failed = yield from asyncio.wait_for(future, None)
         except Exception:
             LOG.exception("Unhandled exception in job %s" % self.name)
-            result = 254
         self.completed_at = int(time.time())
-        return result
+        if not self.failed:
+            self.success = "SUCCESS"
+        return self.failed
 
     def cleanup(self, future):
         f = asyncio.async(self.runner.cleanup(), loop=self.cr.config.root.loop)

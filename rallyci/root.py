@@ -18,7 +18,7 @@ import logging
 import yaml
 import json
 
-from rallyci import cr
+from rallyci.cr import CR
 
 LOG = logging.getLogger(__name__)
 
@@ -134,19 +134,19 @@ class Root:
     def handle(self, event):
         LOG.debug("Creating cr instance.")
         try:
-            cr_instance = cr.CR(self.config, event)
+            cr = CR(self.config, event)
         except Exception as e:
             LOG.exception("Failed to create cr instance.")
             return
-        LOG.debug("Instance created %r" % cr_instance)
-        if cr_instance.jobs:
-            future = asyncio.async(cr_instance.run())
-            self.crs[future] = cr_instance
+        LOG.debug("Instance created %r" % cr)
+        if cr.jobs:
+            future = asyncio.async(cr.run())
+            self.crs[future] = cr
             future.add_done_callback(self.cr_done)
-            self.ws.cr_started(cr_instance)
+            self.ws.cr_started(cr)
         else:
             LOG.debug("No jobs. Skipping event.")
-            del(cr_instance)
+            del(cr)
 
     def handle_job_status(self, job):
         self.ws.job_status(job)

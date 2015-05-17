@@ -13,16 +13,22 @@
 #    limitations under the License.
 
 
+import asyncio
+
 from rallyci.common import asyncssh
 from rallyci import base
 
 class Class(base.Class):
 
     def publish(self, cr):
-        cmd = "gerrit review -m '{summary}' {verified} {id}"
-        if self.config.get("vote"):
-            verified = "--verified=-1" if not success else "--verified=+1"
-        summary = [self.cfg["job-format"].format(j=j) for j in cr.jobs]
-        cmd = ["gerrit", "review", "-m", "'%s'" % summary, verified]
-        cmd.append(cr.event["patchSet"]["revision"])
-        asyncssh.AsyncSSH(self.cfg["ssh"]).run(cmd)
+        cmd = ["gerrit", "review"]
+        fail = any([j.failed for j in cr.jobs if j.voting])
+        if self.cfg.get("vote"):
+            cmd.append("--verified=-1" if fail else "--verified=+1")
+        summary = self.cfg["header"].format(succeeded="failed" if fail else "succeeded")
+        for job in cr.jobs:
+            voting = "" if job.voting else " (non voting)"
+            human_time = "..."
+            summary += self.cfg["job-template"].format(j=job, voting=voting, human_time=human_time)
+        cmd += ["-m", "'%s'" % summary, cr.event["patchSet"]["revision"]]
+        asyncio.async(asyncssh.AsyncSSH(**self.cfg["ssh"]).run(" ".join(cmd)))
