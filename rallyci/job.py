@@ -44,6 +44,7 @@ class Job:
         self.envs = []
         self.loggers = []
         self.status = "queued"
+        self.success = "failed"
         self.env = {}
         self.cfg = cfg
         self.id = utils.get_rnd_name(prefix="", length=10)
@@ -59,7 +60,8 @@ class Job:
             self.loggers.append(self.cr.config.get_class(cfg)(self, cfg))
 
         self.log_root = self.cr.config.data["loggers"]["file"]["path"]
-        self.log_path = os.path.join(self.log_root, self.cr.id, self.id)
+        self.log_path = os.path.join(self.cr.id, self.name)
+        self.full_log_path = os.path.join(self.log_root, self.log_path)
 
     def to_dict(self):
         return {"id": self.id,

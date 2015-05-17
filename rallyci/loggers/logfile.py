@@ -36,9 +36,8 @@ class Class:
         """
         fileobj = self.streams.get(stream)
         if not fileobj:
-            path = os.path.join(self.cfg["path"], self.job.cr.id, self.job.id)
-            utils.makedirs(path)
-            fileobj = open(os.path.join(path, stream + ".txt"), "wb")
+            utils.makedirs(self.job.full_log_path)
+            fileobj = open(os.path.join(self.job.full_log_path, stream + ".txt"), "wb")
             self.streams[stream] = fileobj
         if not data:
             fileobj.flush()

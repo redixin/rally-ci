@@ -76,7 +76,8 @@ class Class(base.ClassWithLocal):
             if status:
                 break
         for src, dst in vm.local.get("scp", []):
-            dst = os.path.join(self.job.log_path, dst)
+            dst = os.path.join(self.job.full_log_path, dst)
+            utils.makedirs(dst)
             yield from vm.get_ssh().scp_get(src, dst)
         return status
 

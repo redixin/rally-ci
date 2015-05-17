@@ -83,11 +83,15 @@ class AsyncSSH:
 
     @asyncio.coroutine
     def scp_get(self, src, dst):
-        cmd = ["scp", "-o", "StrictHostKeyChecking=no"]
+        cmd = ["scp", "-B", "-o", "StrictHostKeyChecking no"]
         if self.key:
             cmd += ["-i", self.key]
-        cmd += ["%s@%s:%s" % (self.username, self.hostname, src), "-p", self.port, dst]
+        cmd += ["-P", self.port]
+        cmd += ["-r", "%s@%s:%s" % (self.username, self.hostname, src), dst]
         LOG.debug("Runnung %s" % cmd)
+        LOG.debug("Runnung %s" % " ".join(cmd))
+        data = yield from self.run("ls %s" % src, return_output=True)
+        LOG.debug(data)
         process = yield from asyncio.create_subprocess_exec(*cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT
