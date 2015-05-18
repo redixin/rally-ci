@@ -106,8 +106,11 @@ class CR:
             future.add_done_callback(self.job_finished_callback)
             futures.append(future)
         results = yield from asyncio.gather(*futures, return_exceptions=True)
-        publisher_cfg = self.config.data.get("publisher")
-        if publisher_cfg:
-            publisher = self.config.init_obj(publisher_cfg)
-            publisher.publish(self)
+        if not self.project.get("silent"):
+            publisher_cfg = self.config.data.get("publisher")
+            if publisher_cfg:
+                publisher = self.config.init_obj(publisher_cfg)
+                publisher.publish(self)
+        else:
+            LOG.debug("'silent' option is set. Skipping publisher.")
         return results

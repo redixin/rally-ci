@@ -99,6 +99,7 @@ class Job:
             self.failed = yield from asyncio.wait_for(future, None)
         except Exception:
             LOG.exception("Unhandled exception in job %s" % self.name)
+            self.set_status("error")
         self.completed_at = int(time.time())
         if not self.failed:
             self.success = "SUCCESS"
