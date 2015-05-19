@@ -22,7 +22,7 @@ LOG = logging.getLogger(__name__)
 
 
 def cb(line):
-    sys.stdout.write(line.decode())
+    sys.stdout.write(repr(line))
 
 class SSHError(Exception):
     pass
@@ -38,7 +38,9 @@ class AsyncSSH:
 
     @asyncio.coroutine
     def run(self, command, stdin=None, return_output=False,
-            strip_output=True, raise_on_error=True):
+            strip_output=True, raise_on_error=True, user=None):
+        if not user:
+            user = self.username
         output = b""
         if isinstance(stdin, str):
             f = tempfile.TemporaryFile()
@@ -49,7 +51,7 @@ class AsyncSSH:
         cmd = []
         if self.hostname != "localhost":
             cmd = ["ssh", "-o", "StrictHostKeyChecking=no",
-                   "%s@%s" % (self.username, self.hostname), "-p", self.port]
+                   "%s@%s" % (user, self.hostname), "-p", self.port]
         if self.key:
             cmd += ["-i", self.key]
         cmd += command.split(" ")

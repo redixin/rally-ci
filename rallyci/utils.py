@@ -28,6 +28,11 @@ def get_rnd_name(prefix="rci_", length=12):
     return prefix + "".join(random.sample(string.ascii_letters, length))
 
 
+def get_rnd_mac():
+    mac5 = ["%02x" % random.randint(0, 255) for i in range(5)]
+    return "02:" + ":".join(mac5)
+
+
 def makedirs(*args):
     """Create directories.
 

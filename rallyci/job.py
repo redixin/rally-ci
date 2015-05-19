@@ -38,6 +38,7 @@ def _get_valid_filename(name):
 
 class Job:
     def __init__(self, cr, name, cfg, event):
+        self.virsh_dynamic_bridges = {}#FIXME
         self.cr = cr
         self.name = name
         self.event = event
@@ -87,7 +88,7 @@ class Job:
     def run(self):
         LOG.debug("Started job %s" % self)
         try:
-            self.set_status("env building")
+            self.set_status("queued")
             for env in self.envs:
                 env.build(self)
             LOG.debug("Built env: %s" % self.env)
