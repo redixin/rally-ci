@@ -78,13 +78,13 @@ class VM:
           build-net: ["br5"]
           build-memory: 1024
       vms:
-        vm1:
+        vm1: # self.runner_vm_conf
           image: img1
           memory: 2048
           net:
             - bridge: "br5"
             - dynamic-bridge: "dyn_br"
-        vm2:
+        vm2: # runner_vm_conf
           image: img2
           memory: 1024
           net:
@@ -94,7 +94,7 @@ class VM:
 
       name: runner-name
       vms:
-        - name: vm1
+        - name: vm1 # self.vm_conf
           no_ip: true
           scripts: ["s1", "s2"]
         - name: vm2
@@ -201,7 +201,7 @@ class VM:
         for src, dst in self.vm_conf.get("scp", []):
             dst = os.path.join(self.job.full_log_path, dst)
             utils.makedirs(dst)
-            yield from vm.get_ssh().scp_get(src, dst)
+            yield from self.ssh.scp_get(src, dst)
         return status
 
     @asyncio.coroutine
@@ -218,7 +218,11 @@ class VM:
     @asyncio.coroutine
     def build(self, image_name=None):
         if image_name is None:
-            image_name = self.runner_conf["vms"][self.vm_conf["name"]]["image"]
+            image_name = self.runner_vm_conf.get("image")
+            if image_name is None:
+                yield from asyncio.sleep(1) #FIXME
+                return
+
         self.job.set_status("building %s" % image_name)
         LOG.debug("Building image: %s" % image_name)
         build_key = (self.h_ssh.hostname, image_name)
@@ -228,6 +232,7 @@ class VM:
             cmd = "zfs list %s/%s@1" % (self.dataset, image_name)
             error = yield from self.h_ssh.run(cmd, raise_on_error=False)
             if not error:
+                LOG.debug("Image %s already built." % image_name)
                 return image_name
             #delete possibly stale image
             cmd = "zfs destroy %s/%s" % (self.dataset, image_name)
@@ -270,24 +275,32 @@ class VM:
 
     @asyncio.coroutine
     def boot(self, xml):
+        self.job.set_status("booting %s" % self.vm_conf["name"])
         with xml.fd() as fd:
             conf = "/tmp/.conf.%s.xml" % utils.get_rnd_name()
             yield from self.h_ssh.run("cat > %s" % conf, stdin=fd)
         yield from self.h_ssh.run("virsh create %s" % conf)
         yield from self.h_ssh.run("rm %s" % conf)
-        if not self.vm_conf.get("no_ip"):
+        if not self.runner_vm_conf.get("no_ip"):
             ip = yield from asyncio.wait_for(self._get_ip(xml.macs), 120)
             LOG.debug("Got ip: %s" % ip)
             ip_env_var = self.runner_conf.get("ip_env_var")
             if ip_env_var:
                 self.job.env[ip_env_var] = ip
-        yield from asyncio.sleep(4)
-        return asyncssh.AsyncSSH("root", ip, cb=self.job.logger)
+            yield from asyncio.sleep(4)
+            return asyncssh.AsyncSSH("root", ip, cb=self.job.logger)
 
     @asyncio.coroutine
     def boot_vm(self):
+        LOG.debug("Booting VM %s" % self.vm_conf["name"])
         self.xml = XML(memory=self.runner_vm_conf.get("memory", 1024))
-        dataset, src = self._get_source_image(self.runner_vm_conf["image"])
+        image = self.runner_vm_conf.get("image")
+        if image:
+            dataset, src = self._get_source_image(image)
+            src = image
+        else:
+            dataset = self.runner_vm_conf["dataset"]
+            src = self.runner_vm_conf["source"]
         if "@" not in src:
             src += "@1"
         self.volume = "%s/%s" % (dataset, utils.get_rnd_name())
