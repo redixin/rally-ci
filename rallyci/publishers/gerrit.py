@@ -29,6 +29,6 @@ class Class(base.Class):
         for job in cr.jobs:
             voting = "" if job.voting else " (non voting)"
             human_time = "..."
-            summary += self.cfg["job-template"].format(j=job, voting=voting, human_time=human_time)
+            summary += self.cfg["job-template"].format(j=job, voting=voting, human_time=human_time) + "\n"
         cmd += ["-m", "'%s'" % summary, cr.event["patchSet"]["revision"]]
         asyncio.async(asyncssh.AsyncSSH(**self.cfg["ssh"]).run(" ".join(cmd)))

@@ -247,8 +247,8 @@ class VM:
                 source = image_source
             if "@" not in source:
                 source += "@1"
-
-            xml = XML(memory=image_conf.get("memory", 1024))
+            name = utils.get_rnd_name(prefix="rci_build_%s" % image_name)
+            xml = XML(name=name, memory=image_conf.get("memory", 1024))
             target = "/".join([self.dataset, image_name])
             try:
                 cmd = "zfs clone %s/%s %s" % (self.dataset, source, target)
@@ -293,7 +293,8 @@ class VM:
     @asyncio.coroutine
     def boot_vm(self):
         LOG.debug("Booting VM %s" % self.vm_conf["name"])
-        self.xml = XML(memory=self.runner_vm_conf.get("memory", 1024))
+        name = utils.get_rnd_name(prefix="rci_%s" % self.vm_conf["name"])
+        self.xml = XML(name=name, memory=self.runner_vm_conf.get("memory", 1024))
         image = self.runner_vm_conf.get("image")
         if image:
             dataset, src = self._get_source_image(image)
@@ -324,9 +325,12 @@ class VM:
 
 
 class XML:
-    def __init__(self, memory=1024):
+    def __init__(self, name=None, memory=1024):
         self.macs = []
-        self.name = utils.get_rnd_name() + "_new"
+        if name is None:
+            self.name = utils.get_rnd_name() + "_new"
+        else:
+            self.name = name
         x = XMLElement(None, "domain", type="kvm")
         self.x = x
         x.se("name").x.text = self.name

@@ -45,7 +45,7 @@ class Job:
         self.envs = []
         self.loggers = []
         self.status = "queued"
-        self.success = "FAIL"
+        self.success = "FAILURE"
         self.failed = True
         self.env = {}
         self.cfg = cfg
