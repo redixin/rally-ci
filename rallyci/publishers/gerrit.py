@@ -18,8 +18,24 @@ import asyncio
 from rallyci.common import asyncssh
 from rallyci import base
 
-class Class(base.Class):
+INTERVALS = [1, 60, 3600, 86400]
+NAMES = [('s', 's'),
+         ('m', 'm'),
+         ('h', 'h'),
+         ('day', 'days')]
 
+def human_time(seconds):
+    seconds = int(seconds)
+    result = []
+    for i in range(len(NAMES) - 1, -1, -1):
+        a = seconds // INTERVALS[i]
+        if a > 0:
+            result.append((a, NAMES[i][1 % a]))
+            seconds -= a * INTERVALS[i]
+    return ' '.join(''.join(str(x) for x in r) for r in result)
+
+
+class Class(base.Class):
     def publish(self, cr):
         cmd = ["gerrit", "review"]
         fail = any([j.failed for j in cr.jobs if j.voting])
@@ -27,8 +43,11 @@ class Class(base.Class):
             cmd.append("--verified=-1" if fail else "--verified=+1")
         summary = self.cfg["header"].format(succeeded="failed" if fail else "succeeded")
         for job in cr.jobs:
-            voting = "" if job.voting else " (non voting)"
-            human_time = "..."
-            summary += self.cfg["job-template"].format(j=job, voting=voting, human_time=human_time) + "\n"
+            success = "FAILURE" if job.failed else "SUCCESS"
+            success += "" if job.voting else " (non voting)"
+            summary += self.cfg["job-template"].format(success=success,
+                    name=job.name,
+                    time=human_time(job.finished_at - job.started_at),
+                    log_path=job.log_path) + "\n"
         cmd += ["-m", "'%s'" % summary, cr.event["patchSet"]["revision"]]
         asyncio.async(asyncssh.AsyncSSH(**self.cfg["ssh"]).run(" ".join(cmd)))

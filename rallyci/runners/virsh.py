@@ -40,6 +40,7 @@ class Class(base.ClassWithLocal):
     def run(self):
         self.vms = []
         self.ssh = yield from self.config.nodepools[self.cfg["nodepool"]].get_ssh(self.job)
+        self.job.started_at = time.time()
         for vm_conf in self.local["vms"]:
             vm = VM(self.ssh, vm_conf, self.cfg, self.job, self.config)
             yield from vm.build()

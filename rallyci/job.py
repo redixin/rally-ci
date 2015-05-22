@@ -45,7 +45,6 @@ class Job:
         self.envs = []
         self.loggers = []
         self.status = "queued"
-        self.success = "FAILURE"
         self.failed = True
         self.env = {}
         self.cfg = cfg
@@ -101,9 +100,7 @@ class Job:
         except Exception:
             LOG.exception("Unhandled exception in job %s" % self.name)
             self.set_status("error")
-        self.completed_at = int(time.time())
-        if not self.failed:
-            self.success = "SUCCESS"
+        self.finished_at = int(time.time())
         return self.failed
 
     def cleanup(self, future):
