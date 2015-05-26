@@ -12,11 +12,9 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
-import mock
-from mock import call
 import unittest
 
-from rallyci.common import virsh
+from rallyci.runners import virsh
 
 # {{{
 SAMPLE_IP_LINK_LIST = """

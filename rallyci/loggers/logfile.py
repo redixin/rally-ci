@@ -15,11 +15,11 @@
 import os
 import logging
 
-from rallyci import base
 from rallyci import utils
 
 
 LOG = logging.getLogger(__name__)
+
 
 class Class:
 
@@ -37,7 +37,8 @@ class Class:
         fileobj = self.streams.get(stream)
         if not fileobj:
             utils.makedirs(self.job.full_log_path)
-            fileobj = open(os.path.join(self.job.full_log_path, stream + ".txt"), "wb")
+            fileobj = open(os.path.join(self.job.full_log_path,
+                                        stream + ".txt"), "wb")
             self.streams[stream] = fileobj
         if not data:
             fileobj.flush()

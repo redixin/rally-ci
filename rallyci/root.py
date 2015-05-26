@@ -36,7 +36,6 @@ class Config:
         for name, cfg in self.data["nodepools"].items():
             self.nodepools[name] = self.get_class(cfg)(self.root, cfg)
 
-
     def _get_module(self, name):
         """Get module by name.
 
@@ -56,7 +55,8 @@ class Config:
         return self.get_class(cfg)(self, cfg, local)
 
     def init_obj(self, cfg, *args, **kwargs):
-        return self._get_module(cfg["module"]).Class(self, cfg, *args, **kwargs)
+        return self._get_module(cfg["module"]).Class(self, cfg,
+                                                     *args, **kwargs)
 
 
 class WebSocket:
@@ -84,7 +84,8 @@ class WebSocket:
     def send_all_tasks(self, client):
         data = [c.to_dict() for c in self.root.crs.values()]
         asyncio.async(client.send(
-            json.dumps({"type": "all-tasks", "tasks": data})), loop=self.root.loop)
+            json.dumps({"type": "all-tasks", "tasks": data})),
+            loop=self.root.loop)
 
     def new_line(self, job, line):
         pass
@@ -135,7 +136,7 @@ class Root:
         LOG.debug("Creating cr instance.")
         try:
             cr = CR(self.config, event)
-        except Exception as e:
+        except Exception:
             LOG.exception("Failed to create cr instance.")
             return
         LOG.debug("Instance created %r" % cr)
@@ -168,7 +169,8 @@ class Root:
         tasks = list(self.crs.keys())
         LOG.info("Interrupted. Waiting for tasks %r." % tasks)
         yield from asyncio.gather(*tasks, return_exceptions=True)
-        LOG.info("All tasks finished. Waiting for cleanup tasks %r." % self.cleanup_tasks)
+        LOG.info("All tasks finished. "
+                 "Waiting for cleanup tasks %r." % self.cleanup_tasks)
         yield from asyncio.gather(*self.cleanup_tasks, return_exceptions=True)
         LOG.info("All cleanup tasks finished. Stopping loop.")
         self.loop.stop()

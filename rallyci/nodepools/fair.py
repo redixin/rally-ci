@@ -13,17 +13,16 @@
 #    limitations under the License.
 
 import asyncio
-import concurrent.futures
+from concurrent.futures import FIRST_COMPLETED
 import logging
 
-from rallyci import base
 from rallyci.common import asyncssh
 
 
 LOG = logging.getLogger(__name__)
 
-class Class:
 
+class Class:
     def __init__(self, root, cfg):
         self.root = root
         self.cfg = cfg
@@ -48,4 +47,4 @@ class Class:
                 return asyncssh.AsyncSSH(cb=job.logger, **dict(node))
             LOG.debug("No nodes available. Waiting for any node to release.")
             yield from asyncio.wait(list(self.nodes.keys()),
-                                    return_when=concurrent.futures.FIRST_COMPLETED)
+                                    return_when=FIRST_COMPLETED)

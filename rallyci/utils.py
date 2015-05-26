@@ -12,14 +12,12 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
-import asyncio
 import errno
 import os
 import random
 import string
 import time
 import logging
-from concurrent.futures import FIRST_COMPLETED
 
 LOG = logging.getLogger(__name__)
 

@@ -24,6 +24,7 @@ NAMES = [('s', 's'),
          ('h', 'h'),
          ('day', 'days')]
 
+
 def human_time(seconds):
     seconds = int(seconds)
     result = []
@@ -41,13 +42,16 @@ class Class(base.Class):
         fail = any([j.failed for j in cr.jobs if j.voting])
         if self.cfg.get("vote"):
             cmd.append("--verified=-1" if fail else "--verified=+1")
-        summary = self.cfg["header"].format(succeeded="failed" if fail else "succeeded")
+        succeeded = "failed" if fail else "succeeded"
+        summary = self.cfg["header"].format(succeeded=succeeded)
         for job in cr.jobs:
             success = "FAILURE" if job.failed else "SUCCESS"
             success += "" if job.voting else " (non voting)"
+            time = human_time(job.finished_at - job.started_at)
             summary += self.cfg["job-template"].format(success=success,
-                    name=job.name,
-                    time=human_time(job.finished_at - job.started_at),
-                    log_path=job.log_path) + "\n"
+                                                       name=job.name,
+                                                       time=time,
+                                                       log_path=job.log_path)
+            summary += "\n"
         cmd += ["-m", "'%s'" % summary, cr.event["patchSet"]["revision"]]
         asyncio.async(asyncssh.AsyncSSH(**self.cfg["ssh"]).run(" ".join(cmd)))

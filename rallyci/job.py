@@ -13,7 +13,6 @@
 #    limitations under the License.
 
 import asyncio
-import copy
 import time
 import os.path
 import string
@@ -38,7 +37,7 @@ def _get_valid_filename(name):
 
 class Job:
     def __init__(self, cr, name, cfg, event):
-        self.virsh_dynamic_bridges = {}#FIXME
+        self.virsh_dynamic_bridges = {}  # FIXME
         self.cr = cr
         self.name = name
         self.event = event
@@ -69,17 +68,17 @@ class Job:
                 "name": self.name,
                 "status": self.status,
                 "seconds": int(time.time()) - self.queued_at,
-        }
+                }
 
     def logger(self, data):
         """Process script stdout+stderr."""
         for logger in self.loggers:
             logger.log(self.current_stream, data)
 
-
     def set_status(self, status):
         self.stream_number += 1
-        self.current_stream = "%02d-%s.txt" % (self.stream_number, _get_valid_filename(status))
+        self.current_stream = "%02d-%s.txt" % (self.stream_number,
+                                               _get_valid_filename(status))
         self.status = status
         self.cr.config.root.handle_job_status(self)
 
@@ -91,10 +90,12 @@ class Job:
             for env in self.envs:
                 env.build(self)
             LOG.debug("Built env: %s" % self.env)
-            self.runner = self.cr.config.init_obj_with_local("runners", self.cfg["runner"])
-            self.runner.job = self #FIXME
+            self.runner = self.cr.config.\
+                init_obj_with_local("runners", self.cfg["runner"])
+            self.runner.job = self  # FIXME
             LOG.debug("Runner initialized %r" % self.runner)
-            future = asyncio.async(self.runner.run(), loop=asyncio.get_event_loop())
+            future = asyncio.async(self.runner.run(),
+                                   loop=asyncio.get_event_loop())
             future.add_done_callback(self.cleanup)
             self.failed = yield from asyncio.wait_for(future, None)
         except Exception:

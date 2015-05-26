@@ -13,8 +13,6 @@
 #    limitations under the License.
 
 import asyncio
-from concurrent.futures import FIRST_COMPLETED
-import os.path
 import logging
 
 from rallyci import base
@@ -33,7 +31,9 @@ class Class(base.ClassWithLocal, base.GenericRunnerMixin):
 
     @asyncio.coroutine
     def build(self):
-        self.ssh = yield from self.config.nodepools[self.cfg["nodepool"]].get_ssh(self.job)
+        self.ssh = self.config.nodepools[self.cfg["nodepool"]].\
+                get_ssh(self.job)
+        self.ssh = yield from self.ssh
         self.image = self.local["image"]
         self.images = []
         self.containers = []
@@ -45,7 +45,8 @@ class Class(base.ClassWithLocal, base.GenericRunnerMixin):
             dockerfile = self.cfg["images"][self.image]
             yield from self.ssh.run("tee %s/Dockerfile" % filedir,
                                     stdin=dockerfile)
-            yield from self.ssh.run("docker build -t %s %s" % (self.image, filedir))
+            yield from self.ssh.run("docker build -t %s %s" % (self.image,
+                                                               filedir))
 
     @asyncio.coroutine
     def run_script(self, script):
@@ -56,7 +57,8 @@ class Class(base.ClassWithLocal, base.GenericRunnerMixin):
             cmd += " -e %s=%s" % (env)
         cmd += " %s %s" % (self.image, script["interpreter"])
         result = yield from self.ssh.run(cmd, stdin=script["data"])
-        self.image = yield from self.ssh.run("docker commit %s" % name, return_output=True)
+        self.image = yield from self.ssh.run("docker commit %s" % name,
+                                             return_output=True)
         self.images.append(self.image)
         self.containers.append(name)
         return result
@@ -67,5 +69,6 @@ class Class(base.ClassWithLocal, base.GenericRunnerMixin):
         for container in self.containers:
             yield from self.ssh.run("docker rm %s" % container)
         for image in self.images[::-1]:
-            yield from self.ssh.run("docker rmi %s" % image, raise_on_error=False)
+            yield from self.ssh.run("docker rmi %s" % image,
+                                    raise_on_error=False)
         LOG.info("Cleanup %s completed" % self.job.id)

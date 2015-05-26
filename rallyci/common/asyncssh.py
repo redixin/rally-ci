@@ -24,6 +24,7 @@ LOG = logging.getLogger(__name__)
 def cb(line):
     sys.stdout.write(repr(line))
 
+
 class SSHError(Exception):
     pass
 
@@ -55,13 +56,12 @@ class AsyncSSH:
         if self.key:
             cmd += ["-i", self.key]
         cmd += command.split(" ")
-        process = yield from asyncio.create_subprocess_exec(*cmd,
-            stdin=stdin,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT
-        )
+        process = asyncio.create_subprocess_exec(*cmd,
+                                                 stdin=stdin,
+                                                 stdout=subprocess.PIPE,
+                                                 stderr=subprocess.STDOUT)
+        process = yield from process
         LOG.debug("Running '%s'" % cmd)
-
         try:
             while not process.stdout.at_eof():
                 line = yield from process.stdout.read()
@@ -80,7 +80,9 @@ class AsyncSSH:
             return output
         if process.returncode and raise_on_error:
             LOG.error("Command failed: %s" % line)
-            raise SSHError("Cmd '%s' failed. Exit code: %d" % (" ".join(cmd), process.returncode))
+            msg = "Cmd '%s' failed. Exit code: %d" % (" ".join(cmd),
+                                                      process.returncode)
+            raise SSHError(msg)
         return process.returncode
 
     @asyncio.coroutine
@@ -91,10 +93,10 @@ class AsyncSSH:
         cmd += ["-P", self.port]
         cmd += ["-r", "%s@%s:%s" % (self.username, self.hostname, src), dst]
         LOG.debug("Runnung %s" % " ".join(cmd))
-        process = yield from asyncio.create_subprocess_exec(*cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT
-        )
+        process = asyncio.create_subprocess_exec(*cmd,
+                                                 stdout=subprocess.PIPE,
+                                                 stderr=subprocess.STDOUT)
+        process = yield from process
         try:
             while not process.stdout.at_eof():
                 line = yield from process.stdout.read()

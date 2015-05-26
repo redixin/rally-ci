@@ -16,8 +16,6 @@ import cgi
 import re
 import logging
 
-import json
-
 from rallyci import utils
 from rallyci.job import Job
 
@@ -42,7 +40,7 @@ class CR:
         LOG.debug("New event %s" % event_type)
         if event_type == "ref-updated":
             LOG.debug("Ref updated.")
-            #TODO
+            # TODO
             return
 
         project_name = self.event["change"]["project"]
@@ -99,7 +97,6 @@ class CR:
     @asyncio.coroutine
     def run(self):
         futures = []
-        coroutines = []
         for job in self.jobs:
             future = asyncio.async(job.run(), loop=self.config.root.loop)
             job.future = future

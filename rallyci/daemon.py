@@ -12,9 +12,8 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
-
+from rallyci import log  # noqa
 from rallyci import root
-from rallyci import log
 
 import asyncio
 import sys
@@ -23,6 +22,7 @@ import logging
 
 
 LOG = logging.getLogger(__name__)
+
 
 def run():
     if len(sys.argv) < 2:

@@ -30,13 +30,12 @@ class Class(base.Class):
         cfg = self.cfg
         port = str(cfg["port"])
         cmd = ["ssh", "-q", "-o", "StrictHostKeyChecking=no", "-p", port,
-                "%s@%s" % (cfg["username"], cfg["hostname"]), "gerrit", "stream-events"]
-
-        process = yield from asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT
-        )
+               "%s@%s" % (cfg["username"], cfg["hostname"]),
+               "gerrit", "stream-events"]
+        process = asyncio.create_subprocess_exec(*cmd,
+                                                 stdout=subprocess.PIPE,
+                                                 stderr=subprocess.STDOUT)
+        process = yield from process
         while not process.stdout.at_eof():
             line = yield from process.stdout.readline()
             try:

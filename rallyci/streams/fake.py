@@ -23,6 +23,7 @@ from rallyci import base
 
 LOG = logging.getLogger(__name__)
 
+
 class Class(base.Class):
 
     @asyncio.coroutine

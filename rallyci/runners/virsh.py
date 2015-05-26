@@ -39,7 +39,9 @@ class Class(base.ClassWithLocal):
     @asyncio.coroutine
     def run(self):
         self.vms = []
-        self.ssh = yield from self.config.nodepools[self.cfg["nodepool"]].get_ssh(self.job)
+        self.ssh = self.config.nodepools[self.cfg["nodepool"]].\
+            get_ssh(self.job)
+        self.ssh = yield from self.ssh
         self.job.started_at = time.time()
         for vm_conf in self.local["vms"]:
             vm = VM(self.ssh, vm_conf, self.cfg, self.job, self.config)
@@ -195,7 +197,8 @@ class VM:
         status = 0
         for s in self.vm_conf.get("scripts", []):
             self.job.set_status("%s: running %s" % (self.vm_conf["name"], s))
-            status = yield from self.run_script(self.ssh, s, raise_on_error=False)
+            status = yield from self.run_script(self.ssh, s,
+                                                raise_on_error=False)
             if status:
                 break
 
@@ -221,7 +224,8 @@ class VM:
         if image_name is None:
             image_name = self.runner_vm_conf.get("image")
             if image_name is None:
-                yield from asyncio.sleep(1) #FIXME
+                # FIXME
+                yield from asyncio.sleep(1)
                 return
 
         self.job.set_status("building %s" % image_name)
@@ -235,10 +239,10 @@ class VM:
             if not error:
                 LOG.debug("Image %s already built." % image_name)
                 return image_name
-            #delete possibly stale image
+            # delete possibly stale image
             cmd = "zfs destroy %s/%s" % (self.dataset, image_name)
             yield from self.h_ssh.run(cmd, raise_on_error=False)
-            #find source image
+            # find source image
             image_conf = self.runner_conf["images"][image_name]
             parent = image_conf.get("parent")
             if parent:
@@ -248,7 +252,7 @@ class VM:
                 source = image_source
             if "@" not in source:
                 source += "@1"
-            name = utils.get_rnd_name(prefix="rci_build_%s" % image_name)
+            name = utils.get_rnd_name(prefix="rci_build_%s_" % image_name)
             xml = XML(name=name, memory=image_conf.get("memory", 1024))
             target = "/".join([self.dataset, image_name])
             try:
@@ -294,8 +298,9 @@ class VM:
     @asyncio.coroutine
     def boot_vm(self):
         LOG.debug("Booting VM %s" % self.vm_conf["name"])
-        name = utils.get_rnd_name(prefix="rci_%s" % self.vm_conf["name"])
-        self.xml = XML(name=name, memory=self.runner_vm_conf.get("memory", 1024))
+        name = utils.get_rnd_name(prefix="rci_%s_" % self.vm_conf["name"])
+        self.xml = XML(name=name,
+                       memory=self.runner_vm_conf.get("memory", 1024))
         image = self.runner_vm_conf.get("image")
         if image:
             dataset, src = self._get_source_image(image)
@@ -329,7 +334,7 @@ class XML:
     def __init__(self, name=None, memory=1024):
         self.macs = []
         if name is None:
-            self.name = utils.get_rnd_name() + "_new"
+            self.name = utils.get_rnd_name()
         else:
             self.name = name
         x = XMLElement(None, "domain", type="kvm")

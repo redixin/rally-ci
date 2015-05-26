@@ -15,6 +15,7 @@
 
 from rallyci import base
 
+
 class Class(base.ClassWithLocal):
 
     def build(self, job):
