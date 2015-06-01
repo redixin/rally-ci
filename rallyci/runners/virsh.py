@@ -202,10 +202,7 @@ class VM:
             if status:
                 break
 
-        for src, dst in self.vm_conf.get("scp", []):
-            dst = os.path.join(self.job.full_log_path, dst)
-            utils.makedirs(dst)
-            yield from self.ssh.scp_get(src, dst)
+
         return status
 
     @asyncio.coroutine
@@ -319,6 +316,14 @@ class VM:
 
     @asyncio.coroutine
     def cleanup(self):
+        try:
+            for src, dst in self.vm_conf.get("scp", []):
+                dst = os.path.join(self.job.full_log_path, dst)
+                utils.makedirs(dst)
+                yield from self.ssh.scp_get(src, dst)
+        except Exception:
+            LOG.exception("scp error")
+
         if hasattr(self, "xml"):
             yield from self.h_ssh.run("virsh destroy %s" % self.xml.name,
                                       raise_on_error=False)
