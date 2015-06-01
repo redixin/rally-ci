@@ -289,7 +289,7 @@ class VM:
         if not self.runner_vm_conf.get("no_ip"):
             ip = yield from asyncio.wait_for(self._get_ip(xml.macs), 120)
             LOG.debug("Got ip: %s" % ip)
-            ip_env_var = self.runner_conf.get("ip_env_var")
+            ip_env_var = self.vm_conf.get("ip_env_var")
             if ip_env_var:
                 self.job.env[ip_env_var] = ip
             yield from asyncio.sleep(4)

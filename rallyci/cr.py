@@ -81,7 +81,7 @@ class CR:
 
     def _prepare_job(self, job_name, voting=True):
         cfg = self.config.data["jobs"][job_name]
-        LOG.debug("Preparing job %s" % job_name)
+        LOG.debug("Preparing job %s (id %s)" % (job_name, self.id))
         job = Job(self, job_name, cfg, self.event)
         job.voting = voting
         LOG.debug("Prepared job %r" % job)
