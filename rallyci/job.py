@@ -52,11 +52,11 @@ class Job:
         self.stream_number = 0
         self.queued_at = int(time.time())
 
-        for env in cfg.get("envs"):
+        for env in cfg.get("envs", {}):
             env = self.cr.config.init_obj_with_local("environments", env)
             self.envs.append(env)
 
-        for name, cfg in self.cr.config.data.get("loggers", []).items():
+        for name, cfg in self.cr.config.data.get("loggers", {}).items():
             self.loggers.append(self.cr.config.get_class(cfg)(self, cfg))
 
         self.log_root = self.cr.config.data["loggers"]["file"]["path"]

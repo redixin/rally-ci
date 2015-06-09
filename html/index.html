@@ -37,7 +37,7 @@ function ci_status_update(ci_status) {
 
 function connect_ws() {
 
-    var ws = new WebSocket("ws://" + window.location.host + "/ws/");
+    var ws = new WebSocket("ws://" + window.location.hostname + ":8000/ws/");
     var interval;
 
     ws.onmessage = function(e) {

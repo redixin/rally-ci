@@ -125,6 +125,11 @@ class Root:
 
     def load_config(self, filename):
         self.config = Config(self, filename)
+        status_conf = self.config.data.get("status")
+        if status_conf:
+            status_class = self.config.get_class(status_conf)
+            self.status = status_class(**status_conf)
+            asyncio.async(self.status.run(self.loop), loop=self.loop)
         self.init_stream(self.config.stream)
 
     def cr_done(self, future):

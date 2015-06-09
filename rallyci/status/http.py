@@ -23,11 +23,12 @@ LOG = logging.getLogger(__name__)
 
 class Class:
 
-    def __init__(self, config):
+    def __init__(self, **config):
         self.config = config
 
     @asyncio.coroutine
     def index(self, request):
+        LOG.debug("Index requested: %s" % request)
         path = os.path.join(os.path.realpath(os.path.dirname(__file__)),
                             "../../html/")
         with open(path + "index.html", "r") as f:
@@ -35,7 +36,7 @@ class Class:
         return web.Response(text=text, content_type="text/html")
 
     @asyncio.coroutine
-    def start(self, loop):
+    def run(self, loop):
         self.loop = loop
         self.app = web.Application(loop=loop)
         self.app.router.add_route("GET", "/", self.index)

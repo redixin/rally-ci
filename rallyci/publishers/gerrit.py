@@ -54,4 +54,5 @@ class Class(base.Class):
                                                        log_path=job.log_path)
             summary += "\n"
         cmd += ["-m", "'%s'" % summary, cr.event["patchSet"]["revision"]]
+        self.cfg["ssh"].update({"port": 29418})
         asyncio.async(asyncssh.AsyncSSH(**self.cfg["ssh"]).run(" ".join(cmd)))

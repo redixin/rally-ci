@@ -4,6 +4,24 @@ stream:
   username: redixin
   hostname: review.openstack.org
 
+publisher:
+  module: rallyci.publishers.gerrit
+  vote: false
+  ssh:
+    username: redixin
+    hostname: review.openstack.org
+  header: |
+    Build {succeeded} by RallyCI. Use "my-ci recheck" to recheck
+  job-template: "- {name} http://example.com/{log_path}/ : {success} in {time}"
+
+recheck:
+  regexp: ^my-ci recheck$
+
+loggers:
+  file:
+    module: rallyci.loggers.logfile
+    path: /tmp/ci-logs
+
 status:
   module: rallyci.status.http
 

@@ -14,6 +14,7 @@
 
 import asyncio
 import random
+import time
 import logging
 
 from rallyci import base
@@ -32,6 +33,12 @@ class Class(base.ClassWithLocal, base.GenericRunnerMixin):
     def build(self):
         sleep = self.cfg.get("sleep-build", (1, 2))
         LOG.debug("Sleeping %s" % str(sleep))
+        yield from asyncio.sleep(random.randint(*sleep))
+
+    @asyncio.coroutine
+    def run(self):
+        self.job.started_at = time.time()
+        sleep = self.cfg.get("sleep-run", (1, 2))
         yield from asyncio.sleep(random.randint(*sleep))
 
     @asyncio.coroutine

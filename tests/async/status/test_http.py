@@ -44,6 +44,6 @@ class HttpTestCase(unittest.TestCase):
             body = yield from response.read()
             self.assertIn("Rally-CI", str(body))
 
-        asyncio.async(h.start(loop), loop=loop)
+        asyncio.async(h.run(loop), loop=loop)
         loop.run_until_complete(test(loop))
         h.stop()

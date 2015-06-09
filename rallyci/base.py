@@ -64,7 +64,7 @@ class GenericRunnerMixin:
             LOG.exception("Failed to boot.")
             job.set_status("boot failed")
             return True
-        for script_name in self.local["scripts"]:
+        for script_name in self.local.get("scripts", []):
             job.set_status("running %s" % script_name)
             script = self.config.data["scripts"][script_name]
             try:
