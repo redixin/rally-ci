@@ -4,9 +4,9 @@ setup(
     name="rallyci",
     version="0.1.dev0",
     data_files=[
-        ("/etc/rally-ci/", ["etc/sample-config.yaml",
-                            "etc/simulation-config.yaml"]),
-        ("/var/lib/rally-ci/", ["resources/gerrit-sample-stream.json", ]),
+        ("etc/rally-ci/", ["etc/sample-config.yaml",
+                           "etc/noop.yaml",
+                           "etc/simulation-config.yaml"]),
     ],
     packages=find_packages(),
     install_requires=["pyyaml", "websockets", "aiohttp"],
