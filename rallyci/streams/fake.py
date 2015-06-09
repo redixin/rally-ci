@@ -16,25 +16,25 @@ import asyncio
 import logging
 import random
 
-import json
-
-from rallyci import base
-
+from rallyci.streams import gerrit
 
 LOG = logging.getLogger(__name__)
 
 
-class Class(base.Class):
+class Class(gerrit.Class):
+
+    def __init__(self, **kwargs):
+        self.cfg = kwargs
 
     @asyncio.coroutine
     def run(self):
-        try:
-            for line in open(self.cfg["path"], encoding="utf-8"):
-                sleep = self.cfg.get("sleep", (2, 4))
-                event = json.loads(line)
-                self.config.root.handle(event)
-                yield from asyncio.sleep(random.randint(*sleep))
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            LOG.exception("Stream error.")
+        while 1:
+            try:
+                for line in open(self.cfg["path"], encoding="utf-8"):
+                    sleep = self.cfg.get("sleep", (1, 2))
+                    self._handle_line(line)
+                    yield from asyncio.sleep(random.randint(*sleep))
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                LOG.exception("Stream error.")

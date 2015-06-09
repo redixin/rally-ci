@@ -36,39 +36,21 @@ def _get_valid_filename(name):
 
 
 class Job:
-    def __init__(self, cr, name, cfg, event):
-        self.virsh_dynamic_bridges = {}  # FIXME
-        self.cr = cr
-        self.name = name
+    def __init__(self, event, name):
         self.event = event
-        self.envs = []
-        self.loggers = []
-        self.status = "queued"
-        self.failed = True
-        self.env = {}
-        self.cfg = cfg
+        self.name = name
+        self.root = event.root
+        self.config = event.root.config.data["job"][name]
         self.id = utils.get_rnd_name(prefix="", length=10)
-        self.current_stream = "__none__"
         self.stream_number = 0
-        self.queued_at = int(time.time())
-
-        for env in cfg.get("envs", {}):
-            env = self.cr.config.init_obj_with_local("environments", env)
-            self.envs.append(env)
-
-        for name, cfg in self.cr.config.data.get("loggers", {}).items():
-            self.loggers.append(self.cr.config.get_class(cfg)(self, cfg))
-
-        self.log_root = self.cr.config.data["loggers"]["file"]["path"]
-        self.log_path = os.path.join(self.cr.id, self.name)
-        self.full_log_path = os.path.join(self.log_root, self.log_path)
-
-    def to_dict(self):
-        return {"id": self.id,
-                "name": self.name,
-                "status": self.status,
-                "seconds": int(time.time()) - self.queued_at,
-                }
+        self.env = {}
+        self.log_path = os.path.join(self.event.id, self.id)
+        self.loggers = []
+        for logger in self.root.config.get_instances("logger"):
+            logger.job = self
+            self.loggers.append(logger)
+        self.status = "queued"
+        self.queued_at = time.time()
 
     def logger(self, data):
         """Process script stdout+stderr."""
@@ -80,31 +62,32 @@ class Job:
         self.current_stream = "%02d-%s.txt" % (self.stream_number,
                                                _get_valid_filename(status))
         self.status = status
-        self.cr.config.root.handle_job_status(self)
+        self.root.job_updated(self)
 
     @asyncio.coroutine
     def run(self):
-        LOG.debug("Started job %s" % self)
+        self.set_status("queued")
+        for env_name in self.config.get("envs", []):
+            env = self.root.config.get_instance("env", env_name)
+            env.build(self)
+            LOG.debug("New env: %s" % self.env)
+        self.runner = self.root.config.\
+            get_class_with_local("runner", self.config["runner"])
+        LOG.debug("Runner initialized %r for job %r" % (self.runner, self))
         try:
-            self.set_status("queued")
-            for env in self.envs:
-                env.build(self)
-            LOG.debug("Built env: %s" % self.env)
-            self.runner = self.cr.config.\
-                init_obj_with_local("runners", self.cfg["runner"])
-            self.runner.job = self  # FIXME
-            LOG.debug("Runner initialized %r" % self.runner)
-            future = asyncio.async(self.runner.run(),
-                                   loop=asyncio.get_event_loop())
-            future.add_done_callback(self.cleanup)
-            self.failed = yield from asyncio.wait_for(future, None)
-        except Exception:
-            LOG.exception("Unhandled exception in job %s" % self.name)
-            self.set_status("error")
+            self.error = yield from self.runner.run(self)
+        except:
+            LOG.exception("Unhandled exception in job %s" % self)
+            self.error = 1
         self.finished_at = int(time.time())
-        return self.failed
+        LOG.debug("Finished job %s." % self)
+        LOG.debug("Starting cleanup for job %s" % self)
+        yield from self.runner.cleanup()
+        LOG.debug("Finished cleanup for job %s" % self)
 
-    def cleanup(self, future):
-        f = asyncio.async(self.runner.cleanup(), loop=self.cr.config.root.loop)
-        self.cr.config.root.cleanup_tasks.append(f)
-        f.add_done_callback(self.cr.config.root.cleanup_tasks.remove)
+    def to_dict(self):
+        return {"id": self.id,
+                "name": self.name,
+                "status": self.status,
+                "seconds": int(time.time()) - self.queued_at,
+                }

@@ -12,15 +12,17 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
+from rallyci import config
 
-class Class:
+import os
+import unittest
+import json
 
-    def __init__(self, *args, **kwargs):
-        pass
 
-    def setup(self, cfg):
-        self.cfg = cfg
+class ConfigTestCase(unittest.TestCase):
 
-    def build(self, job):
-        for k, v in self.cfg["export"].items():
-            job.env[k] = v
+    def test___init__(self):
+        dirname = os.path.dirname(os.path.realpath(__file__))
+        filename = os.path.join(dirname, "../../etc/sample-config.yaml")
+        c = config.Config(filename)
+        print(json.dumps(c.data, indent=2))

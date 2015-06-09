@@ -23,11 +23,10 @@ LOG = logging.getLogger(__name__)
 
 
 class Class:
-    def __init__(self, root, cfg):
-        self.root = root
-        self.cfg = cfg
-        self.tasks_per_node = cfg["tasks_per_node"]
-        self.futures = dict([(tuple(c.items()), []) for c in cfg["nodes"]])
+    def __init__(self, **kwargs):
+        self.cfg = kwargs
+        self.tasks_per_node = kwargs["tasks_per_node"]
+        self.futures = dict([(tuple(c.items()), []) for c in kwargs["nodes"]])
         self.nodes = {}
 
     def job_done_callback(self, future):

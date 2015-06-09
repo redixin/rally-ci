@@ -23,6 +23,7 @@ LOG = logging.getLogger(__name__)
 
 
 class CR:
+
     def __init__(self, config, event):
         """Represent Change Request
 

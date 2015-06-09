@@ -1,24 +1,32 @@
 ---
-stream:
+- stream:
+    name: test
     module: rallyci.streams.fake
-    path: /var/lib/rally-ci/gerrit-sample-stream.json
+    path: resources/gerrit-sample-stream.json
 
-loggers:
-  file:
+- status:
+    name: main
+    module: rallyci.status.http
+    listen: [0.0.0.0, 8080]
+
+- logger:
+    name: file
     module: rallyci.loggers.logfile
     path: /home/rally/simulation-logs/
 
-environments:
-  event:
+- env:
+    name: event
     module: rallyci.environments.event
     export-event:
       GERRIT_PROJECT: change.project
       GERRIT_REF: patchSet.ref
-  dummy:
+
+- env:
+    name: dummy
     module: rallyci.environments.dummy
 
-nodepools:
-  test:
+- nodepool:
+    name: test
     module: rallyci.nodepools.fair
     tasks_per_node: 8
     nodes:
@@ -26,28 +34,28 @@ nodepools:
         username: user1
       - hostname: host2
         username: user2
-      - hostname: host3
-        username: user3
 
-runners:
-  fake:
+- runner:
+    name: fake
     nodepool: test
     module: rallyci.runners.fake
-    sleep-build: [1, 2]
-    sleep-run: [10, 20]
+    sleep-build: [2, 4]
+    sleep-run: [4, 8]
 
-scripts:
-  script1:
+- script:
+    name: script1
     interpreter: /bin/bash -xe -s
     data: |
       echo "script 1"
-  script2:
+
+- script:
+    name: script2
     interpreter: /bin/bash -xe -s
     data:
       echo "script 2"
 
-jobs:
-  job1:
+- job:
+    name: job1
     envs:
       - name: event
       - name: dummy
@@ -58,7 +66,9 @@ jobs:
       scripts:
         - script1
         - script2
-  job2:
+
+- job:
+    name: job2
     envs:
       - name: event
       - name: dummy
@@ -69,9 +79,10 @@ jobs:
       scripts:
         - script1
 
-projects:
-  "openstack/rally":
+- project:
+    name: openstack/rally
     jobs: ["job1", "job2"]
 
-  "openstack/neutron":
+- project:
+    name: openstack/neutron
     jobs: ["job1"]

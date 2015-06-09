@@ -37,14 +37,16 @@ DYNAMIC_BRIDGE_LOCK = asyncio.Lock()
 class Class(base.ClassWithLocal):
 
     @asyncio.coroutine
-    def run(self):
+    def run(self, job):
+        LOG.debug("Running job %r" % job)
+        job.started_at = time.time()
         self.vms = []
         self.ssh = self.config.nodepools[self.cfg["nodepool"]].\
-            get_ssh(self.job)
+            get_ssh(job)
         self.ssh = yield from self.ssh
-        self.job.started_at = time.time()
+        job.started_at = time.time()
         for vm_conf in self.local["vms"]:
-            vm = VM(self.ssh, vm_conf, self.cfg, self.job, self.config)
+            vm = VM(self.ssh, vm_conf, self.cfg, job, self.config)
             yield from vm.build()
             self.vms.append(vm)
         for vm in self.vms:
@@ -52,9 +54,9 @@ class Class(base.ClassWithLocal):
         for vm in self.vms:
             status = yield from vm.run_scripts()
             if status:
-                self.job.set_status("failed")
+                job.set_status("failed")
                 return status
-        self.job.set_status("success")
+        job.set_status("success")
 
     @asyncio.coroutine
     def cleanup(self):
@@ -67,6 +69,8 @@ class VM:
 
     runner_conf is entry from the runners section
       module: ...
+      key: /path/to/ssh/key
+      scp-root: /path/to/files
       nodepool: ...
       images:
         img1:
@@ -132,6 +136,8 @@ class VM:
 
     @asyncio.coroutine
     def _get_dynamic_bridge(self, prefix):
+        if not hasattr(self.job, "virsh_dynamic_bridges"):
+            self.job.virsh_dynamic_bridges = {}
         br = self.job.virsh_dynamic_bridges.get(prefix)
         if not br:
             with (yield from DYNAMIC_BRIDGE_LOCK):
@@ -187,7 +193,7 @@ class VM:
             if error:
                 return
             elif time.time() - start > timeout:
-                cmd = "virsh destroy %s" % self.xml.name
+                cmd = "virsh destroy %s" % xml.name
                 yield from self.h_ssh.run(cmd)
                 yield from asyncio.sleep(4)
                 return
@@ -205,7 +211,7 @@ class VM:
 
     @asyncio.coroutine
     def run_script(self, ssh, script, raise_on_error=True):
-        script = self.config.data["scripts"][script]
+        script = self.config.data["script"][script]
         LOG.debug("script: %s" % script)
         cmd = "".join(["%s='%s' " % env for env in self.job.env.items()])
         cmd += script["interpreter"]
@@ -288,7 +294,9 @@ class VM:
             if ip_env_var:
                 self.job.env[ip_env_var] = ip
             yield from asyncio.sleep(4)
-            return asyncssh.AsyncSSH("root", ip, cb=self.job.logger)
+            return asyncssh.AsyncSSH("root", ip,
+                                     key=self.runner_conf.get("key"),
+                                     cb=self.job.logger)
 
     @asyncio.coroutine
     def boot_vm(self):
@@ -316,7 +324,8 @@ class VM:
     def cleanup(self):
         try:
             for src, dst in self.vm_conf.get("scp", []):
-                dst = os.path.join(self.job.full_log_path, dst)
+                dst = os.path.join(self.vm_conf["scp-root"],
+                                   self.job.log_path, dst)
                 utils.makedirs(dst)
                 yield from self.ssh.scp_get(src, dst)
         except Exception:
@@ -328,9 +337,10 @@ class VM:
             yield from asyncio.sleep(4)
             cmd = "zfs destroy %s" % self.volume
             yield from self.h_ssh.run(cmd)
-        for br in self.job.virsh_dynamic_bridges.values():
-            yield from self.h_ssh.run("ip link del %s" % br)
-        self.job.virsh_dynamic_bridges = {}
+        if hasattr(self.job, "virsh_dynamic_bridges"):
+            for br in self.job.virsh_dynamic_bridges.values():
+                yield from self.h_ssh.run("ip link del %s" % br)
+            self.job.virsh_dynamic_bridges = {}
 
 
 class XML:

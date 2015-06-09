@@ -1,51 +1,42 @@
 ---
-stream:
-  module: rallyci.streams.gerrit
-  username: redixin
-  hostname: review.openstack.org
+- stream:
+    name: openstack
+    module: rallyci.streams.gerrit
+    ssh:
+      username: CHANGEME
+      hostname: review.openstack.org
+      key: /home/CHANGEME/ci-key
+    vote: false
+    comment-header: |
+      Build {succeeded} by RallyCI. Use "my-ci recheck" to recheck
+    comment-job-template: "- {name} http://example.com/{log_path}/ : {success} in {time}"
+    recheck-regexp: ^my-ci recheck$
 
-publisher:
-  module: rallyci.publishers.gerrit
-  vote: false
-  ssh:
-    username: redixin
-    hostname: review.openstack.org
-  header: |
-    Build {succeeded} by RallyCI. Use "my-ci recheck" to recheck
-  job-template: "- {name} http://example.com/{log_path}/ : {success} in {time}"
+- status:
+    name: main
+    module: rallyci.status.http
+    listen: [0.0.0.0, 8080]
 
-recheck:
-  regexp: ^my-ci recheck$
-
-loggers:
-  file:
-    module: rallyci.loggers.logfile
-    path: /tmp/ci-logs
-
-status:
-  module: rallyci.status.http
-
-nodepools:
-  test:
+- nodepool:
+    name: test
     module: rallyci.nodepools.fair
-    tasks_per_node: 8
+    tasks_per_node: 4
     nodes:
-      - hostname: host1
-        username: user1
-      - hostname: host2
-        username: user2
+      - hostname: localhost
+        username: root
+        key: /home/user/ci-key
 
-runners:
-  fake:
+- runner:
+    name: fake
     module: rallyci.runners.fake
-    sleep-run: [10, 20]
+    sleep-run: [1, 2]
 
-jobs:
-  noop:
+- job:
+    name: noop
     runner:
       name: fake
 
-projects:
-  "openstack-dev/ci-sandbox":
+- project:
+    name: openstack-dev/ci-sandbox
     jobs:
       - noop

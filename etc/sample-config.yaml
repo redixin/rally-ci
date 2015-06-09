@@ -1,108 +1,93 @@
 ---
-stream:
-    module: rallyci.streams.gerrit
-    username: CHANGEME
-    hostname: review.openstack.org
-    port: 29418
 
-loggers:
-  file:
+- stream:
+    name: openstack
+    module: rallyci.streams.gerrit
+    ssh:
+      username: CHANGEME
+      hostname: review.openstack.org
+      port: 29418
+
+- logger:
+    name: main
     module: rallyci.loggers.logfile
     path: /home/rally/jobs-logs/
 
-environments:
-  event:
+- environment:
+    name: event
     module: rallyci.environments.event
     export-event:
       GERRIT_PROJECT: change.project
       GERRIT_REF: patchSet.ref
-  dummy:
+
+- environment:
+    name: dummy
     module: rallyci.environments.dummy
 
-nodepools:
-  localdocker:
-    module: rallyci.nodepools.fair
-    tasks_per_node: 2
-    nodes:
-      - hostname: localhost
-
-runners:
-  virsh:
-    module: rallyci.runners.virsh
-    nodepool: mirantis-servers
-    images:
-      - name: dsvm
-        memory: 4096
-        build-scripts: ["install_dsvm"]
-        storage: rallyci.storages.zfs
-          dataset: /tank/qcow
-          source: u1404_dsvm@clean
-
-  localdocker:
-    module: rallyci.runners.docker
-    nodepool: localdocker
-    images:
-      ubuntu-dev: |
-        FROM ubuntu:14.04
-        MAINTAINER Sergey Skripnick <sskripnick@mirantis.com>
-        RUN apt-get update
-        RUN apt-get -y install git python2.7 bash-completion python-dev libffi-dev \
-        libxml2-dev libxslt1-dev libssl-dev libpq-dev
-        RUN apt-get -y install python-pip
-        RUN pip install tox==1.6
-        RUN useradd -u 65510 -m rally
-        USER rally
-        WORKDIR /home/rally
-        RUN git config --global user.email "rally-ci@mirantis.com" && \
-            git config --global user.name "Mirantis Rally CI"
-        RUN mkdir openstack && cd openstack && \
-            git clone git://git.openstack.org/openstack/rally.git
-
-scripts:
-  git_checkout:
+- script:
+    name: git_checkout
     interpreter: /bin/bash -xe -s
     data: |
-      env
       cd $GERRIT_PROJECT && git checkout master && git pull
       git fetch https://review.openstack.org/$GERRIT_PROJECT $GERRIT_REF
       git checkout FETCH_HEAD && git rebase master || true
       git clean -fxd -e .tox -e *.egg-info
       git diff --name-only master
-  tox:
-    interpreter: /bin/bash -xe -s
-    data: |
-      cd $GERRIT_PROJECT && tox -e$RCI_TOXENV
-  install_dsvm:
-    interpreter: /bin/bash -xe -s
-    data: |
-      apt-get update
-      apt-get --force-yes -y install git python2.7 bash-completion python-dev libffi-dev libxml2-dev libxslt1-dev libssl-dev libpq-dev python-pip
-      pip install tox==1.6
-      useradd -u 65510 -m rally
 
-jobs:
-  py27:
+- script:
+    name: init_ubuntu_dev
+    interpreter: /bin/bash -xe -s
+    data: |
+      apt-get -y update && apt-get -y upgrade
+      apt-get -y install git
+
+- script:
+    name: install_rally
+    interpreter: /bin/bash -xe -s
+    data: |
+      cd rally
+      python setup.py build
+      python setup.py install
+
+- script:
+    name: rally_unit
+    interpreter: /bin/bash -xe -s
+    user: rally
+    data: |
+      cd rally
+      python -m unittest discover tests/unit
+
+- provider:
+    name: lxc_localhost
+    module: rallyci.providers.lxc
+    nodes:
+      - hostname: localhost
+        max_vms: 4
+    images:
+      - name: bare_ubuntu
+        template: ubuntu
+      - name: rally
+        parent: bare_ubuntu
+        build_scripts: ["init_ubuntu_dev", "install_rally"]
+
+- runner:
+    name: ssh
+    module: rallyci.runners.ssh
+    provider: lxc_localhost
+
+- job:
+    name: py27
     envs:
       - name: event
       - name: dummy
         export:
           RCI_TOXENV: py27
-    runner:
-      name: localdocker
-      image: ubuntu-dev
-    scripts:
-      - git_checkout
-      - tox
-  rally-dsvm:
-    envs:
-      - name: event
-    runner:
-      name: virsh
-      image: dsvm
-    scripts:
-      - rally_gate
+    runners:
+      - name: ssh
+        image: rally
+        scripts: ["rally_unit"]
 
-projects:
-  "openstack/rally":
+- project:
+    name: openstack/rally
     jobs:
-      - rally-dsvm
+      - py27

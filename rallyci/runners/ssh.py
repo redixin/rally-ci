@@ -12,15 +12,14 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
+import asyncio
+
 
 class Class:
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, config):
         pass
 
-    def setup(self, cfg):
-        self.cfg = cfg
-
-    def build(self, job):
-        for k, v in self.cfg["export"].items():
-            job.env[k] = v
+    @asyncio.coroutine
+    def run(self):
+        pass

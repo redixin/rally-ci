@@ -15,7 +15,9 @@
 import asyncio
 import logging
 import os.path
+import json
 
+import aiohttp
 from aiohttp import web
 
 LOG = logging.getLogger(__name__)
@@ -25,6 +27,7 @@ class Class:
 
     def __init__(self, **config):
         self.config = config
+        self.clients = []
 
     @asyncio.coroutine
     def index(self, request):
@@ -36,17 +39,64 @@ class Class:
         return web.Response(text=text, content_type="text/html")
 
     @asyncio.coroutine
-    def run(self, loop):
-        self.loop = loop
-        self.app = web.Application(loop=loop)
+    def ws(self, request):
+        LOG.debug("Websocket connected %s" % request)
+        ws = web.WebSocketResponse()
+        ws.start(request)
+        self.clients.append(ws)
+        while True:
+            try:
+                msg = yield from ws.receive()
+            except aiohttp.errors.ClientDisconnectedError:
+                break
+            LOG.debug("Websocket received: %s" % str(msg))
+            if msg.tp == web.MsgType.close:
+                break
+        self.clients.remove(ws)
+        return ws
+
+    def _send_all(self, data):
+        for c in self.clients:
+            c.send_str(json.dumps(data))
+
+    def _task_started_cb(self, event):
+        self._send_all({"type": "task-started", "task": event.to_dict()})
+
+    def _job_status_cb(self, job):
+        self._send_all({"type": "job-status-update", "job": job.to_dict()})
+
+    def _task_finished_cb(self, event):
+        self._send_all({"type": "task-finished", "id": event.id})
+
+    @asyncio.coroutine
+    def run(self):
+        self.app = web.Application(loop=self.loop)
         self.app.router.add_route("GET", "/", self.index)
+        self.app.router.add_route("GET", "/ws/", self.ws)
         addr, port = self.config.get("listen", ("localhost", 8080))
         self.handler = self.app.make_handler()
-        self.srv = yield from loop.create_server(self.handler, addr, port)
+        self.srv = yield from self.loop.create_server(self.handler, addr, port)
         LOG.debug("HTTP server started at %s:%s" % (addr, port))
 
-    def stop(self, timeout=1.0):
-        self.loop.run_until_complete(self.handler.finish_connections(timeout))
+    def start(self, root):
+        self.loop = root.loop
+        self.root = root
+        asyncio.async(self.run(), loop=self.loop)
+        root.task_start_handlers.append(self._task_started_cb)
+        root.task_end_handlers.append(self._task_finished_cb)
+        root.job_update_handlers.append(self._job_status_cb)
+
+    @asyncio.coroutine
+    def _stop(self, timeout=1.0):
+        for c in self.clients:
+            yield from c.close()
+        yield from self.handler.finish_connections(timeout)
         self.srv.close()
-        self.loop.run_until_complete(self.srv.wait_closed())
-        self.loop.run_until_complete(self.app.finish())
+        yield from self.srv.wait_closed()
+        yield from self.app.finish()
+
+    def stop(self):
+        self.root.task_start_handlers.remove(self._task_started_cb)
+        self.root.task_end_handlers.remove(self._task_finished_cb)
+        self.root.job_update_handlers.remove(self._job_status_cb)
+        return asyncio.async(self._stop(), loop=self.loop)

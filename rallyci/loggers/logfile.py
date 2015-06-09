@@ -23,9 +23,8 @@ LOG = logging.getLogger(__name__)
 
 class Class:
 
-    def __init__(self, job, cfg):
-        self.job = job
-        self.cfg = cfg
+    def __init__(self, **kwargs):
+        self.cfg = kwargs
         self.streams = {}
 
     def log(self, stream, data):
@@ -36,8 +35,9 @@ class Class:
         """
         fileobj = self.streams.get(stream)
         if not fileobj:
-            utils.makedirs(self.job.full_log_path)
-            fileobj = open(os.path.join(self.job.full_log_path,
+            self.log_root = os.path.join(self.cfg["path"], self.job.log_path)
+            utils.makedirs(self.log_root)
+            fileobj = open(os.path.join(self.log_root,
                                         stream + ".txt"), "wb")
             self.streams[stream] = fileobj
         if not data:

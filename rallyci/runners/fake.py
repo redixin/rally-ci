@@ -36,8 +36,8 @@ class Class(base.ClassWithLocal, base.GenericRunnerMixin):
         yield from asyncio.sleep(random.randint(*sleep))
 
     @asyncio.coroutine
-    def run(self):
-        self.job.started_at = time.time()
+    def run(self, job):
+        job.started_at = time.time()
         sleep = self.cfg.get("sleep-run", (1, 2))
         yield from asyncio.sleep(random.randint(*sleep))
 

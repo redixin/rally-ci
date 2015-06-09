@@ -13,14 +13,13 @@
 #    limitations under the License.
 
 
-from rallyci import base
-
-
-class Class(base.ClassWithLocal):
+class Class:
+    def __init__(self, *args, **kwargs):
+        self.cfg = kwargs
 
     def build(self, job):
         for k, v in self.cfg["export-event"].items():
-            value = dict(job.event)
+            value = dict(job.event.raw_event)
             for key in v.split("."):
                 value = value[key]
             job.env[k] = value

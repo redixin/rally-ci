@@ -49,22 +49,23 @@ class AsyncSSH:
             f.flush()
             f.seek(0)
             stdin = f
-        cmd = []
-        if self.hostname != "localhost":
-            cmd = ["ssh", "-o", "StrictHostKeyChecking=no",
-                   "%s@%s" % (user, self.hostname), "-p", self.port]
+        cmd = ["ssh", "-o", "StrictHostKeyChecking=no",
+               "%s@%s" % (user, self.hostname), "-p", self.port]
         if self.key:
             cmd += ["-i", self.key]
-        cmd += command.split(" ")
+        if isinstance(command, str):
+            cmd += command.split(" ")
+        else:
+            cmd += command
+        LOG.debug("Running '%s'" % cmd)
         process = asyncio.create_subprocess_exec(*cmd,
                                                  stdin=stdin,
                                                  stdout=subprocess.PIPE,
                                                  stderr=subprocess.STDOUT)
         process = yield from process
-        LOG.debug("Running '%s'" % cmd)
         try:
             while not process.stdout.at_eof():
-                line = yield from process.stdout.read()
+                line = yield from process.stdout.readline()
                 self.cb(line)
                 if return_output:
                     output += line
@@ -72,6 +73,8 @@ class AsyncSSH:
             process.terminate()
             asyncio.async(process.wait(), loop=asyncio.get_event_loop())
             raise
+
+        yield from process.wait()
 
         if return_output:
             output = output.decode()
@@ -83,6 +86,7 @@ class AsyncSSH:
             msg = "Cmd '%s' failed. Exit code: %d" % (" ".join(cmd),
                                                       process.returncode)
             raise SSHError(msg)
+        LOG.debug("Returning %s" % process.returncode)
         return process.returncode
 
     @asyncio.coroutine

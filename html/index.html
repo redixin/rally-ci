@@ -17,9 +17,9 @@ body {font-family: sans-serif; margin: 0; padding: 0;}
 function add_task(t) {
     var html = "<div id='"+t.id+"'>";
     html += "<table>";
-    html += "<tr><td colspan=2><a href='/"+t.id+"/'>"+t.subject+"</a></td></tr>";
+    html += "<tr><td colspan=2>"+t.project+": <a href='"+t.url+"'>"+t.subject+"</a></td></tr>";
     for (var i=0, job; job = t["jobs"][i]; i++) {
-        html += "<tr><td>"+job.name+"</td><td id='"+job.id+"'>"+job.status+"</td></tr>";
+        html += "<tr><td><a href='/"+t.id+"/"+job.id+"/'>"+job.name+"</a></td><td id='"+job.id+"'>"+job.status+"</td></tr>";
     }
     html += "<tr></tr>";
     html += "</table>";
@@ -37,7 +37,7 @@ function ci_status_update(ci_status) {
 
 function connect_ws() {
 
-    var ws = new WebSocket("ws://" + window.location.hostname + ":8000/ws/");
+    var ws = new WebSocket("ws://" + window.location.host + "/ws/");
     var interval;
 
     ws.onmessage = function(e) {
