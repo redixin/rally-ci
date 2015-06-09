@@ -201,8 +201,6 @@ class VM:
                                                 raise_on_error=False)
             if status:
                 break
-
-
         return status
 
     @asyncio.coroutine
