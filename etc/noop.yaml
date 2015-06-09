@@ -1,0 +1,33 @@
+---
+stream:
+  module: rallyci.streams.gerrit
+  username: redixin
+  hostname: review.openstack.org
+
+status:
+  module: rallyci.status.http
+
+nodepools:
+  test:
+    module: rallyci.nodepools.fair
+    tasks_per_node: 8
+    nodes:
+      - hostname: host1
+        username: user1
+      - hostname: host2
+        username: user2
+
+runners:
+  fake:
+    module: rallyci.runners.fake
+    sleep-run: [10, 20]
+
+jobs:
+  noop:
+    runner:
+      name: fake
+
+projects:
+  "openstack-dev/ci-sandbox":
+    jobs:
+      - noop

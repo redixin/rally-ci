@@ -28,7 +28,7 @@ class Class(base.Class):
     @asyncio.coroutine
     def run(self):
         cfg = self.cfg
-        port = str(cfg["port"])
+        port = str(cfg.get("port", "29418"))
         cmd = ["ssh", "-q", "-o", "StrictHostKeyChecking=no", "-p", port,
                "%s@%s" % (cfg["username"], cfg["hostname"]),
                "gerrit", "stream-events"]
