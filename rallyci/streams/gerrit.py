@@ -67,6 +67,10 @@ class Event:
         self.cfg = self.root.config.data["project"][self.project_name]
         for job_name in self.cfg["jobs"]:
             self.jobs_list.append(Job(self, job_name))
+        for job_name in self.cfg["non-voting-jobs"]:
+            job = Job(self, job_name)
+            job.voting = False
+            self.jobs_list.append(job)
 
     @asyncio.coroutine
     def run_jobs(self):
@@ -91,7 +95,7 @@ class Event:
         if not comment_header:
             return
         cmd = ["gerrit", "review"]
-        fail = any([j.error for j in self.jobs if j.voting])
+        fail = any([j.error for j in self.jobs_list if j.voting])
         if self.stream.cfg.get("vote"):
             cmd.append("--verified=-1" if fail else "--verified=+1")
         succeeded = "failed" if fail else "succeeded"
@@ -99,7 +103,7 @@ class Event:
         tpl = self.stream.cfg["comment-job-template"]
         for job in self.jobs_list:
             success = "FAILURE" if job.error else "SUCCESS"
-            success += " (non voting)" if job.config.get("non-voting") else ""
+            success += "" if job.voting else " (non-voting)"
             time = human_time(job.finished_at - job.started_at)
             summary += tpl.format(success=success,
                                   name=job.config["name"],

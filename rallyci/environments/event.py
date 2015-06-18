@@ -14,8 +14,12 @@
 
 
 class Class:
+
     def __init__(self, *args, **kwargs):
         self.cfg = kwargs
+
+    def setup(self, *args, **kwargs):
+        pass
 
     def build(self, job):
         for k, v in self.cfg["export-event"].items():

@@ -18,9 +18,9 @@ class Class:
     def __init__(self, *args, **kwargs):
         pass
 
-    def setup(self, cfg):
-        self.cfg = cfg
+    def setup(self, export, **kwargs):
+        self.export = export
 
     def build(self, job):
-        for k, v in self.cfg["export"].items():
+        for k, v in self.export.items():
             job.env[k] = v

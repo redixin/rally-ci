@@ -44,14 +44,18 @@ class Class:
         ws = web.WebSocketResponse()
         ws.start(request)
         self.clients.append(ws)
-        while True:
-            try:
+        try:
+            tasks = [t.to_dict() for t in self.root.tasks.values()]
+            ws.send_str(json.dumps({"type": "all-tasks",
+                                    "tasks": tasks}))
+            while True:
                 msg = yield from ws.receive()
-            except aiohttp.errors.ClientDisconnectedError:
-                break
-            LOG.debug("Websocket received: %s" % str(msg))
-            if msg.tp == web.MsgType.close:
-                break
+                LOG.debug("Websocket received: %s" % str(msg))
+                if msg.tp == web.MsgType.close:
+                    break
+        except aiohttp.errors.ClientDisconnectedError:
+            LOG.info("WS %s disconnected" % ws)
+
         self.clients.remove(ws)
         return ws
 

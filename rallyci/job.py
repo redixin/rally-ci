@@ -37,6 +37,9 @@ def _get_valid_filename(name):
 
 class Job:
     def __init__(self, event, name):
+        self.voting = True
+        self.error = 254 # FIXME
+        self.queued_at = time.time()
         self.event = event
         self.name = name
         self.root = event.root
@@ -50,7 +53,7 @@ class Job:
             logger.job = self
             self.loggers.append(logger)
         self.status = "queued"
-        self.queued_at = time.time()
+        LOG.debug("Job %s initialized." % self.id)
 
     def logger(self, data):
         """Process script stdout+stderr."""
@@ -66,9 +69,21 @@ class Job:
 
     @asyncio.coroutine
     def run(self):
+        try:
+            self.started_at = time.time()
+            yield from self._run()
+        except Exception:
+            LOG.exception("Error running job %s" % self.id)
+            self.error = 254
+        finally:
+            self.finished_at = time.time()
+
+    @asyncio.coroutine
+    def _run(self):
         self.set_status("queued")
-        for env_name in self.config.get("envs", []):
-            env = self.root.config.get_instance("env", env_name)
+        for env_conf in self.config.get("envs", []):
+            env = self.root.config.get_instance("env", env_conf["name"])
+            env.setup(**env_conf)
             env.build(self)
             LOG.debug("New env: %s" % self.env)
         self.runner = self.root.config.\

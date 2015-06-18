@@ -324,7 +324,7 @@ class VM:
     def cleanup(self):
         try:
             for src, dst in self.vm_conf.get("scp", []):
-                dst = os.path.join(self.vm_conf["scp-root"],
+                dst = os.path.join(self.runner_conf["scp-root"],
                                    self.job.log_path, dst)
                 utils.makedirs(dst)
                 yield from self.ssh.scp_get(src, dst)
