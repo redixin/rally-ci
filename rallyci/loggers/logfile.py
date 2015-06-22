@@ -27,20 +27,26 @@ class Class:
         self.cfg = kwargs
         self.streams = {}
 
-    def log(self, stream, data):
+    def set_stream(self, job, stream):
+        """
+        :param stream: stream name, e.g. build.sh or run.sh
+        """
+        if hasattr(self, "fileobj"):
+            self.fileobj.close()
+        log_root = os.path.join(self.cfg["path"], job.log_path)
+        os.makedirs(log_root, exist_ok=True)
+        self.fileobj = open(os.path.join(log_root, stream + ".txt"), "wb")
+
+    def log(self, data):
         """Log data.
 
-        :param stream: stream name, e.g. build.sh or run.sh
         :param data: data to be logged
         """
-        fileobj = self.streams.get(stream)
-        if not fileobj:
-            self.log_root = os.path.join(self.cfg["path"], self.job.log_path)
-            utils.makedirs(self.log_root)
-            fileobj = open(os.path.join(self.log_root,
-                                        stream + ".txt"), "wb")
-            self.streams[stream] = fileobj
-        if not data:
-            fileobj.flush()
+        if data:
+            os.write(self.fileobj.fileno(), data)
         else:
-            os.write(fileobj.fileno(), data)
+            self.fileobj.flush()
+
+    def cleanup(self):
+        if hasattr(self, "fileobj"):
+            self.fileobj.close()

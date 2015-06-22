@@ -25,7 +25,8 @@ class Config:
         self.filename = filename
         self._modules = {}
         self.data = {}
-        self.raw_data = yaml.safe_load(open(filename, "rb"))
+        with open(filename, "rb") as cf:
+            self.raw_data = yaml.safe_load(cf)
         for item in self.raw_data:
             if len(item.keys()) > 1:
                 raise ValueError("Invalid config entry %s" % item)

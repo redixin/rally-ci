@@ -121,7 +121,7 @@ class Event:
         data["project"] = cgi.escape(project)
         uri = self.raw_event["patchSet"]["ref"].split("/", 3)[-1]
         # TODO: remove hardcode
-        data["url"] = "https://review.openstack.org/%s" % uri
+        data["url"] = "https://review.openstack.org/#/c/%s" % uri
         return data
 
 

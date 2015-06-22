@@ -58,12 +58,14 @@ class Job:
     def logger(self, data):
         """Process script stdout+stderr."""
         for logger in self.loggers:
-            logger.log(self.current_stream, data)
+            logger.log(data)
 
     def set_status(self, status):
         self.stream_number += 1
-        self.current_stream = "%02d-%s.txt" % (self.stream_number,
-                                               _get_valid_filename(status))
+        for logger in self.loggers:
+            logger.set_stream(self,
+                              "%02d-%s.txt" % (self.stream_number,
+                                               _get_valid_filename(status)))
         self.status = status
         self.root.job_updated(self)
 
@@ -77,6 +79,12 @@ class Job:
             self.error = 254
         finally:
             self.finished_at = time.time()
+        while self.loggers:
+            logger = self.loggers.pop()
+            try:
+                logger.cleanup()
+            except Exception:
+                LOG.exception("Error while logger cleanup")
 
     @asyncio.coroutine
     def _run(self):
