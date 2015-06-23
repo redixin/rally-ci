@@ -29,7 +29,6 @@ The worker
 
 Virsh
 =====
-
 Installing virsh on ubuntu is as simple as::
 
     sudo apt-get install python-software-properties libvirt-bin
@@ -37,7 +36,6 @@ Installing virsh on ubuntu is as simple as::
 
 ZFS
 ===
-
 First install zfs::
 
     sudo add-apt-repository --yes ppa:zfs-native/stable
@@ -57,46 +55,29 @@ use sparse file if you don't have any better option::
     sudo modprobe loop
     sudo losetup /dev/loop0 /store/zfs-ci
     # create zfs pool
-    sudo zpool create ci /dev/loop0
+    sudo zpool create all /dev/loop0
     # create dataset for images
-    sudo zfs create ci/images
+    sudo zfs create all/ci
 
 Obtain base ubuntu image
 ========================
-
 Image should be in format qcow2 and contain your public ssh key (ci-key.pub) in
 /root/.ssh/authorized_keys. You may install ubuntu manually using virt-manager,
 or using virsh-install or any other way.
 
-The easiest way to get qcow image with ubuntu is ubuntu-vm-builder::
-
-    sudo apt-get install ubuntu-vm-builder
-    sudo ubuntu-vm-builder kvm trusty \
-     --destdir new-img \
-     --rootsize 16000 \
-     --domain example.net \
-     --user username --name user --pass r00tme \
-     --ssh-key ci-key.pub \
-     --addpkg acpid --addpkg openssh-server --addpkg linux-image-generic \
-     --mirror http://cz.archive.ubuntu.com/ubuntu/ --components main,universe,restricted \
-     --arch amd64 --hostname bare-ubuntu-1404 \
-     --libvirt qemu:///system --bridge virbr0 \
-     --mem 512 --cpus 1
-
 Create new dataset and copy image::
 
-    sudo zfs create ci/images/bare-ubuntu-1404
-    sudo cp new-img/*.qcow2 /ci/images/bare-ubuntu-1404/vda.qcow2
-    sudo zfs snapshot ci/images/bare-ubuntu-1404@1
+    sudo zfs create all/ci/bare-ubuntu-1404
+    sudo cp new-img/*.qcow2 /all/ci/bare-ubuntu-1404/vda.qcow2
+    sudo zfs snapshot all/cibare-ubuntu-1404@1
 
-Now we have snapshot ci/images/bare-ubuntu-1404@1 which will be source for new images.
+Now we have snapshot all/ci/bare-ubuntu-1404@1 which will be source for new images.
 
 RallyCI
 *******
 
 Installation
 ============
-
 You need to install python >= 3.4 and virtualenv::
 
     sudo apt-get -y install python3-virtualenv
@@ -108,7 +89,6 @@ Create virtual env and install rally-ci in it::
 
 Test default configuration
 ==========================
-
 Copy and edit sample configuration::
 
     cp rci/etc/rally-ci/noop.yaml rally-conf.yaml
@@ -127,7 +107,6 @@ You should see a commend from Rally-CI.
 
 Configure access to host machine
 ================================
-
 Open rally-conf.yaml again, and edit nodepool. There is one node in nodes list
 in sample configuration. Edit hostname and path to private key. If you running
 rally-ci on the worker node, you only need to change path to private key.
@@ -144,39 +123,64 @@ Restart sshd, and you will be able to login as root::
     sudo service ssh restart
     ssh root@localhost -i ci-key
 
-Add new job
-===========
+Sample full configuration
+=========================
+Full example may be found in etc/sample-multinode-dsvm.yaml
 
-Add one more runner
--------------------
+Thit sample job deploys devstack on two VMs, boot a VM inside this
+cloud, and tests live migration by running corresponding rally
+scenario.
 
-First of all we need some bash scripts to prepare and run tests::
+This sample is mostly self documented, but some sections needs further
+description::
 
-    TBD
-
-Open rally-conf.yaml and add virsh runner::
 
     - runner:
         name: virsh
-        name: my-virsh-runner
         module: rallyci.runners.virsh
-        nodepool: test
+        nodepool: local
+        scp-root: /store/rally-ci/logs/
         images:
-          u1404-base:
-            dataset: tank/rci
-            source: bare_u1404@2
-            build-scripts: ["prepare_node", "clone_projects"]
-            build-net: "virbr0"
+          dsvm:
+            dataset: all/ci
+            source: bare-ubuntu-1404@1
+            build-scripts: ["init_dsvm", "clone_projects"]
         vms:
-          u1404-base:
-            image: u1404-base
+          dsvm:
+            memory: 3000
+            image: dsvm
             net:
-              bridge: "virbr0"
+              - bridge: virbr0
 
+Images section
+^^^^^^^^^^^^^^
+In this section images are defined. Here we define one image based
+on pre created ubuntu 1404. Two scripts "prepare_node" and
+"clone_projects" will be run and then VM will be shutdowned
+and image snapshot will be created.
 
-Here we got one VM defined with ubuntu image and 2048M of RAM.
+New image will be stored in all/ci/u1404-base@1. This image will
+be base for our test VMs. Image may be deleted by hand at any moment,
+and rally-ci will rebuild it from scratch.
 
-Add script
-----------
+Vms section
+^^^^^^^^^^^
+In this section vms are defined. Here we make one VM called u1404-base
+based on image u1404-base with 2G of RAM and attached to virbr0.
 
-This script shoud check out project source
+When running tests, base image will be cloned, and VM is started. When
+tests finished, image will be destroyed.
+
+Why ZFS?
+========
+The biggest problem in running many VMs on single host is not CPU or RAM,
+it is storage IO performance. Single hard drive can give 300 IOPS,
+which is not enough if we want to run many VMs on one host.
+
+The solution may be SSD or Raid, which is expensive. Or we can just add
+more RAM and use ZFS.
+
+When we create one parent image and make child images by cloning parent,
+all VMs are using the same shared blocks from parent image, and only
+changed blocks are copied. This dramatically reduces IO operations performed
+by host.
