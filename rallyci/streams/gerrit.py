@@ -55,6 +55,10 @@ def human_time(seconds):
     return ' '.join(''.join(str(x) for x in r) for r in result)
 
 
+def get_key(raw_event):
+    return raw_event["change"]["project"] + raw_event["patchSet"]["ref"]
+
+
 class Event:
     def __init__(self, stream, raw_event):
         self.id = utils.get_rnd_name(prefix="", length=10)
@@ -65,9 +69,9 @@ class Event:
         self.jobs = {}
         self.jobs_list = []
         self.cfg = self.root.config.data["project"][self.project_name]
-        for job_name in self.cfg["jobs"]:
+        for job_name in self.cfg.get("jobs", []):
             self.jobs_list.append(Job(self, job_name))
-        for job_name in self.cfg["non-voting-jobs"]:
+        for job_name in self.cfg.get("non-voting-jobs", []):
             job = Job(self, job_name)
             job.voting = False
             self.jobs_list.append(job)
@@ -84,7 +88,10 @@ class Event:
             for future in done:
                 LOG.debug("Finished job %s" % self.jobs[future])
                 del(self.jobs[future])
-        yield from self.publish_results()
+        key = get_key(self.raw_event)
+        self.stream.tasks.remove(key)
+        if not self.stream.cfg.get("silent"):
+            yield from self.publish_results()
 
     def get_project_name(self, raw_event):
         return raw_event["change"]["project"]
@@ -133,6 +140,7 @@ class Class:
         if "port" not in kwargs["ssh"]:
             kwargs["ssh"]["port"] = 29418
         self.ssh = asyncssh.AsyncSSH(cb=self._handle_line, **kwargs["ssh"])
+        self.tasks = set()
 
     def start(self, root):
         self.root = root
@@ -153,13 +161,25 @@ class Class:
         event_type = raw_event["type"]
         if event_type == "patchset-created":
             LOG.debug("Patchset for project %s" % project_name)
-            return Event(self, raw_event)
+            key = get_key(raw_event)
+            if key in self.tasks:
+                LOG.warning("Duplicate change %s" % key)
+            else:
+                LOG.debug("Key %s not found in %s" % (key, self.tasks))
+                self.tasks.add(key)
+                return Event(self, raw_event)
         if event_type == "comment-added":
             r = self.cfg.get("recheck-regexp", "^rally-ci recheck$")
             m = re.search(r, raw_event["comment"], re.MULTILINE)
             if m:
                 LOG.debug("Recheck for project %s" % project_name)
-                return Event(self, raw_event)
+                key = get_key(raw_event)
+                if key in self.tasks:
+                    LOG.debug("Task is running already %s" % key)
+                else:
+                    LOG.debug("Key %s not found in %s" % (key, self.tasks))
+                    self.tasks.add(key)
+                    return Event(self, raw_event)
 
     def _handle_line(self, line):
         try:

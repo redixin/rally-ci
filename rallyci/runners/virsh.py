@@ -261,7 +261,7 @@ class VM:
                 yield from self.h_ssh.run(cmd)
                 yield from self._add_disks(xml, target)
                 mac = utils.get_rnd_mac()
-                xml.add_net(image_conf.get("build-net", "br0"), mac)
+                xml.add_net(image_conf.get("build-net", "virbr0"), mac)
                 ssh = yield from self.boot(xml)
                 image_conf = self.runner_conf["images"][image_name]
                 LOG.debug("building image with image_conf %s" % image_conf)
