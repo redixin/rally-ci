@@ -1,0 +1,4 @@
+prune tests
+recursive-include etc *
+include *.rst
+include rallyci/status/index.html

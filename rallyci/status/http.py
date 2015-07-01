@@ -20,6 +20,8 @@ import json
 import aiohttp
 from aiohttp import web
 
+import pkgutil
+
 LOG = logging.getLogger(__name__)
 
 
@@ -32,10 +34,7 @@ class Class:
     @asyncio.coroutine
     def index(self, request):
         LOG.debug("Index requested: %s" % request)
-        path = os.path.join(os.path.realpath(os.path.dirname(__file__)),
-                            "../../html/")
-        with open(path + "index.html", "r") as f:
-            text = f.read()
+        text = pkgutil.get_data(__name__, "index.html").decode("utf-8")
         return web.Response(text=text, content_type="text/html")
 
     @asyncio.coroutine
