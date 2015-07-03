@@ -26,7 +26,7 @@ class Root:
         self.tasks = {}
         self.loop = loop
         self.streams = []
-        self.status_monitors = []
+        self.services = []
         self.task_start_handlers = []
         self.task_end_handlers = []
         self.job_update_handlers = []
@@ -36,10 +36,10 @@ class Root:
             self.streams.append(stream)
             stream.start(self)
 
-    def start_status_monitors(self):
-        for status in self.config.get_instances("status"):
-            self.status_monitors.append(status)
-            status.start(self)
+    def start_services(self):
+        for service in self.config.get_instances("service"):
+            self.services.append(service)
+            service.start(self)
 
     def stop_services(self, container, wait=False):
         fs = []
@@ -50,9 +50,15 @@ class Root:
 
     def load_config(self, filename):
         self.filename = filename
-        self.config = Config(filename)
+        self.config = Config(self, filename)
+        self.start()
+
+    def start(self):
         self.start_streams()
-        self.start_status_monitors()
+        self.start_services()
+        for prov in self.config.iter_providers():
+            prov.start()
+            self.services.append(prov)
 
     def reload(self):
         try:
@@ -60,10 +66,10 @@ class Root:
         except Exception:
             LOG.exception("Error loading new config")
             return
-        self.config = new_config
         self.stop_services(self.streams)
-        self.stop_services(self.status_monitors)
-        self.start_streams()
+        self.stop_services(self.services)
+        self.config = new_config
+        self.start()
 
     def task_done(self, future):
         task = self.tasks[future]
@@ -91,5 +97,5 @@ class Root:
             LOG.info("Waiting for tasks %r." % tasks)
             yield from asyncio.gather(*tasks, return_exceptions=True)
             LOG.info("All tasks finished.")
-        self.stop_services(self.status_monitors, True)
+        self.stop_services(self.services, True)
         self.loop.stop()

@@ -21,7 +21,8 @@ LOG = logging.getLogger(__name__)
 
 class Config:
 
-    def __init__(self, filename):
+    def __init__(self, root, filename):
+        self.root = root
         self.filename = filename
         self._modules = {}
         self.data = {}
@@ -60,6 +61,10 @@ class Config:
         for config in section.values():
             cls = self._get_module(config["module"]).Class
             yield cls(**config)
+
+    def iter_providers(self):
+        for cfg in self.data.get("provider", {}).values():
+            yield self._get_module(cfg["module"]).Provider(self.root, cfg)
 
     def _get_module(self, name):
         """Get module by name.

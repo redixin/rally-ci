@@ -1,4 +1,5 @@
 ---
+
 - stream:
     name: openstack
     module: rallyci.streams.gerrit
@@ -12,10 +13,15 @@
     comment-job-template: "- {name} http://example.com/{log_path}/ : {success} in {time}"
     recheck-regexp: ^my-ci recheck$
 
-- status:
-    name: main
+- service:
+    name: http_status
     module: rallyci.status.http
     listen: [0.0.0.0, 8080]
+
+- service:
+    name: metadata
+    module: rallyci.services.metadata
+    listen: [169.254.169.254, 8081]
 
 - nodepool:
     name: test

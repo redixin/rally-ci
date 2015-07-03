@@ -6,7 +6,12 @@
     ssh:
       username: CHANGEME
       hostname: review.openstack.org
-      port: 29418
+      key: /home/CHANGEME/ci-key
+    vote: false
+    comment-header: |
+      Build {succeeded} by RallyCI. Use "my-ci recheck" to recheck
+    comment-job-template: "- {name} http://example.com/{log_path}/ : {success} in {time}"
+    recheck-regexp: ^my-ci recheck$
 
 - logger:
     name: main
@@ -58,22 +63,47 @@
       python -m unittest discover tests/unit
 
 - provider:
-    name: lxc_localhost
-    module: rallyci.providers.lxc
+    name: my_virsh
+    module: rallyci.providers.virsh
     nodes:
-      - hostname: localhost
+      - hostame: localhost
         max_vms: 4
+    storage:
+      backend: zfs
+      dataset: tank/ci
+    metadata_server:
+      listen_addr: 169.254.169.254 # default
+      listen_port: 8080 # default. should be redirected here from 80
     images:
-      - name: bare_ubuntu
-        template: ubuntu
-      - name: rally
-        parent: bare_ubuntu
-        build_scripts: ["init_ubuntu_dev", "install_rally"]
+      - name: u1404
+        url: https://cloud-images.ubuntu.com/trusty/current/trusty-server-cloudimg-amd64-disk1.img
+      - name: u1404_dsvm
+        parent: u1404
+        build_scripts: ["init_dsvm"]
+      - name: u1404_rally
+        build_scripts: ["install_rally"]
+    vms:
+      - name: dsvm
+        image: dsvm
+        memory: 3000
+        net: ["virbr0"]
+      - name: mos-1
+        image: mos-1
+        memory: 4096
+        net: ["mos%"]
+      - name: mos-2
+        image: mos-2
+        memory: 4096
+        net: ["mos%"]
+      - name: rally-mos
+        memory: 3000
+        image: u1404_rally
+        net: ["virbr0", "mos%"]
 
 - runner:
     name: ssh
     module: rallyci.runners.ssh
-    provider: lxc_localhost
+    provider: my_virsh
 
 - job:
     name: py27
@@ -82,10 +112,13 @@
       - name: dummy
         export:
           RCI_TOXENV: py27
-    runners:
-      - name: ssh
-        image: rally
-        scripts: ["rally_unit"]
+    runner:
+      name: ssh
+      vms:
+        - name: mos-1
+        - name: mos-2
+        - name: rally-mos
+          scripts: ["rally_unit"]
 
 - project:
     name: openstack/rally
