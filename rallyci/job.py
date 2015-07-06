@@ -49,9 +49,6 @@ class Job:
         self.env = {}
         self.log_path = os.path.join(self.event.id, self.id)
         self.loggers = []
-        for logger in self.root.config.get_instances("logger"):
-            logger.job = self
-            self.loggers.append(logger)
         self.status = "queued"
         LOG.debug("Job %s initialized." % self.id)
 
@@ -89,13 +86,8 @@ class Job:
     @asyncio.coroutine
     def _run(self):
         self.set_status("queued")
-        for env_conf in self.config.get("envs", []):
-            env = self.root.config.get_instance("env", env_conf["name"])
-            env.setup(**env_conf)
-            env.build(self)
-            LOG.debug("New env: %s" % self.env)
-        self.runner = self.root.config.\
-            get_class_with_local("runner", self.config["runner"])
+        # TODO: env
+        self.runner = self.root.config.get_instance(self.config["runner"])
         LOG.debug("Runner initialized %r for job %r" % (self.runner, self))
         try:
             self.error = yield from self.runner.run(self)

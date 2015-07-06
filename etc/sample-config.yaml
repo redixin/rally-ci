@@ -4,28 +4,24 @@
     name: openstack
     module: rallyci.streams.gerrit
     ssh:
-      username: CHANGEME
+      username: redixin
       hostname: review.openstack.org
-      key: /home/CHANGEME/ci-key
     vote: false
+    silent: true
+    fake-stream: tests/test-stream.yaml
     comment-header: |
       Build {succeeded} by RallyCI. Use "my-ci recheck" to recheck
     comment-job-template: "- {name} http://example.com/{log_path}/ : {success} in {time}"
     recheck-regexp: ^my-ci recheck$
 
-- logger:
-    name: main
-    module: rallyci.loggers.logfile
-    path: /home/rally/jobs-logs/
-
-- environment:
+- env: # TODO: move it to stream
     name: event
     module: rallyci.environments.event
     export-event:
       GERRIT_PROJECT: change.project
       GERRIT_REF: patchSet.ref
 
-- environment:
+- env: # embed this
     name: dummy
     module: rallyci.environments.dummy
 
@@ -66,14 +62,14 @@
     name: my_virsh
     module: rallyci.providers.virsh
     nodes:
-      - hostame: localhost
-        max_vms: 4
+      - hostname: localhost
+    max_vms: 4
     storage:
       backend: zfs
       dataset: tank/ci
     metadata_server:
       listen_addr: 169.254.169.254 # default
-      listen_port: 8080 # default. should be redirected here from 80
+      listen_port: 8081 # default. should be redirect from port 80
     images:
       - name: u1404
         url: https://cloud-images.ubuntu.com/trusty/current/trusty-server-cloudimg-amd64-disk1.img
@@ -100,11 +96,6 @@
         image: u1404_rally
         net: ["virbr0", "mos%"]
 
-- runner:
-    name: ssh
-    module: rallyci.runners.ssh
-    provider: my_virsh
-
 - job:
     name: py27
     envs:
@@ -113,7 +104,8 @@
         export:
           RCI_TOXENV: py27
     runner:
-      name: ssh
+      module: rallyci.runners.ssh
+      provider: my_virsh
       vms:
         - name: mos-1
         - name: mos-2
@@ -121,6 +113,6 @@
           scripts: ["rally_unit"]
 
 - project:
-    name: openstack/rally
+    name: openstack-dev/ci-sandbox
     jobs:
       - py27

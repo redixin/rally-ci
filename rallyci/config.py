@@ -43,20 +43,10 @@ class Config:
                 self.data.setdefault(key, [])
                 self.data[key].append(value)
 
-        # TODO: move nodepools to root
-        self.nodepools = {}
-        for name in self.data.get("nodepool", []):
-            self.nodepools[name] = self.get_instance("nodepool", name)
+    def get_instance(self, cfg):
+        return self._get_module(cfg["module"]).Class(cfg)
 
-    def get_class_with_local(self, section, local):
-        cfg = self.data[section][local["name"]]
-        return self._get_module(cfg["module"]).Class(self, cfg, local)
-
-    def get_instance(self, section, name):
-        cfg = self.data[section][name]
-        return self._get_module(cfg["module"]).Class(**cfg)
-
-    def get_instances(self, section):
+    def iter_instances(self, section):
         section = self.data.get(section, {})
         for config in section.values():
             cls = self._get_module(config["module"]).Class

@@ -21,7 +21,6 @@ import logging
 import tempfile
 from xml.etree import ElementTree as et
 
-from rallyci import base
 from rallyci import utils
 from rallyci.common import asyncssh
 
@@ -34,7 +33,7 @@ DYNAMIC_BRIDGES = {}
 DYNAMIC_BRIDGE_LOCK = asyncio.Lock()
 
 
-class Class(base.ClassWithLocal):
+class Class:
 
     @asyncio.coroutine
     def run(self, job):

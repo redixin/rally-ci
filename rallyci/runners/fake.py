@@ -17,12 +17,13 @@ import random
 import time
 import logging
 
-from rallyci import base
-
 LOG = logging.getLogger(__name__)
 
 
-class Class(base.ClassWithLocal, base.GenericRunnerMixin):
+class Class:
+
+    def __init__(self, cfg):
+        self.cfg = cfg
 
     @asyncio.coroutine
     def boot(self):

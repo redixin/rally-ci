@@ -24,7 +24,6 @@ from xml.etree import ElementTree as et
 import aiohttp
 from aiohttp import web
 
-from rallyci import base
 from rallyci import utils
 from rallyci.common import asyncssh
 

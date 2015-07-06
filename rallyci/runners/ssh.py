@@ -14,12 +14,15 @@
 
 import asyncio
 
-
 class Class:
 
     def __init__(self, config):
+        self.config = config
+
+    @asyncio.coroutine
+    def run(self, job):
         pass
 
     @asyncio.coroutine
-    def run(self):
+    def cleanup(self):
         pass

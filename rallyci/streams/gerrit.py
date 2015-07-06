@@ -32,6 +32,7 @@ NAMES = [('s', 's'),
          ('day', 'days')]
 
 """
+
 {
     'type': 'ref-updated',
     'refUpdate': {
@@ -41,6 +42,7 @@ NAMES = [('s', 's'),
         'project': 'stackforge/stackalytics'
     }
 }
+
 """
 
 
@@ -139,13 +141,18 @@ class Class:
         self.name = kwargs["name"]
         if "port" not in kwargs["ssh"]:
             kwargs["ssh"]["port"] = 29418
-        self.ssh = asyncssh.AsyncSSH(cb=self._handle_line, **kwargs["ssh"])
         self.tasks = set()
 
     def start(self, root):
         self.root = root
         self.config = root.config
-        self.future = asyncio.async(self.run(), loop=root.loop)
+        fake_stream = self.cfg.get("fake-stream")
+        if fake_stream:
+            self.future = asyncio.async(self.run_fake(fake_stream),
+                                                      loop=root.loop)
+        else:
+            self.ssh = asyncssh.AsyncSSH(cb=self._handle_line, **kwargs["ssh"])
+            self.future = asyncio.async(self.run(), loop=root.loop)
 
     def stop(self):
         self.future.cancel()
@@ -196,6 +203,18 @@ class Class:
             return
         if event:
             self.root.handle(event)
+
+    @asyncio.coroutine
+    def run_fake(self, path):
+        while 1:
+            with open(path) as stream:
+                for line in stream:
+                    try:
+                        self._handle_line(stream.readline())
+                    except Exception:
+                        LOG.exception("Error handlin string")
+                    finally:
+                        yield from asyncio.sleep(self.cfg.get("fake_stream_delay", 4))
 
     @asyncio.coroutine
     def run(self):

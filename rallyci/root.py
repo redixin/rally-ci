@@ -32,12 +32,12 @@ class Root:
         self.job_update_handlers = []
 
     def start_streams(self):
-        for stream in self.config.get_instances("stream"):
+        for stream in self.config.iter_instances("stream"):
             self.streams.append(stream)
             stream.start(self)
 
     def start_services(self):
-        for service in self.config.get_instances("service"):
+        for service in self.config.iter_instances("service"):
             self.services.append(service)
             service.start(self)
 
