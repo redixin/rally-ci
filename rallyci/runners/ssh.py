@@ -13,6 +13,10 @@
 #    limitations under the License.
 
 import asyncio
+import logging
+
+LOG = logging.getLogger(__name__)
+
 
 class Class:
 
@@ -21,8 +25,13 @@ class Class:
 
     @asyncio.coroutine
     def run(self, job):
-        pass
+        self.prov = job.root.providers[self.config["provider"]]
+        vms = [vm["name"] for vm in self.config["vms"]]
+        self.vms = yield from self.prov.get_vms(vms)
+        for vm in self.vms:
+            LOG.debug(vm)
+        LOG.debug(prov)
 
     @asyncio.coroutine
     def cleanup(self):
-        pass
+        yield from self.prov.cleanup(self.vms)

@@ -17,8 +17,10 @@ import contextlib
 import time
 import os
 import re
+import json
 import logging
 import tempfile
+import uuid
 from xml.etree import ElementTree as et
 
 import aiohttp
@@ -45,12 +47,11 @@ class ZFS:
     @asyncio.coroutine
     def clone(self, src, dst):
         cmd = "zfs clone {dataset}/{src}@1 {dataset}/{dst}"
-        cmd = cmd.format(dataset=self.dataset, src=src,
-                         dst=dst, snapshot=snapshot)
+        cmd = cmd.format(dataset=self.dataset, src=src, dst=dst)
         yield from self.ssh.run(cmd)
 
     @asyncio.coroutine
-    def snapshot(self, name, snapshot="0"):
+    def snapshot(self, name, snapshot="1"):
         cmd = "zfs snapshot {dataset}/{name}@{snapshot}".format(
                 dataset=self.dataset, name=name, snapshot=snapshot)
         yield from self.ssh.run(cmd)
@@ -78,8 +79,11 @@ class ZFS:
     def download(self, name, url):
         # TODO: cache
         yield from self.create(name)
-        cmd = "wget {url} -O /{dataset}/{name}/vda.qcow2".format(name=name,
-                                                                 url=url)
+        cmd = "wget {url} -O /{dataset}/{name}/vda.qcow2"
+        cmd = cmd.format(name=name, dataset=self.dataset, url=url)
+        yield from self.ssh.run(cmd)
+        cmd = "qemu-img resize /{dataset}/{name}/vda.qcow2 32G"
+        cmd = cmd.format(name=name, dataset=self.dataset, url=url)
         yield from self.ssh.run(cmd)
 
     @asyncio.coroutine
@@ -91,55 +95,67 @@ class ZFS:
 
 class Node:
 
-    def __init__(self, ssh_conf, config):
+    def __init__(self, ssh_conf, config, root):
         """
         ssh_config: item from nodes from provider
         config: full "provider" item
         """
         self.config = config
+        self.root = root
         self.vms = []
         self.ssh = asyncssh.AsyncSSH(**ssh_conf)
         self.storage = ZFS(self.ssh, **config["storage"])
 
     @asyncio.coroutine
-    def boot_image(self, conf):
-        vm = VM(memory=conf.get("memory", 1024))
-        for f in self.storage.list_files(conf["name"]):
+    def boot_image(self, name):
+        conf = self.config["images"][name]
+        vm = VM(ssh=self.ssh, memory=conf.get("memory", 1024))
+        for f in (yield from self.storage.list_files(name)):
             vm.add_disk(f)
-        vm.add_net(config.get("build_net", "virbr0"))
-        vm.boot()
+        vm.add_net(self.config.get("build_net", "virbr0"))
+        yield from vm.boot()
         return vm
 
     @asyncio.coroutine
     def build_image(self, name):
+        IMAGE_LOCKS.setdefault(name, asyncio.Lock())
+        with (yield from IMAGE_LOCKS[name]):
+            if (yield from self.storage.exist(name)):
+                LOG.debug("Image %s exist" % name)
+                return
+        LOG.info("Building image %s" % name)
         image_conf = self.config["images"][name]
         parent = image_conf.get("parent")
         if parent:
-            self.build_image(parent)
-            self.storage.clone(parent, name)
+            yield from self.build_image(parent)
+            yield from self.storage.clone(parent, name)
         else:
             url = image_conf.get("url")
             if url:
-                self.storage.download(name, url)
-        vm = self.boot_image(name)
-        for script in image_conf["build_scripts"]:
-            vm.run_script(script)
-        vm.shutdown()
+                yield from self.storage.download(name, url)
+                return # TODO: support build_script for downloaded images
+        build_scripts = image_conf.get("build-scripts")
+        if build_scripts:
+            vm = yield from self.boot_image(name)
+            for script in build_scripts:
+                script = self.root.config.data["script"][script]
+                LOG.debug("Running build script %s" % script)
+                yield from vm.run_script(script)
+            vm.shutdown()
+        else:
+            LOG.debug("No build script for image %s" % name)
         yield from asyncio.sleep(4)
-        self.storage.snapshot(name)
+        yield from self.storage.snapshot(name)
 
     @asyncio.coroutine
     def get_vm(self, name):
-        conf = self.config.vms[name]
-        image = conf["image"]
-        IMAGE_LOCKS.setdefault(image, asyncio.Lock())
-        with IMAGE_LOCKS[image]:
-            if not self.storage.exist(image):
-                yield from self.build_image(image)
+        conf = self.config["vms"][name]
+        yield from self.build_image(conf["image"])
         rnd_name = utils.get_rnd_name(name)
-        self.storage.snapshot(name, rnd_name)
-        vm = VM(memory=conf["memory"])
-        for f in self.storage.list_files(rnd_name):
+        yield from self.storage.snapshot(name, rnd_name)
+        vm = VM(self.ssh, memory=conf["memory"])
+        files = yield from self.storage.list_files(rnd_name)
+        for f in files:
             vm.add_disk(f)
         for net in conf["net"]:
             # TODO: dymanic bridve/vlan
@@ -153,34 +169,63 @@ class Node:
     def del_vm(self, vm):
         vm.shutdown()
         self.vms.remove(vm)
-        self.storage.destroy(vm.storage_name)
+        yield from self.storage.destroy(vm.storage_name)
 
 class MetadataServer:
+    """Metadata server for cloud-init.
 
-    LAYOUT = {
-        "/openstack/": "latest",
-        "/latest/metadata/": "instance-id",
-        #"/openstack/latest/user_data": "#!/bin/sh\necho ok",
-        "/latest/metadata/instance-id": "TODO",
-        "/openstack/latest/meta_data.json": "TODO",
-    }
+    Supported versions:
+    * 2012-08-10
+    """
 
     def __init__(self, loop, config):
         self.loop = loop
         self.config = config
 
+    def get_metadata(self):
+        keys = {}
+        with open(self.config["authorized_keys"]) as kf:
+            for i, line in enumerate(kf.readlines()):
+                if line:
+                    keys["key-" + str(i)] = line
+        return json.dumps({
+                "uuid": str(uuid.uuid4()),
+                "availability_zone": "nova",
+                "hostname": "rally-ci-vm",
+                "launch_index": 0,
+                "meta": {
+                    "priority": "low",
+                    "role": "rally-ci-test-node",
+                },
+                "public_keys": keys,
+                "name": "test"
+        }).encode("utf8")
+
     @asyncio.coroutine
-    def index(self, request):
+    def user_data(self, request):
+        version = request.match_info["version"]
+        if version in ("2012-08-10", "latest"):
+            return web.Response(body=self.config["user_data"])
+        return web.Response(status=404)
+
+    @asyncio.coroutine
+    def meta_data(self, request):
         LOG.debug("Metadata request: %s" % request)
-        text = self.LAYOUT.get(request.path)
-        if text:
-            return web.Response(text=text, content_type="text/plain")
+        version = request.match_info["version"]
+        if version in ("2012-08-10", "latest"):
+            md = self.get_metadata()
+            LOG.debug(md)
+            return web.Response(body=md, content_type="application/json")
         return web.Response(status=404)
 
     @asyncio.coroutine
     def start(self):
         self.app = web.Application(loop=self.loop)
-        self.app.router.add_route("GET", "/{path:.*}", self.index)
+        for route in (
+                ("/openstack/{version:.*}/meta_data.json", self.meta_data),
+                ("/openstack/{version:.*}/user_data", self.user_data),
+        ):
+            self.app.router.add_route("GET", *routes)
         self.handler = self.app.make_handler()
         addr = self.config.get("listen_addr", "169.254.169.254")
         port = self.config.get("listen_port", 8080)
@@ -200,12 +245,19 @@ class Provider:
     def __init__(self, root, config):
         self.root = root
         self.config = config
+        self.name = config["name"]
 
     def start(self):
-        self.nodes = [Node(c, self.config) for c in self.config["nodes"]]
+        self.nodes = [Node(c, self.config, self.root)
+                      for c in self.config["nodes"]]
         self.mds = MetadataServer(self.root.loop,
                                   self.config.get("metadata_server", {}))
         self.mds_future = asyncio.async(self.mds.start())
+
+    @asyncio.coroutine
+    def cleanup(self, vms):
+        LOG.debug(vms)
+        yield from asyncio.sleep(1)
 
     @asyncio.coroutine
     def stop(self):
@@ -221,7 +273,8 @@ class Provider:
                 vms = n_vms
         return node
 
-    def boot_vms(self, vm_names, task):
+    @asyncio.coroutine
+    def get_vms(self, vm_names):
         vms = []
         node = self.get_node()
         for name in vm_names:
@@ -229,8 +282,8 @@ class Provider:
             vms.append(vm)
         return vms
 
-class VM:
 
+class VM:
     def __init__(self, ssh, name=None, memory=1024):
         self._ssh = ssh
         self.macs = []
@@ -263,7 +316,8 @@ class VM:
     @asyncio.coroutine
     def run_script(self, script, env=None, raise_on_error=True, key=None):
         if not hasattr(self, "ip"):
-            self.ip = self.get_ip()
+            self.ip = yield from self.get_ip()
+        yield from asyncio.sleep(30)
         LOG.debug("Running script: %s on node %s" % (script, self))
         cmd = "".join(["%s='%s' " % e for e in env]) if env else ""
         cmd += script["interpreter"]
@@ -289,9 +343,9 @@ class VM:
                 return
 
     @asyncio.coroutine
-    def get_ip(self, macs, timeout=30):
+    def get_ip(self, timeout=30):
         deadline = time.time() + timeout
-        cmd = "egrep -i '%s' /proc/net/arp" % "|".join(macs)
+        cmd = "egrep -i '%s' /proc/net/arp" % "|".join(self.macs)
         while True:
             if time.time() > deadline:
                 return None
@@ -328,7 +382,9 @@ class VM:
         disk.se("source", file=path)
         disk.se("target", dev=dev, bus="virtio")
 
-    def add_net(self, bridge, mac):
+    def add_net(self, bridge, mac=None):
+        if not mac:
+            mac = utils.get_rnd_mac()
         net = self.devices.se("interface", type="bridge")
         net.se("source", bridge=bridge)
         net.se("model", type="virtio")

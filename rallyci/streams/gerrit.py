@@ -215,6 +215,7 @@ class Class:
                         LOG.exception("Error handlin string")
                     finally:
                         yield from asyncio.sleep(self.cfg.get("fake_stream_delay", 4))
+            return
 
     @asyncio.coroutine
     def run(self):

@@ -33,7 +33,7 @@ class AsyncSSH:
     def __init__(self, username=None, hostname=None, key=None, port=22, cb=cb):
         self.cb = cb
         self.key = key
-        self.username = username
+        self.username = username if username else "root"
         self.hostname = hostname
         self.port = str(port)
 

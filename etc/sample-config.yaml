@@ -66,32 +66,44 @@
     max_vms: 4
     storage:
       backend: zfs
-      dataset: tank/ci
+      dataset: all/ci
     metadata_server:
-      listen_addr: 169.254.169.254 # default
-      listen_port: 8081 # default. should be redirect from port 80
+      listen_addr: 127.0.0.1 # 169.254.169.254
+      listen_port: 8081 # 80
+      authorized_keys: /etc/rally-ci/authorized_keys
+      user_data: |
+        #!/bin/sh
+        cat /home/ubuntu/.ssh/authorized_keys > /root/.ssh/authorized_keys
     images:
-      - name: u1404
+      u1404:
         url: https://cloud-images.ubuntu.com/trusty/current/trusty-server-cloudimg-amd64-disk1.img
-      - name: u1404_dsvm
+      u1404_dsvm:
         parent: u1404
-        build_scripts: ["init_dsvm"]
-      - name: u1404_rally
-        build_scripts: ["install_rally"]
+        build-scripts: ["init_dsvm"]
+      u1404_rally:
+        parent: u1404
+        build-scripts: ["install_rally"]
+      mos-1:
+        source: mos1@1
+      mos-2:
+        source: mos2@1
+      mos-3:
+        source: mos3@1
+
     vms:
-      - name: dsvm
+      dsvm:
         image: dsvm
         memory: 3000
         net: ["virbr0"]
-      - name: mos-1
+      mos-1:
         image: mos-1
         memory: 4096
         net: ["mos%"]
-      - name: mos-2
+      mos-2:
         image: mos-2
         memory: 4096
         net: ["mos%"]
-      - name: rally-mos
+      rally-mos:
         memory: 3000
         image: u1404_rally
         net: ["virbr0", "mos%"]
@@ -107,8 +119,8 @@
       module: rallyci.runners.ssh
       provider: my_virsh
       vms:
-        - name: mos-1
-        - name: mos-2
+        - name: rally-mos
+          scripts: ["rally_unit"]
         - name: rally-mos
           scripts: ["rally_unit"]
 

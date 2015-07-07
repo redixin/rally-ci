@@ -25,15 +25,15 @@ class Root:
     def __init__(self, loop):
         self.tasks = {}
         self.loop = loop
-        self.streams = []
         self.services = []
+        self.providers = {}
         self.task_start_handlers = []
         self.task_end_handlers = []
         self.job_update_handlers = []
 
     def start_streams(self):
         for stream in self.config.iter_instances("stream"):
-            self.streams.append(stream)
+            self.services.append(stream)
             stream.start(self)
 
     def start_services(self):
@@ -41,12 +41,14 @@ class Root:
             self.services.append(service)
             service.start(self)
 
-    def stop_services(self, container, wait=False):
+    def stop_services(self, wait=False):
         fs = []
-        for service in container:
+        for service in self.services + list(self.providers.values()):
             fs.append(service.stop())
         if wait and fs:
-            asyncio.wait(*fs, return_when=futures.ALL_COMPLETED)
+            asyncio.wait(fs, return_when=futures.ALL_COMPLETED)
+        self.services = []
+        self.providers = {}
 
     def load_config(self, filename):
         self.filename = filename
@@ -57,8 +59,8 @@ class Root:
         self.start_streams()
         self.start_services()
         for prov in self.config.iter_providers():
+            self.providers[prov.name] = prov
             prov.start()
-            self.services.append(prov)
 
     def reload(self):
         try:
@@ -66,8 +68,7 @@ class Root:
         except Exception:
             LOG.exception("Error loading new config")
             return
-        self.stop_services(self.streams)
-        self.stop_services(self.services)
+        self.stop_services()
         self.config = new_config
         self.start()
 
@@ -91,11 +92,11 @@ class Root:
 
     def stop(self):
         LOG.info("Interrupted.")
-        self.stop_services(self.streams, True)
+        self.stop_services(True)
         tasks = list(self.tasks.keys())
         if tasks:
             LOG.info("Waiting for tasks %r." % tasks)
             yield from asyncio.gather(*tasks, return_exceptions=True)
             LOG.info("All tasks finished.")
-        self.stop_services(self.services, True)
+        self.stop_services(True)
         self.loop.stop()
