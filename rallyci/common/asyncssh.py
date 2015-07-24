@@ -21,21 +21,22 @@ import logging
 LOG = logging.getLogger(__name__)
 
 
-def cb(line):
-    sys.stdout.write(repr(line))
-
-
 class SSHError(Exception):
     pass
 
 
 class AsyncSSH:
-    def __init__(self, username=None, hostname=None, key=None, port=22, cb=cb):
-        self.cb = cb
+
+    def __init__(self, username=None, hostname=None, key=None, port=22, cb=None):
+        if cb:
+            self.cb = cb
         self.key = key
         self.username = username if username else "root"
         self.hostname = hostname
         self.port = str(port)
+
+    def cb(self, line):
+        LOG.debug(repr(line))
 
     @asyncio.coroutine
     def run(self, command, stdin=None, return_output=False,

@@ -22,15 +22,23 @@ class Class:
 
     def __init__(self, config):
         self.config = config
+        self.vms = []
+
+    def cb(self, line):
+        print(line)
 
     @asyncio.coroutine
     def run(self, job):
         self.prov = job.root.providers[self.config["provider"]]
         vms = [vm["name"] for vm in self.config["vms"]]
+        scripts = [vm["scripts"] for vm in self.config.get("vms", [])]
         self.vms = yield from self.prov.get_vms(vms)
-        for vm in self.vms:
-            LOG.debug(vm)
-        LOG.debug(prov)
+        LOG.debug(self.vms)
+        for vm, scripts in zip(self.vms, scripts):
+            for script in scripts:
+                LOG.debug("Running test script %s on vm %s" % (script, vm))
+                s = job.root.config.data["script"][script]
+                yield from vm.run_script(s, cb=self.cb)
 
     @asyncio.coroutine
     def cleanup(self):

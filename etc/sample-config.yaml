@@ -21,7 +21,7 @@
       GERRIT_PROJECT: change.project
       GERRIT_REF: patchSet.ref
 
-- env: # embed this
+- env: # TODO: embed this
     name: dummy
     module: rallyci.environments.dummy
 
@@ -29,6 +29,7 @@
     name: git_checkout
     interpreter: /bin/bash -xe -s
     data: |
+      env
       cd $GERRIT_PROJECT && git checkout master && git pull
       git fetch https://review.openstack.org/$GERRIT_PROJECT $GERRIT_REF
       git checkout FETCH_HEAD && git rebase master || true
@@ -40,15 +41,19 @@
     interpreter: /bin/bash -xe -s
     data: |
       apt-get -y update && apt-get -y upgrade
-      apt-get -y install git
+      apt-get -y install git python-setuptools python-pip
+      apt-get -y remove cloud-init
+      mkdir /etc/skel/.ssh
+      cp /root/.ssh/authorized_keys /etc/skel/.ssh/
+      useradd -m rally
+      echo 'rally ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/rally-42
 
 - script:
     name: install_rally
     interpreter: /bin/bash -xe -s
+    user: rally
     data: |
-      cd rally
-      python setup.py build
-      python setup.py install
+      git clone git://git.openstack.org/openstack/rally.git
 
 - script:
     name: rally_unit
@@ -61,12 +66,12 @@
 - provider:
     name: my_virsh
     module: rallyci.providers.virsh
-    nodes:
+    hosts:
       - hostname: localhost
     max_vms: 4
     storage:
-      backend: zfs
-      dataset: all/ci
+      backend: btrfs
+      path: /ci/rally
     metadata_server:
       listen_addr: 127.0.0.1 # 169.254.169.254
       listen_port: 8081 # 80
@@ -75,56 +80,32 @@
         #!/bin/sh
         cat /home/ubuntu/.ssh/authorized_keys > /root/.ssh/authorized_keys
     images:
-      u1404:
+      bare_u1404:
         url: https://cloud-images.ubuntu.com/trusty/current/trusty-server-cloudimg-amd64-disk1.img
-      u1404_dsvm:
-        parent: u1404
-        build-scripts: ["init_dsvm"]
-      u1404_rally:
-        parent: u1404
-        build-scripts: ["install_rally"]
-      mos-1:
-        source: mos1@1
-      mos-2:
-        source: mos2@1
-      mos-3:
-        source: mos3@1
-
+      dev:
+        parent: bare_u1404
+        build-scripts: ["init_ubuntu_dev", "install_rally"]
     vms:
-      dsvm:
-        image: dsvm
-        memory: 3000
+      dev:
+        image: dev
+        memory: 1024
         net: ["virbr0"]
-      mos-1:
-        image: mos-1
-        memory: 4096
-        net: ["mos%"]
-      mos-2:
-        image: mos-2
-        memory: 4096
-        net: ["mos%"]
-      rally-mos:
-        memory: 3000
-        image: u1404_rally
-        net: ["virbr0", "mos%"]
 
 - job:
-    name: py27
+    name: unit
     envs:
       - name: event
       - name: dummy
         export:
-          RCI_TOXENV: py27
+          RCI_TOX_ENV: py27
     runner:
       module: rallyci.runners.ssh
       provider: my_virsh
       vms:
-        - name: rally-mos
-          scripts: ["rally_unit"]
-        - name: rally-mos
-          scripts: ["rally_unit"]
+        - name: dev
+          scripts: ["git_checkout", "rally_unit"]
 
 - project:
     name: openstack-dev/ci-sandbox
     jobs:
-      - py27
+      - unit

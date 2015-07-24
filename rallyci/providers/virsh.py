@@ -93,23 +93,78 @@ class ZFS:
         yield from self.ssh.run(cmd)
 
 
-class Node:
+class BTRFS:
+
+    def __init__(self, ssh, path, **kwargs):
+        self.ssh = ssh
+        self.path = path
+
+    @asyncio.coroutine
+    def create(self, name):
+        cmd = "btrfs subvolume create {path}/{name}".format(path=self.path,
+                                                            name=name)
+        yield from self.ssh.run(cmd)
+
+    @asyncio.coroutine
+    def list_files(self, name):
+        cmd = "ls {path}/{name}".format(path=self.path, name=name)
+        ls = yield from self.ssh.run(cmd, return_output=True)
+        return [os.path.join("/", self.path, name, f) for f in ls.splitlines()]
+
+    @asyncio.coroutine
+    def clone(self, src, dst):
+        cmd = "btrfs subvolume snapshot {path}/{src} {path}/{dst}"
+        cmd = cmd.format(path=self.path, src=src, dst=dst)
+        yield from self.ssh.run(cmd)
+
+    @asyncio.coroutine
+    def exist(self, name):
+        cmd = "btrfs subvolume show {path}/{name}".format(path=self.path,
+                                                          name=name)
+        error = yield from self.ssh.run(cmd, raise_on_error=False)
+        return not error
+
+    @asyncio.coroutine
+    def snapshot(self, *args, **kwargs):
+        yield from asyncio.sleep(0)
+
+    @asyncio.coroutine
+    def destroy(self, name):
+        cmd = "btrfs subvolume delete {path}/{name}".format(path=self.path,
+                                                            name=name)
+        yield from self.ssh.run(cmd)
+
+    @asyncio.coroutine
+    def download(self, name, url):
+        # TODO: cache
+        yield from self.create(name)
+        cmd = "wget {url} -O /{path}/{name}/vda.qcow2 2> /dev/null"
+        cmd = cmd.format(name=name, path=self.path, url=url)
+        yield from self.ssh.run(cmd)
+        # TODO: size should be set in config
+        cmd = "qemu-img resize /{path}/{name}/vda.qcow2 32G"
+        cmd = cmd.format(name=name, path=self.path, url=url)
+        yield from self.ssh.run(cmd)
+
+
+class Host:
 
     def __init__(self, ssh_conf, config, root):
         """
-        ssh_config: item from nodes from provider
+        ssh_config: item from hosts from provider
         config: full "provider" item
         """
         self.config = config
         self.root = root
         self.vms = []
         self.ssh = asyncssh.AsyncSSH(**ssh_conf)
-        self.storage = ZFS(self.ssh, **config["storage"])
+        self.storage = BTRFS(self.ssh, **config["storage"])
 
     @asyncio.coroutine
     def boot_image(self, name):
         conf = self.config["images"][name]
-        vm = VM(ssh=self.ssh, memory=conf.get("memory", 1024))
+        vm = VM(self, memory=conf.get("memory", 1024))
+        vm.storage_name = name # FIXME
         for f in (yield from self.storage.list_files(name)):
             vm.add_disk(f)
         vm.add_net(self.config.get("build_net", "virbr0"))
@@ -137,14 +192,20 @@ class Node:
         build_scripts = image_conf.get("build-scripts")
         if build_scripts:
             vm = yield from self.boot_image(name)
-            for script in build_scripts:
-                script = self.root.config.data["script"][script]
-                LOG.debug("Running build script %s" % script)
-                yield from vm.run_script(script)
-            vm.shutdown()
+            try:
+                for script in build_scripts:
+                    script = self.root.config.data["script"][script]
+                    LOG.debug("Running build script %s" % script)
+                    yield from vm.run_script(script)
+                yield from vm.shutdown()
+            except:
+                LOG.error("Error building image")
+                yield from vm.destroy()
+                raise
         else:
             LOG.debug("No build script for image %s" % name)
         yield from asyncio.sleep(4)
+        yield from vm.shutdown()
         yield from self.storage.snapshot(name)
 
     @asyncio.coroutine
@@ -152,8 +213,8 @@ class Node:
         conf = self.config["vms"][name]
         yield from self.build_image(conf["image"])
         rnd_name = utils.get_rnd_name(name)
-        yield from self.storage.snapshot(name, rnd_name)
-        vm = VM(self.ssh, memory=conf["memory"])
+        yield from self.storage.clone(name, rnd_name)
+        vm = VM(self, memory=conf["memory"])
         files = yield from self.storage.list_files(rnd_name)
         for f in files:
             vm.add_disk(f)
@@ -165,11 +226,6 @@ class Node:
         vm.storage_name = rnd_name # FIXME
         return vm
 
-    @asyncio.coroutine
-    def del_vm(self, vm):
-        vm.shutdown()
-        self.vms.remove(vm)
-        yield from self.storage.destroy(vm.storage_name)
 
 class MetadataServer:
     """Metadata server for cloud-init.
@@ -195,7 +251,7 @@ class MetadataServer:
                 "launch_index": 0,
                 "meta": {
                     "priority": "low",
-                    "role": "rally-ci-test-node",
+                    "role": "rally-ci-test-vm",
                 },
                 "public_keys": keys,
                 "name": "test"
@@ -205,7 +261,7 @@ class MetadataServer:
     def user_data(self, request):
         version = request.match_info["version"]
         if version in ("2012-08-10", "latest"):
-            return web.Response(body=self.config["user_data"])
+            return web.Response(body=self.config["user_data"].encode("utf-8"))
         return web.Response(status=404)
 
     @asyncio.coroutine
@@ -225,7 +281,7 @@ class MetadataServer:
                 ("/openstack/{version:.*}/meta_data.json", self.meta_data),
                 ("/openstack/{version:.*}/user_data", self.user_data),
         ):
-            self.app.router.add_route("GET", *routes)
+            self.app.router.add_route("GET", *route)
         self.handler = self.app.make_handler()
         addr = self.config.get("listen_addr", "169.254.169.254")
         port = self.config.get("listen_port", 8080)
@@ -248,8 +304,8 @@ class Provider:
         self.name = config["name"]
 
     def start(self):
-        self.nodes = [Node(c, self.config, self.root)
-                      for c in self.config["nodes"]]
+        self.hosts = [Host(c, self.config, self.root)
+                      for c in self.config["hosts"]]
         self.mds = MetadataServer(self.root.loop,
                                   self.config.get("metadata_server", {}))
         self.mds_future = asyncio.async(self.mds.start())
@@ -257,35 +313,38 @@ class Provider:
     @asyncio.coroutine
     def cleanup(self, vms):
         LOG.debug(vms)
+        for vm in vms:
+            yield from vm.destroy()
         yield from asyncio.sleep(1)
 
     @asyncio.coroutine
     def stop(self):
         yield from self.mds_future.cancel()
 
-    def get_node(self):
-        node = self.nodes[0]
-        vms = len(node.vms)
-        for n in self.nodes:
-            n_vms = len(n.vms)
+    def get_host(self):
+        host = self.hosts[0]
+        vms = len(host.vms)
+        for h in self.hosts:
+            n_vms = len(h.vms)
             if n_vms < vms:
-                node = n
+                host = h
                 vms = n_vms
-        return node
+        return host
 
     @asyncio.coroutine
     def get_vms(self, vm_names):
         vms = []
-        node = self.get_node()
+        host = self.get_host()
         for name in vm_names:
-            vm = yield from node.get_vm(name)
+            vm = yield from host.get_vm(name)
             vms.append(vm)
         return vms
 
 
 class VM:
-    def __init__(self, ssh, name=None, memory=1024):
-        self._ssh = ssh
+    def __init__(self, host, name=None, memory=1024):
+        self.host = host
+        self._ssh = host.ssh
         self.macs = []
         if name is None:
             self.name = utils.get_rnd_name()
@@ -314,14 +373,13 @@ class VM:
               slot="0x09", function="0x0")
 
     @asyncio.coroutine
-    def run_script(self, script, env=None, raise_on_error=True, key=None):
-        if not hasattr(self, "ip"):
-            self.ip = yield from self.get_ip()
+    def run_script(self, script, env=None, raise_on_error=True, key=None, cb=None):
+        yield from self.get_ip()
         yield from asyncio.sleep(30)
-        LOG.debug("Running script: %s on node %s" % (script, self))
+        LOG.debug("Running script: %s on vm %s" % (script, self))
         cmd = "".join(["%s='%s' " % e for e in env]) if env else ""
         cmd += script["interpreter"]
-        ssh = asyncssh.AsyncSSH(script.get("user", "root"), self.ip, key=key)
+        ssh = asyncssh.AsyncSSH(script.get("user", "root"), self.ip, key=key, cb=cb)
         status = yield from ssh.run(cmd, stdin=script["data"],
                                     raise_on_error=raise_on_error,
                                     user=script.get("user", "root"))
@@ -329,21 +387,35 @@ class VM:
 
     @asyncio.coroutine
     def shutdown(self, timeout=30):
-        yield from self.ssh.run("shutdown -h now")
+        ssh = yield from self.get_ssh()
+        yield from ssh.run("shutdown -h now")
         deadline = time.time() + timeout
-        cmd = "virsh list | grep -q {}".format(xml.name)
+        cmd = "virsh list | grep -q {}".format(self.name)
         while True:
             yield from asyncio.sleep(4)
             error = yield from self._ssh.run(cmd, raise_on_error=False)
             if error:
                 return
             elif time.time() > timeout:
-                cmd = "virsh destroy {}".format(self.xml.name)
-                yield from self._ssh.run(cmd)
+                yield from self.destroy()
                 return
 
     @asyncio.coroutine
+    def destroy(self):
+        cmd = "virsh destroy {}".format(self.name)
+        yield from self._ssh.run(cmd, raise_on_error=False)
+        yield from self.host.storage.destroy(self.storage_name)
+
+    @asyncio.coroutine
+    def get_ssh(self):
+        yield from self.get_ip()
+        return asyncssh.AsyncSSH("root", self.ip)
+
+    @asyncio.coroutine
     def get_ip(self, timeout=30):
+        if hasattr(self, "ip"):
+            yield from asyncio.sleep(0)
+            return self.ip
         deadline = time.time() + timeout
         cmd = "egrep -i '%s' /proc/net/arp" % "|".join(self.macs)
         while True:
@@ -354,7 +426,7 @@ class VM:
             for line in data.splitlines():
                 m = IP_RE.match(line)
                 if m:
-                    return m.group(1)
+                    self.ip = m.group(1)
 
     @asyncio.coroutine
     def boot(self):

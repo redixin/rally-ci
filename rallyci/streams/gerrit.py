@@ -139,8 +139,6 @@ class Class:
     def __init__(self, **kwargs):
         self.cfg = kwargs
         self.name = kwargs["name"]
-        if "port" not in kwargs["ssh"]:
-            kwargs["ssh"]["port"] = 29418
         self.tasks = set()
 
     def start(self, root):
@@ -151,7 +149,9 @@ class Class:
             self.future = asyncio.async(self.run_fake(fake_stream),
                                                       loop=root.loop)
         else:
-            self.ssh = asyncssh.AsyncSSH(cb=self._handle_line, **kwargs["ssh"])
+            if "port" not in self.cfg["ssh"]:
+                self.cfg["ssh"]["port"] = 29418
+            self.ssh = asyncssh.AsyncSSH(cb=self._handle_line, **self.cfg["ssh"])
             self.future = asyncio.async(self.run(), loop=root.loop)
 
     def stop(self):
