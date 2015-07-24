@@ -71,12 +71,28 @@ class Event:
         self.jobs = {}
         self.jobs_list = []
         self.cfg = self.root.config.data["project"][self.project_name]
+        env = self._get_env()
         for job_name in self.cfg.get("jobs", []):
-            self.jobs_list.append(Job(self, job_name))
+            job = Job(self, job_name)
+            job.env = env.copy()
+            self.jobs_list.append(job)
         for job_name in self.cfg.get("non-voting-jobs", []):
             job = Job(self, job_name)
+            job.env = env.copy()
             job.voting = False
             self.jobs_list.append(job)
+
+    def _get_env(self):
+        env = self.stream.cfg.get("env")
+        r = {}
+        if not env:
+            return {}
+        for k, v in env.items():
+            value = dict(self.raw_event)
+            for key in v.split("."):
+                value = value[key]
+            r[k] = value
+        return r
 
     @asyncio.coroutine
     def run_jobs(self):

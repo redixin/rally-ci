@@ -204,8 +204,7 @@ class Host:
                 raise
         else:
             LOG.debug("No build script for image %s" % name)
-        yield from asyncio.sleep(4)
-        yield from vm.shutdown()
+        yield from asyncio.sleep(2)
         yield from self.storage.snapshot(name)
 
     @asyncio.coroutine
@@ -376,8 +375,8 @@ class VM:
     def run_script(self, script, env=None, raise_on_error=True, key=None, cb=None):
         yield from self.get_ip()
         yield from asyncio.sleep(30)
-        LOG.debug("Running script: %s on vm %s" % (script, self))
-        cmd = "".join(["%s='%s' " % e for e in env]) if env else ""
+        LOG.debug("Running script: %s on vm %s with env %s" % (script, self, env))
+        cmd = "".join(["%s='%s' " % tuple(e) for e in env.items()]) if env else ""
         cmd += script["interpreter"]
         ssh = asyncssh.AsyncSSH(script.get("user", "root"), self.ip, key=key, cb=cb)
         status = yield from ssh.run(cmd, stdin=script["data"],

@@ -38,7 +38,7 @@ class Class:
             for script in scripts:
                 LOG.debug("Running test script %s on vm %s" % (script, vm))
                 s = job.root.config.data["script"][script]
-                yield from vm.run_script(s, cb=self.cb)
+                yield from vm.run_script(s, cb=self.cb, env=job.env)
 
     @asyncio.coroutine
     def cleanup(self):

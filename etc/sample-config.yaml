@@ -13,23 +13,15 @@
       Build {succeeded} by RallyCI. Use "my-ci recheck" to recheck
     comment-job-template: "- {name} http://example.com/{log_path}/ : {success} in {time}"
     recheck-regexp: ^my-ci recheck$
-
-- env: # TODO: move it to stream
-    name: event
-    module: rallyci.environments.event
-    export-event:
+    env:
       GERRIT_PROJECT: change.project
       GERRIT_REF: patchSet.ref
-
-- env: # TODO: embed this
-    name: dummy
-    module: rallyci.environments.dummy
 
 - script:
     name: git_checkout
     interpreter: /bin/bash -xe -s
+    user: rally
     data: |
-      env
       cd $GERRIT_PROJECT && git checkout master && git pull
       git fetch https://review.openstack.org/$GERRIT_PROJECT $GERRIT_REF
       git checkout FETCH_HEAD && git rebase master || true
@@ -41,7 +33,7 @@
     interpreter: /bin/bash -xe -s
     data: |
       apt-get -y update && apt-get -y upgrade
-      apt-get -y install git python-setuptools python-pip
+      apt-get -y install git
       apt-get -y remove cloud-init
       mkdir /etc/skel/.ssh
       cp /root/.ssh/authorized_keys /etc/skel/.ssh/
@@ -49,19 +41,22 @@
       echo 'rally ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/rally-42
 
 - script:
-    name: install_rally
+    name: clone_projects
     interpreter: /bin/bash -xe -s
     user: rally
     data: |
-      git clone git://git.openstack.org/openstack/rally.git
+      mkdir openstack-dev
+      cd openstack-dev
+      git clone git://git.openstack.org/openstack-dev/ci-sandbox.git
 
 - script:
-    name: rally_unit
+    name: run_tests
     interpreter: /bin/bash -xe -s
     user: rally
     data: |
-      cd rally
-      python -m unittest discover tests/unit
+      env && ls && echo "Hello world"
+      cd $GERRIT_PROJECT
+      git status
 
 - provider:
     name: my_virsh
@@ -73,8 +68,8 @@
       backend: btrfs
       path: /ci/rally
     metadata_server:
-      listen_addr: 127.0.0.1 # 169.254.169.254
-      listen_port: 8081 # 80
+      listen_addr: 127.0.0.1
+      listen_port: 8081
       authorized_keys: /etc/rally-ci/authorized_keys
       user_data: |
         #!/bin/sh
@@ -84,7 +79,7 @@
         url: https://cloud-images.ubuntu.com/trusty/current/trusty-server-cloudimg-amd64-disk1.img
       dev:
         parent: bare_u1404
-        build-scripts: ["init_ubuntu_dev", "install_rally"]
+        build-scripts: ["init_ubuntu_dev", "clone_projects"]
     vms:
       dev:
         image: dev
@@ -92,20 +87,22 @@
         net: ["virbr0"]
 
 - job:
-    name: unit
-    envs:
-      - name: event
-      - name: dummy
-        export:
-          RCI_TOX_ENV: py27
+    name: test
+    env:
+      RCI_TOX_ENV: py27 # TODO
     runner:
       module: rallyci.runners.ssh
       provider: my_virsh
       vms:
         - name: dev
-          scripts: ["git_checkout", "rally_unit"]
+          scripts: ["git_checkout", "run_tests"]
 
 - project:
     name: openstack-dev/ci-sandbox
     jobs:
-      - unit
+      - test
+
+- project:
+    name: openstack/rally
+    jobs:
+      - test
