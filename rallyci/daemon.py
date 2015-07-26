@@ -12,7 +12,6 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
-from rallyci import log  # noqa
 from rallyci import root
 
 import asyncio

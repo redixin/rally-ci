@@ -14,13 +14,13 @@
 
 import importlib
 import logging
+import logging.config
 import yaml
 
 LOG = logging.getLogger(__name__)
 
 
 class Config:
-
     def __init__(self, root, filename):
         self.root = root
         self.filename = filename
@@ -28,6 +28,7 @@ class Config:
         self.data = {}
         with open(filename, "rb") as cf:
             self.raw_data = yaml.safe_load(cf)
+
         for item in self.raw_data:
             if len(item.keys()) > 1:
                 raise ValueError("Invalid config entry %s" % item)
@@ -42,6 +43,8 @@ class Config:
             else:
                 self.data.setdefault(key, [])
                 self.data[key].append(value)
+
+        self._configure_logging()
 
     def get_instance(self, cfg):
         return self._get_module(cfg["module"]).Class(cfg)
@@ -66,3 +69,56 @@ class Config:
             module = importlib.import_module(name)
             self._modules[name] = module
         return module
+
+    def _configure_logging(self):
+        LOGGING = {
+            "version": 1,
+            "formatters": {
+                "standard": {
+                    "format": "%(asctime)s %(name)s:"
+                              "%(levelname)s: %(message)s "
+                              "(%(filename)s:%(lineno)d)",
+                    "datefmt": "%Y-%m-%d %H:%M:%S",
+                }
+            },
+            "handlers": {
+                "console": {
+                    "class": "logging.StreamHandler",
+                    "level": "DEBUG",
+                    "formatter": "standard",
+                    "stream": "ext://sys.stdout",
+                },
+            },
+            "loggers": {
+                "": {
+                    "handlers": ["console"],
+                    "level": "DEBUG"
+                }
+            }
+        }
+
+        def _get_handler(key, value):
+            return {
+                "level": key.upper(),
+                "filename": value,
+                "class": "logging.handlers.RotatingFileHandler",
+                "formatter": "standard"
+            }
+
+        default_log = {
+            "debug": _get_handler,
+            "error": _get_handler,
+            "info": _get_handler,
+        }
+
+        if self.data.get("logging"):
+            section = self.data.get("logging")[0]
+            for key in section:
+                if default_log.get(key):
+                    LOGGING["handlers"][key] = default_log[key](key, section[key])
+                    LOGGING["loggers"][""]["handlers"].append(key)
+                else:
+                    raise ValueError("Unknown logging level")
+
+        logging.config.dictConfig(LOGGING)
+        print("LOG SETTINGS COMPLETE")
