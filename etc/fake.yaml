@@ -23,3 +23,13 @@
     name: openstack-dev/ci-sandbox
     jobs:
       - noop
+
+- project:
+    name: openstack/rally
+    jobs:
+      - noop
+
+- logging:
+   debug: /var/log/rally-ci/debug.log
+   info: /var/log/rally-ci/rally-ci.log
+   error: /var/log/rally-ci/error.log
