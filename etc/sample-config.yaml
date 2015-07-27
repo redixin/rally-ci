@@ -4,11 +4,10 @@
     name: openstack
     module: rallyci.streams.gerrit
     ssh:
-      username: redixin
+      username: CHANGEME
       hostname: review.openstack.org
     vote: false
-    silent: true
-    fake-stream: tests/test-stream.yaml
+    silent: false
     comment-header: |
       Build {succeeded} by RallyCI. Use "my-ci recheck" to recheck
     comment-job-template: "- {name} http://example.com/{log_path}/ : {success} in {time}"
@@ -17,23 +16,16 @@
       GERRIT_PROJECT: change.project
       GERRIT_REF: patchSet.ref
 
-- script:
-    name: git_checkout
-    interpreter: /bin/bash -xe -s
-    user: rally
-    data: |
-      cd $GERRIT_PROJECT && git checkout master && git pull
-      git fetch https://review.openstack.org/$GERRIT_PROJECT $GERRIT_REF
-      git checkout FETCH_HEAD && git rebase master || true
-      git clean -fxd -e .tox -e *.egg-info
-      git diff --name-only master
+- service:
+    name: status
+    module: rallyci.services.status
+    listen: ["localhost", "8080"]
 
 - script:
     name: init_ubuntu_dev
     interpreter: /bin/bash -xe -s
     data: |
-      apt-get -y update && apt-get -y upgrade
-      apt-get -y install git
+      apt-get -y update && apt-get -y upgrade && apt-get -y install git
       apt-get -y remove cloud-init
       mkdir /etc/skel/.ssh
       cp /root/.ssh/authorized_keys /etc/skel/.ssh/
@@ -48,6 +40,17 @@
       mkdir openstack-dev
       cd openstack-dev
       git clone git://git.openstack.org/openstack-dev/ci-sandbox.git
+
+- script:
+    name: git_checkout
+    interpreter: /bin/bash -xe -s
+    user: rally
+    data: |
+      cd $GERRIT_PROJECT && git checkout master && git pull
+      git fetch https://review.openstack.org/$GERRIT_PROJECT $GERRIT_REF
+      git checkout FETCH_HEAD && git rebase master || true
+      git clean -fxd -e .tox -e *.egg-info
+      git diff --name-only master
 
 - script:
     name: run_tests
@@ -99,10 +102,5 @@
 
 - project:
     name: openstack-dev/ci-sandbox
-    jobs:
-      - test
-
-- project:
-    name: openstack/rally
     jobs:
       - test

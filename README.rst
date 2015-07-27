@@ -1,392 +1,188 @@
-Installing and Usage
-####################
+How to run third party CI on single node
+########################################
 
-The simplest way to install rally-ci is pull docker image.
+Prerequesites
+*************
+You need at least one node with any modern GNU/Linux distribution with btrfs or zfs
+and virsh installed. All shell commands listed below are known to work for Ubuntu.
 
-First you need to install docker. Installing docker in ubuntu may be done by following::
+SSH key
+*******
+Third party CI can be tested using you main gerrit account. There is a project
+openstack-dev/ci-sandbox for testing purpose. Any active gerrit account can
+upload patches, approve, vote and so on. You may want to generate separate ssh
+key for rally-ci::
 
-    $ sudo apt-get update
-    $ sudo apt-get install docker.io
-    $ sudo usermod -a -G docker `id -u -n` # add yourself to docker group
+    ssh-keygen -N '' -f ci-key -t rsa
+    cat ci-key.pub
 
-NOTE: re login is required to apply users groups changes and actually use docker.
+You need to paste this public key in gerrit settings page (add key in
+https://review.openstack.org/#/settings/ssh-keys )
 
-Pull docker image::
+NOTE: Keep private key (ci-key) in safe. Do not publish this file. This file
+should not be readable by users other then system users used to run rally-ci.
+Do not forget to delete this key from gerrit settings when it is not needed
+anymore.
 
-    $ docker pull rallyforge/rally-ci
+The worker
+**********
 
-Or you may want to build rally-ci image from source::
+Install prerequisites
+=====================
+Installing virsh and btrfs on ubuntu is as simple as::
 
-    $ cd ~/sources/rally-ci # cd to rally-ci sources on your system
-    $ docker build -t myrally .
+    sudo apt-get install libvirt-bin qemu-kvm btrfs-tools
+    sudo virsh net-start default
 
-Create volume-directory::
+BTRFS parttition
+================
+Skip this step if you already have btfs.
 
-    $ mkdir ~/rally-ci-volume
+It is recommended to use separate disk, or at least disk partition or lvm volume. It is also possible to
+use sparse file if you don't have any better option::
 
-This directory will be used to store configuration and logs.
+    # create sparse file
+    sudo truncate /store/btrfs-file --size 64G
+    # craate pesudo block device
+    sudo modprobe loop
+    sudo losetup /dev/loop0 /store/btrfs-file
+    # create btrfs filesystem
+    sudo mkfs.btrfs /dev/loop0
+    # mount filesystem
+    sudo mount /dev/loop0 /ci
 
-Run in simulation mode
-**********************
+Create subvolume for Rally-CI
+=============================
 
-::
+    sudo btrfs subvolume create /ci/rally
 
-    $ cd ~/rally-ci-volume
-    $ ln -s /etc/rally-ci/simulation-config.yaml config.yaml
-    $ docker run -p 10022:22 -p 10080:80 -v $HOME/rally-ci-volume:/home/rally rallyforge/rally-ci
+RallyCI
+*******
 
-Now you can point your browser to http://localhost:10080/ and see a real time status of the service.
-
-Run in production mode
-**********************
-
-You should create a ssh key and upload it to gerrit (https://review.openstack.org/)::
-
-    $ cd ~/rally-ci-volume
-    $ mkdir ~/.ssh
-    $ ssh-keygen -f .ssh/id_rsa # create ssh keypair
-    $ vi config.yaml # create configuration file
-    $ sudo chown -R 65510 .
-    $ sudo chmod -R g+w .
-    $ cat .ssh/id_rsa.pub # copy and paste this key to gerrit
-
-And run container::
- 
-    $ docker run -p 10022:22 -p 10080:80 -v $HOME/rally-ci-volume:/home/rally rallyforge/rally-ci
-
-All logs may be found in ~/rally-ci-volume/. You may want to see the rally-ci logs in real time::
-
-    $ tail -f ~/rally-ci-volume/rally-ci.err.log
-
-The rally-ci service will listen tcp ports:
-
-* 10022 ssh service (for emergency situations)
-* 10080 web service (jobs logs and realtime status of the service)
-
-You may expose web and ssh ports to any numbers. Just use "-p 8080:80" to expose web to
-port 8080 instead of 10080.
-
-Configuration file
-##################
-
-Structure of configuration file
-*******************************
-
-Configuration file is yaml object (dictionary). Each key of this object
-represents name of section. Value of this object represents configuraion
-of this section.
-
-Nearly all objects contain "module" key. The value of this key is plugin
-to be used to do all work.
-
-Stream section
-**************
-
-Stream is plugin to be used for collecting events.
-
-Available stream plugins
+Access to worker node(s)
 ========================
+Main node should have root access to worker node(s) by ssh key. Use ssh-copy-id
+to copy your ssh key to remote host::
 
-rallyci.streams.gerrit
-----------------------
+    ssh-copy-id root@host.example.com
 
-Standard stream for receiving gerrit events.
+Installation
+============
+You need to install python >= 3.4 and virtualenv::
 
-Sample config::
+    sudo apt-get -y install python3-virtualenv
 
-    stream:
-        module: rallyci.streams.gerrit
-        username: joe
-        hostname: review.openstack.org
-        port: 29418
+Create virtual env and install rally-ci in it::
 
-rallyci.streams.fake
---------------------
+    virtualenv -p /usr/bin/python3 rci
+    rci/bin/pip3 install rally-ci
 
-Used for testing. Will read events from file line by line.
+Configure HTTP Server
+=====================
+Separate http server is needed to serve log files and proxy metadata requests.
 
-Sample config::
+Setup nginx::
 
-    stream:
-        module: rallyci.streams.fake
-        path: /path/to/json/file/with/events.json
+    sudo apt-get install nginx
+    sudo cp rci/etc/rally-ci/nginx.conf /etc/nginx/sites-enabled/ci.conf
+    # Edit nginx configuration file. You may want to change only path to logs
+    sudo vim /etc/nginx/sites-enabled/ci.conf
+    sudo service nginx reload
 
+Test default configuration
+==========================
+Copy and edit sample configuration::
 
-Loggers section
-***************
+    cp rci/etc/rally-ci/noop.yaml rally-conf.yaml
+    vim rally-conf.yaml
 
-Loggers are used to log scripts output.
+At this point you only need to change username and path to private key. Use your gerrit
+username (username at https://review.openstack.org/#/settings/ )
 
-Available loggers
-=================
+Save file and run rally-ci::
 
-rallyci.loggers.file
---------------------
+    rci/bin/rally-ci rally-conf.yaml
 
-Logs scripts output to local files.
+Now you can go in https://review.openstack.org/#/q/status:open+project:openstack-dev/ci-sandbox,n,z
+and write a comment `my-ci recheck` for any patchset. Wait few seconds and reload the page.
+You should see a commend from Rally-CI.
 
-Sample config::
+Configure access to host machine
+================================
+Open rally-conf.yaml again, and edit nodepool. There is one node in nodes list
+in sample configuration. Edit hostname and path to private key. If you running
+rally-ci on the worker node, you only need to change path to private key.
+Obviously you should be able to ssh to localhost with this private key.
+If you want to use ci-key for this, you may do the following::
 
-    loggers:
-      file:
-        module: rallyci.loggers.logfile
-        path: /store/log/rally-ci/
+    sudo cat ci-key.pub >> /root/.ssh/authorized_keys
 
+NOTE: root ssh access is usually disabled by default. To enable it, please edit
+/etc/ssh/sshd_config and insert (or uncomment) line `PermitRootLogin without-password`. 
 
-Environments section
-********************
+Restart sshd, and you will be able to login as root::
 
-Each environment performs some actions and export environment variables.
+    sudo service ssh restart
+    ssh root@localhost -i ci-key
 
-Available environments
-======================
+Sample full configuration
+=========================
+Full example may be found in etc/sample-multinode-dsvm.yaml
 
-rallyci.environments.event
---------------------------
+Thit sample job deploys devstack on two VMs, boot a VM inside this
+cloud, and tests live migration by running corresponding rally
+scenario.
 
-This environment is used to export gerrit event variables to script's env.
-
-Sample config::
-
-    module: rallyci.environments.event
-    export-event:
-      GERRIT_PROJECT: change.project
-      GERRIT_REF: patchSet.ref
-
-rallyci.environments.dummy
---------------------------
-
-Simple environment to export any static variables. Does not have any configuration at this level.
-All configuration is done in "jobs" section (see full config example).
-
-Sample config::
-
-      dummy:
-        module: rallyci.environments.dummy
+This sample is mostly self documented, but some sections needs further
+description::
 
 
-Nodepools section
-*****************
-
-Nodepools are used to manage worker nodes.
-
-Available nodepools
-===================
-
-rallyci.nodepools.fair
-----------------------
-
-Return node with less running jobs.
-
-Sample configuraion::
-
-    nodepools:
-      localdocker:
-        module: rallyci.nodepools.fair
-        tasks_per_node: 2
-        nodes:
-          - hostname: worker1.net
-            username: rally
-            port: 33
-          - hostname: worker1.net
-            username: admin
-            key: /home/rally/.ssh/superkey
-
-The config above has two nodes in pool. First node has non standard ssh port.
-
-
-Runners section
-***************
-
-Runners are used to run scripts on VM's or containers created on nodes from nodepools.
-Containers or VM's are created by runner according to runner's configuration.
-
-Available runners
-=================
-
-rallyci.runners.docker
-----------------------
-
-Run jobs in docker containers. Build images from dockerfiles hardcoded in config::
-
-    runners:
-      localdocker:
-        nodepool: localdocker
-        module: rallyci.runners.docker
+    - runner:
+        name: virsh
+        module: rallyci.runners.virsh
+        nodepool: local
+        scp-root: /store/rally-ci/logs/
         images:
-          ubuntu-dev: |
-            FROM ubuntu:14.04
-            MAINTAINER Sergey Skripnick <sskripnick@mirantis.com>
-            RUN apt-get update && apt-get install python2.7-dev
-            RUN useradd -u 65510 -m rally
-            USER rally
-            WORKDIR /home/rally
-            RUN mkdir openstack && cd openstack && \
-                git clone git://git.openstack.org/openstack/rally.git
+          dsvm:
+            dataset: all/ci
+            source: bare-ubuntu-1404@1
+            build-scripts: ["init_dsvm", "clone_projects"]
+        vms:
+          dsvm:
+            memory: 3000
+            image: dsvm
+            net:
+              - bridge: virbr0
 
+Images section
+^^^^^^^^^^^^^^
+In this section images are defined. Here we define one image based
+on pre created ubuntu 1404. Two scripts "prepare_node" and
+"clone_projects" will be run and then VM will be shutdowned
+and image snapshot will be created.
 
-rallyci.runners.fake
---------------------
+New image will be stored in all/ci/u1404-base@1. This image will
+be base for our test VMs. Image may be deleted by hand at any moment,
+and rally-ci will rebuild it from scratch.
 
-Used for testing. Does nothing but sleeping random delays. Always returns success.
+Vms section
+^^^^^^^^^^^
+In this section vms are defined. Here we make one VM called u1404-base
+based on image u1404-base with 2G of RAM and attached to virbr0.
 
-rallyci.runners.lxc
--------------------
+When running tests, base image will be cloned, and VM is started. When
+tests finished, image will be destroyed.
 
-Work in progress.
+Why ZFS?
+========
+The biggest problem in running many VMs on single host is not CPU or RAM,
+it is storage IO performance. Single hard drive can give 300 IOPS,
+which is not enough if we want to run many VMs on one host.
 
-rallyci.runners.virsh
----------------------
+The solution may be SSD or Raid, which is expensive. Or we can just add
+more RAM and use ZFS.
 
-Work in progress.
-
-Scripts section
-***************
-
-Scripts may be used for running tests and building images.
-
-Sample scripts section::
-
-    scripts:
-      git_checkout:
-        interpreter: /bin/bash -xe -s
-        data: |
-          cd $GERRIT_PROJECT && git checkout master && git pull
-          git fetch https://review.openstack.org/$GERRIT_PROJECT $GERRIT_REF
-          git checkout FETCH_HEAD && git rebase master
-      run_tox:
-        interpreter: /bin/bash -xe -s
-        data: |
-          tox -epy27
-
-
-Jobs section
-************
-
-Jobs definitions. Key is the name of job, value is configuration.
-
-Configuration consist of following sections:
-
-* envs
-* runner
-
-Sample jobs section::
-
-    jobs:
-      py27:
-        envs:
-          - name: event
-          - name: dummy
-            export:
-              RCI_TOXENV: py27
-        runner:
-          name: localdocker
-          image: ubuntu-dev
-          scripts:
-            - git_checkout
-            - run_tox
-
-
-Projects section
-****************
-
-This sections descibes which jobs run for which projects::
-
-    projects:
-      "openstack/nova":
-        jobs:
-          - pep8
-          - py27
-      "openstack/designate"
-        jobs:
-          - py34
-          - rally
-
-Full working sample may be found in source code tree in file etc/sample-config.yaml.
-
-Example full configuration::
-
-    ---
-    stream:
-        module: rallyci.streams.gerrit
-        username: CHANGEME
-        hostname: review.openstack.org
-        port: 29418
-
-    loggers:
-      file:
-        module: rallyci.loggers.logfile
-        path: /home/rally/ci-logs/
-
-    environments:
-      event:
-        module: rallyci.environments.event
-        export-event:
-          GERRIT_PROJECT: change.project
-          GERRIT_REF: patchSet.ref
-      dummy:
-        module: rallyci.environments.dummy
-
-    nodepools:
-      localdocker:
-        module: rallyci.nodepools.fair
-        tasks_per_node: 2
-        nodes:
-          - hostname: localhost
-
-    runners:
-      localdocker:
-        nodepool: localdocker
-        module: rallyci.runners.docker
-        images:
-          ubuntu-dev: |
-            FROM ubuntu:14.04
-            MAINTAINER Sergey Skripnick <sskripnick@mirantis.com>
-            RUN apt-get update
-            RUN apt-get -y install git python2.7 bash-completion python-dev libffi-dev \
-            libxml2-dev libxslt1-dev libssl-dev libpq-dev
-            RUN apt-get -y install python-pip
-            RUN pip install tox==1.6
-            RUN useradd -u 65510 -m rally
-            USER rally
-            WORKDIR /home/rally
-            RUN git config --global user.email "rally-ci@mirantis.com" && \
-                git config --global user.name "Mirantis Rally CI"
-            RUN mkdir openstack && cd openstack && \
-                git clone git://git.openstack.org/openstack/rally.git
-
-    scripts:
-      git_checkout:
-        interpreter: /bin/bash -xe -s
-        data: |
-          env
-          cd $GERRIT_PROJECT && git checkout master && git pull
-          git fetch https://review.openstack.org/$GERRIT_PROJECT $GERRIT_REF
-          git checkout FETCH_HEAD && git rebase master || true
-          git clean -fxd -e .tox -e *.egg-info
-          git diff --name-only master
-      tox:
-        interpreter: /bin/bash -xe -s
-        data:
-          cd $GERRIT_PROJECT && tox -e$RCI_TOXENV
-
-    jobs:
-      py27:
-        envs:
-          - name: event
-          - name: dummy
-            export:
-              RCI_TOXENV: py27
-        runner:
-          name: localdocker
-          image: ubuntu-dev
-          scripts:
-            - git_checkout
-            - tox
-
-    projects:
-      "openstack/rally":
-        jobs:
-         - py27
-
-The configuration above will run tox -epy27 on each patch in openstack/rally.
+When we create one parent image and make child images by cloning parent,
+all VMs are using the same shared blocks from parent image, and only
+changed blocks are copied. This dramatically reduces IO operations performed
+by host.

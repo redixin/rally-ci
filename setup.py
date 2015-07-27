@@ -5,7 +5,8 @@ setup(
     version="0.1.1a1",
     data_files=[
         ("etc/rally-ci/", ["etc/sample-config.yaml",
-                           "etc/noop.yaml"]),
+                           "etc/noop.yaml",
+                           "etc/nginx.conf"]),
     ],
     packages=find_packages(),
     include_package_data=True,
