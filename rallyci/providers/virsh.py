@@ -426,6 +426,9 @@ class VM:
                 m = IP_RE.match(line)
                 if m:
                     self.ip = m.group(1)
+                    # TODO: wait_for_ssh
+                    yield from asyncio.sleep(4)
+                    return
 
     @asyncio.coroutine
     def boot(self):

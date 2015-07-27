@@ -46,7 +46,7 @@ class Job:
         self.config = event.root.config.data["job"][name]
         self.id = utils.get_rnd_name(prefix="", length=10)
         self.stream_number = 0
-        self.env = {}
+        self.env = self.config.get("env", {}).copy()
         self.log_path = os.path.join(self.event.id, self.id)
         self.loggers = []
         self.status = "queued"

@@ -7,7 +7,8 @@
       username: CHANGEME
       hostname: review.openstack.org
     vote: false
-    silent: false
+    silent: true
+    fake-stream: tests/test-stream.yaml
     comment-header: |
       Build {succeeded} by RallyCI. Use "my-ci recheck" to recheck
     comment-job-template: "- {name} http://example.com/{log_path}/ : {success} in {time}"

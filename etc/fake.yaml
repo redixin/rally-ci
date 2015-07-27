@@ -8,10 +8,12 @@
 - service:
     name: http_status
     module: rallyci.services.status
-    listen: [0.0.0.0, 8080]
+    listen: ["localhost", 8080]
 
 - job:
     name: noop
+    env:
+      key: val
     runner:
       module: rallyci.runners.fake
       sleep-run: [1, 2]

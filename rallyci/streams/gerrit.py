@@ -74,11 +74,11 @@ class Event:
         env = self._get_env()
         for job_name in self.cfg.get("jobs", []):
             job = Job(self, job_name)
-            job.env = env.copy()
+            job.env.update(env)
             self.jobs_list.append(job)
         for job_name in self.cfg.get("non-voting-jobs", []):
             job = Job(self, job_name)
-            job.env = env.copy()
+            job.env.update(env)
             job.voting = False
             self.jobs_list.append(job)
 
