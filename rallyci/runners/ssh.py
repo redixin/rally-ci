@@ -30,10 +30,8 @@ class Class:
     @asyncio.coroutine
     def run(self, job):
         self.prov = job.root.providers[self.config["provider"]]
-        vms = [vm["name"] for vm in self.config["vms"]]
         scripts = [vm["scripts"] for vm in self.config.get("vms", [])]
-        self.vms = yield from self.prov.get_vms(vms)
-        LOG.debug(self.vms)
+        self.vms = yield from self.prov.get_vms(self.config["vms"])
         for vm, scripts in zip(self.vms, scripts):
             for script in scripts:
                 LOG.debug("Running test script %s on vm %s" % (script, vm))

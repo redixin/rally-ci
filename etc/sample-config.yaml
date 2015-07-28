@@ -87,7 +87,7 @@
     vms:
       dev:
         image: dev
-        memory: 1024
+        memory: 512
         net: ["virbr0"]
 
 - job:
@@ -100,6 +100,10 @@
       vms:
         - name: dev
           scripts: ["git_checkout", "run_tests"]
+          add-bridge: ["tmpbr%"]
+        - name: dev
+          scripts: ["git_checkout", "run_tests"]
+          add-bridge: ["tmpbr%"]
 
 - project:
     name: openstack-dev/ci-sandbox

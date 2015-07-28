@@ -208,7 +208,8 @@ class Host:
         yield from self.storage.snapshot(name)
 
     @asyncio.coroutine
-    def get_vm(self, name):
+    def get_vm(self, vm_conf):
+        name = vm_conf["name"]
         conf = self.config["vms"][name]
         yield from self.build_image(conf["image"])
         rnd_name = utils.get_rnd_name(name)
@@ -224,6 +225,30 @@ class Host:
         self.vms.append(vm)
         vm.storage_name = rnd_name # FIXME
         return vm
+
+    @asyncio.coroutine
+    def _get_dynamic_bridge(self, prefix):
+        if not hasattr(self.job, "virsh_dynamic_bridges"):
+            self.job.virsh_dynamic_bridges = {}
+        br = self.job.virsh_dynamic_bridges.get(prefix)
+        if not br:
+            with (yield from DYNAMIC_BRIDGE_LOCK):
+                data = yield from self.h_ssh.run("ip link list",
+                                                 return_output=True)
+                nums = set()
+                for line in data.splitlines():
+                    m = IFACE_RE.match(line)
+                    if m:
+                        if m.group(1) == prefix:
+                            nums.add(int(m.group(2)))
+                for i in range(len(nums) + 1):
+                    if i not in nums:
+                        br = "%s%d" % (prefix, i)
+                        break
+                yield from self.h_ssh.run("ip link add %s type bridge" % br)
+                yield from self.h_ssh.run("ip link set %s up" % br)
+        self.job.virsh_dynamic_bridges[prefix] = br
+        return br
 
 
 class MetadataServer:
@@ -331,11 +356,11 @@ class Provider:
         return host
 
     @asyncio.coroutine
-    def get_vms(self, vm_names):
+    def get_vms(self, vm_confs):
         vms = []
         host = self.get_host()
-        for name in vm_names:
-            vm = yield from host.get_vm(name)
+        for vm_conf in vm_confs:
+            vm = yield from host.get_vm(vm_conf)
             vms.append(vm)
         return vms
 
