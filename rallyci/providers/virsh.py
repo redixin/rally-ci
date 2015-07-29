@@ -55,7 +55,7 @@ class ZFS:
         cmd = "zfs snapshot {dataset}/{name}@{snapshot}".format(
                 dataset=self.dataset, name=name, snapshot=snapshot)
         yield from self.ssh.run(cmd)
-    
+
     @asyncio.coroutine
     def create(self, name):
         cmd = "zfs create {dataset}/{name}".format(dataset=self.dataset,
@@ -157,13 +157,14 @@ class Host:
         self.config = config
         self.root = root
         self.vms = []
+        self.br_vm = {}
         self.ssh = asyncssh.AsyncSSH(**ssh_conf)
         self.storage = BTRFS(self.ssh, **config["storage"])
 
     @asyncio.coroutine
     def boot_image(self, name):
         conf = self.config["images"][name]
-        vm = VM(self, memory=conf.get("memory", 1024))
+        vm = VM(self, conf)
         vm.storage_name = name # FIXME
         for f in (yield from self.storage.list_files(name)):
             vm.add_disk(f)
@@ -208,47 +209,272 @@ class Host:
         yield from self.storage.snapshot(name)
 
     @asyncio.coroutine
-    def get_vm(self, vm_conf):
-        name = vm_conf["name"]
-        conf = self.config["vms"][name]
+    def _get_vm(self, name, conf):
+        """
+        :param conf: config.provider.vms item
+        """
+        LOG.debug("Creating VM with conf %s" % conf)
         yield from self.build_image(conf["image"])
         rnd_name = utils.get_rnd_name(name)
         yield from self.storage.clone(name, rnd_name)
-        vm = VM(self, memory=conf["memory"])
+        vm = VM(self, conf)
         files = yield from self.storage.list_files(rnd_name)
         for f in files:
             vm.add_disk(f)
         for net in conf["net"]:
-            # TODO: dymanic bridve/vlan
-            vm.add_net(net)
+            net = net.split(" ")
+            if len(net) == 1:
+                vm.add_net(net[0])
+            else:
+                vm.add_net(net[0], mac=net[1])
         yield from vm.boot()
         self.vms.append(vm)
         vm.storage_name = rnd_name # FIXME
         return vm
 
     @asyncio.coroutine
-    def _get_dynamic_bridge(self, prefix):
-        if not hasattr(self.job, "virsh_dynamic_bridges"):
-            self.job.virsh_dynamic_bridges = {}
-        br = self.job.virsh_dynamic_bridges.get(prefix)
-        if not br:
-            with (yield from DYNAMIC_BRIDGE_LOCK):
-                data = yield from self.h_ssh.run("ip link list",
-                                                 return_output=True)
-                nums = set()
-                for line in data.splitlines():
-                    m = IFACE_RE.match(line)
-                    if m:
-                        if m.group(1) == prefix:
-                            nums.add(int(m.group(2)))
-                for i in range(len(nums) + 1):
-                    if i not in nums:
-                        br = "%s%d" % (prefix, i)
-                        break
-                yield from self.h_ssh.run("ip link add %s type bridge" % br)
-                yield from self.h_ssh.run("ip link set %s up" % br)
-        self.job.virsh_dynamic_bridges[prefix] = br
+    def get_vms(self, vm_confs):
+        """Return VMs for runner.
+
+        :param vm_confs: config.job.runner.vms items
+        """
+        vms = []
+        ifs = {}
+        for vm_conf in vm_confs:
+            conf = self.config["vms"][vm_conf["name"]]
+            br = None
+            net_conf = []
+            for net in conf["net"]:
+                ifname = net.split(" ")
+                if ifname[0].endswith("%"):
+                    if ifname[0] in ifs:
+                        br = ifname[0] = ifs[ifname[0]]
+                    else:
+                        br = yield from self._get_bridge(ifname[0][:-1])
+                        ifs[ifname[0]] = br
+                        ifname[0] = br
+                net_conf.append(" ".join(ifname))
+            conf["net"] = net_conf
+            vm = yield from self._get_vm(vm_conf["name"], conf)
+            self.br_vm.setdefault(br, [])
+            self.br_vm[br].append(vm)
+            vms.append(vm)
+        return vms
+
+    @asyncio.coroutine
+    def _get_bridge(self, prefix):
+        with (yield from DYNAMIC_BRIDGE_LOCK):
+            for br, vms in self.br_vm.items():
+                if not vms:
+                    yield from self.ssh.run("ip link del %s" % br)
+                    del self.br_vm[br]
+            data = yield from self.ssh.run("ip link list", return_output=True)
+            nums = set()
+            for line in data.splitlines():
+                m = IFACE_RE.match(line)
+                if m:
+                    if m.group(1) == prefix:
+                        nums.add(int(m.group(2)))
+            for i in range(len(nums) + 1):
+                if i not in nums:
+                    br = "%s%d" % (prefix, i)
+                    break
+            yield from self.ssh.run("ip link add %s type bridge" % br)
+            yield from self.ssh.run("ip link set %s up" % br)
         return br
+
+
+class Provider:
+
+    def __init__(self, root, config):
+        self.root = root
+        self.config = config
+        self.name = config["name"]
+        self.ifs = {}
+
+    def start(self):
+        self.hosts = [Host(c, self.config, self.root)
+                      for c in self.config["hosts"]]
+        self.mds = MetadataServer(self.root.loop,
+                                  self.config.get("metadata_server", {}))
+        self.mds_future = asyncio.async(self.mds.start())
+
+    @asyncio.coroutine
+    def cleanup(self, vms):
+        LOG.debug("Starting cleanup %s" % vms)
+        for vm in vms:
+            LOG.debug("Cleaning %s" % vm)
+            yield from vm.destroy()
+        yield from asyncio.sleep(1)
+        LOG.debug("Cleanup completed")
+
+    @asyncio.coroutine
+    def stop(self):
+        yield from self.mds_future.cancel()
+
+    def get_vms(self, vm_confs):
+        host = self.hosts[0]
+        vms = len(host.vms)
+        for h in self.hosts:
+            n_vms = len(h.vms)
+            if n_vms < vms:
+                host = h
+                vms = n_vms
+        return host.get_vms(vm_confs)
+
+
+class VM:
+    def __init__(self, host, cfg=None):
+        """Represent a VM.
+
+        :param host: Host instance
+        :param cfg: config.provider.vms item
+
+        """
+        self.host = host
+        self.cfg = cfg or {}
+        self._ssh = host.ssh
+        self.macs = []
+        self.bridges = []
+        self.name = self.cfg.get("name", utils.get_rnd_name())
+        x = XMLElement(None, "domain", type="kvm")
+        self.x = x
+        x.se("name").x.text = self.name
+        for mem in ("memory", "currentMemory"):
+            x.se(mem, unit="MiB").x.text = str(self.cfg.get("memory", 256))
+        x.se("vcpu", placement="static").x.text = "1"
+        cpu = x.se("cpu", mode="host-model")
+        cpu.se("model", fallback="forbid")
+        os = x.se("os")
+        os.se("type", arch="x86_64", machine="pc-1.0").x.text = "hvm"
+        features = x.se("features")
+        features.se("acpi")
+        features.se("apic")
+        features.se("pae")
+        self.devices = x.se("devices")
+        self.devices.se("emulator").x.text = "/usr/bin/kvm"
+        self.devices.se("controller", type="pci", index="0", model="pci-root")
+        self.devices.se("graphics", type="spice", autoport="yes")
+        mb = self.devices.se("memballoon", model="virtio")
+        mb.se("address", type="pci", domain="0x0000", bus="0x00",
+              slot="0x09", function="0x0")
+
+    @asyncio.coroutine
+    def run_script(self, script, env=None, raise_on_error=True, key=None, cb=None):
+        yield from self.get_ip()
+        yield from asyncio.sleep(30)
+        LOG.debug("Running script: %s on vm %s with env %s" % (script, self, env))
+        cmd = "".join(["%s='%s' " % tuple(e) for e in env.items()]) if env else ""
+        cmd += script["interpreter"]
+        ssh = asyncssh.AsyncSSH(script.get("user", "root"), self.ip, key=key, cb=cb)
+        status = yield from ssh.run(cmd, stdin=script["data"],
+                                    raise_on_error=raise_on_error,
+                                    user=script.get("user", "root"))
+        return status
+
+    @asyncio.coroutine
+    def shutdown(self, timeout=30):
+        ssh = yield from self.get_ssh()
+        yield from ssh.run("shutdown -h now")
+        deadline = time.time() + timeout
+        cmd = "virsh list | grep -q {}".format(self.name)
+        while True:
+            yield from asyncio.sleep(4)
+            error = yield from self._ssh.run(cmd, raise_on_error=False)
+            if error:
+                return
+            elif time.time() > timeout:
+                yield from self.destroy()
+                return
+
+    @asyncio.coroutine
+    def destroy(self):
+        cmd = "virsh destroy {}".format(self.name)
+        yield from self._ssh.run(cmd, raise_on_error=False)
+        yield from self.host.storage.destroy(self.storage_name)
+        for br in self.bridges:
+            lst = self.host.br_vm.get(br)
+            if lst and self in lst:
+                lst.remove(self)
+
+    @asyncio.coroutine
+    def get_ssh(self):
+        yield from self.get_ip()
+        return asyncssh.AsyncSSH("root", self.ip)
+
+    @asyncio.coroutine
+    def get_ip(self, timeout=30):
+        if hasattr(self, "ip"):
+            yield from asyncio.sleep(0)
+            return self.ip
+        deadline = time.time() + timeout
+        cmd = "egrep -i '%s' /proc/net/arp" % "|".join(self.macs)
+        while True:
+            if time.time() > deadline:
+                return None
+            yield from asyncio.sleep(4)
+            data = yield from self._ssh.run(cmd, return_output=True)
+            for line in data.splitlines():
+                m = IP_RE.match(line)
+                if m:
+                    self.ip = m.group(1)
+                    # TODO: wait_for_ssh
+                    yield from asyncio.sleep(8)
+                    return
+
+    @asyncio.coroutine
+    def boot(self):
+        conf = "/tmp/.conf.%s.xml" % utils.get_rnd_name()
+        with self.fd() as fd:
+            yield from self._ssh.run("cat > %s" % conf, stdin=fd)
+        yield from self._ssh.run("virsh create {c}; rm {c}".format(c=conf))
+
+    @contextlib.contextmanager
+    def fd(self):
+        xmlfile = tempfile.NamedTemporaryFile()
+        try:
+            fd = open(xmlfile.name, "w+b")
+            et.ElementTree(self.x.x).write(fd)
+            fd.seek(0)
+            yield fd
+        finally:
+            fd.close()
+
+    def add_disk(self, path):
+        dev = os.path.split(path)[1].split(".")[0]
+        LOG.debug("Adding disk %s with path %s" % (dev, path))
+        disk = self.devices.se("disk", device="disk", type="file")
+        disk.se("driver", name="qemu", type="qcow2", cache="unsafe")
+        disk.se("source", file=path)
+        disk.se("target", dev=dev, bus="virtio")
+
+    def add_net(self, bridge, mac=None):
+        if not mac:
+            mac = utils.get_rnd_mac()
+        net = self.devices.se("interface", type="bridge")
+        net.se("source", bridge=bridge)
+        net.se("model", type="virtio")
+        net.se("mac", address=mac)
+        self.macs.append(mac)
+        self.bridges.append(bridge)
+
+
+class XMLElement:
+
+    def __init__(self, parent, *args, **kwargs):
+        if parent is not None:
+            self.x = et.SubElement(parent, *args, **kwargs)
+        else:
+            self.x = et.Element(*args, **kwargs)
+
+    def se(self, *args, **kwargs):
+        return XMLElement(self.x, *args, **kwargs)
+
+    def write(self, fd):
+        et.ElementTree(self.x).write(fd)
+
+    def tostring(self):
+        return et.tostring(self.x)
 
 
 class MetadataServer:
@@ -318,192 +544,3 @@ class MetadataServer:
         self.srv.close()
         yield from self.srv.wait_closed()
         yield from self.app.finish()
-
-
-class Provider:
-
-    def __init__(self, root, config):
-        self.root = root
-        self.config = config
-        self.name = config["name"]
-
-    def start(self):
-        self.hosts = [Host(c, self.config, self.root)
-                      for c in self.config["hosts"]]
-        self.mds = MetadataServer(self.root.loop,
-                                  self.config.get("metadata_server", {}))
-        self.mds_future = asyncio.async(self.mds.start())
-
-    @asyncio.coroutine
-    def cleanup(self, vms):
-        LOG.debug(vms)
-        for vm in vms:
-            yield from vm.destroy()
-        yield from asyncio.sleep(1)
-
-    @asyncio.coroutine
-    def stop(self):
-        yield from self.mds_future.cancel()
-
-    def get_host(self):
-        host = self.hosts[0]
-        vms = len(host.vms)
-        for h in self.hosts:
-            n_vms = len(h.vms)
-            if n_vms < vms:
-                host = h
-                vms = n_vms
-        return host
-
-    @asyncio.coroutine
-    def get_vms(self, vm_confs):
-        vms = []
-        host = self.get_host()
-        for vm_conf in vm_confs:
-            vm = yield from host.get_vm(vm_conf)
-            vms.append(vm)
-        return vms
-
-
-class VM:
-    def __init__(self, host, name=None, memory=1024):
-        self.host = host
-        self._ssh = host.ssh
-        self.macs = []
-        if name is None:
-            self.name = utils.get_rnd_name()
-        else:
-            self.name = name
-        x = XMLElement(None, "domain", type="kvm")
-        self.x = x
-        x.se("name").x.text = self.name
-        for mem in ("memory", "currentMemory"):
-            x.se(mem, unit="MiB").x.text = str(memory)
-        x.se("vcpu", placement="static").x.text = "1"
-        cpu = x.se("cpu", mode="host-model")
-        cpu.se("model", fallback="forbid")
-        os = x.se("os")
-        os.se("type", arch="x86_64", machine="pc-1.0").x.text = "hvm"
-        features = x.se("features")
-        features.se("acpi")
-        features.se("apic")
-        features.se("pae")
-        self.devices = x.se("devices")
-        self.devices.se("emulator").x.text = "/usr/bin/kvm"
-        self.devices.se("controller", type="pci", index="0", model="pci-root")
-        self.devices.se("graphics", type="spice", autoport="yes")
-        mb = self.devices.se("memballoon", model="virtio")
-        mb.se("address", type="pci", domain="0x0000", bus="0x00",
-              slot="0x09", function="0x0")
-
-    @asyncio.coroutine
-    def run_script(self, script, env=None, raise_on_error=True, key=None, cb=None):
-        yield from self.get_ip()
-        yield from asyncio.sleep(30)
-        LOG.debug("Running script: %s on vm %s with env %s" % (script, self, env))
-        cmd = "".join(["%s='%s' " % tuple(e) for e in env.items()]) if env else ""
-        cmd += script["interpreter"]
-        ssh = asyncssh.AsyncSSH(script.get("user", "root"), self.ip, key=key, cb=cb)
-        status = yield from ssh.run(cmd, stdin=script["data"],
-                                    raise_on_error=raise_on_error,
-                                    user=script.get("user", "root"))
-        return status
-
-    @asyncio.coroutine
-    def shutdown(self, timeout=30):
-        ssh = yield from self.get_ssh()
-        yield from ssh.run("shutdown -h now")
-        deadline = time.time() + timeout
-        cmd = "virsh list | grep -q {}".format(self.name)
-        while True:
-            yield from asyncio.sleep(4)
-            error = yield from self._ssh.run(cmd, raise_on_error=False)
-            if error:
-                return
-            elif time.time() > timeout:
-                yield from self.destroy()
-                return
-
-    @asyncio.coroutine
-    def destroy(self):
-        cmd = "virsh destroy {}".format(self.name)
-        yield from self._ssh.run(cmd, raise_on_error=False)
-        yield from self.host.storage.destroy(self.storage_name)
-
-    @asyncio.coroutine
-    def get_ssh(self):
-        yield from self.get_ip()
-        return asyncssh.AsyncSSH("root", self.ip)
-
-    @asyncio.coroutine
-    def get_ip(self, timeout=30):
-        if hasattr(self, "ip"):
-            yield from asyncio.sleep(0)
-            return self.ip
-        deadline = time.time() + timeout
-        cmd = "egrep -i '%s' /proc/net/arp" % "|".join(self.macs)
-        while True:
-            if time.time() > deadline:
-                return None
-            yield from asyncio.sleep(4)
-            data = yield from self._ssh.run(cmd, return_output=True)
-            for line in data.splitlines():
-                m = IP_RE.match(line)
-                if m:
-                    self.ip = m.group(1)
-                    # TODO: wait_for_ssh
-                    yield from asyncio.sleep(4)
-                    return
-
-    @asyncio.coroutine
-    def boot(self):
-        conf = "/tmp/.conf.%s.xml" % utils.get_rnd_name()
-        with self.fd() as fd:
-            yield from self._ssh.run("cat > %s" % conf, stdin=fd)
-        yield from self._ssh.run("virsh create {c}; rm {c}".format(c=conf))
-
-    @contextlib.contextmanager
-    def fd(self):
-        xmlfile = tempfile.NamedTemporaryFile()
-        try:
-            fd = open(xmlfile.name, "w+b")
-            et.ElementTree(self.x.x).write(fd)
-            fd.seek(0)
-            yield fd
-        finally:
-            fd.close()
-
-    def add_disk(self, path):
-        dev = os.path.split(path)[1].split(".")[0]
-        LOG.debug("Adding disk %s with path %s" % (dev, path))
-        disk = self.devices.se("disk", device="disk", type="file")
-        disk.se("driver", name="qemu", type="qcow2", cache="unsafe")
-        disk.se("source", file=path)
-        disk.se("target", dev=dev, bus="virtio")
-
-    def add_net(self, bridge, mac=None):
-        if not mac:
-            mac = utils.get_rnd_mac()
-        net = self.devices.se("interface", type="bridge")
-        net.se("source", bridge=bridge)
-        net.se("model", type="virtio")
-        net.se("mac", address=mac)
-        self.macs.append(mac)
-
-
-class XMLElement:
-
-    def __init__(self, parent, *args, **kwargs):
-        if parent is not None:
-            self.x = et.SubElement(parent, *args, **kwargs)
-        else:
-            self.x = et.Element(*args, **kwargs)
-
-    def se(self, *args, **kwargs):
-        return XMLElement(self.x, *args, **kwargs)
-
-    def write(self, fd):
-        et.ElementTree(self.x).write(fd)
-
-    def tostring(self):
-        return et.tostring(self.x)

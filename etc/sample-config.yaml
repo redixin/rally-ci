@@ -17,6 +17,35 @@
       GERRIT_PROJECT: change.project
       GERRIT_REF: patchSet.ref
 
+- provider:
+    name: my_virsh
+    module: rallyci.providers.virsh
+    hosts:
+      - hostname: 10.1.1.1
+        port: 16622
+    max_vms: 4
+    storage:
+      backend: btrfs
+      path: /ci/rally
+    metadata_server:
+      listen_addr: 127.0.0.1
+      listen_port: 8081
+      authorized_keys: /etc/rally-ci/authorized_keys
+      user_data: |
+        #!/bin/sh
+        cat /home/ubuntu/.ssh/authorized_keys > /root/.ssh/authorized_keys
+    images:
+      bare_u1404:
+        url: https://cloud-images.ubuntu.com/trusty/current/trusty-server-cloudimg-amd64-disk1.img
+      dev:
+        parent: bare_u1404
+        build-scripts: ["init_ubuntu_dev", "clone_projects"]
+    vms:
+      dev:
+        image: dev
+        memory: 512
+        net: ["virbr0", "tmpbr% 02:01:01:01:01:01"]
+
 - service:
     name: status
     module: rallyci.services.status
@@ -62,34 +91,6 @@
       cd $GERRIT_PROJECT
       git status
 
-- provider:
-    name: my_virsh
-    module: rallyci.providers.virsh
-    hosts:
-      - hostname: localhost
-    max_vms: 4
-    storage:
-      backend: btrfs
-      path: /ci/rally
-    metadata_server:
-      listen_addr: 127.0.0.1
-      listen_port: 8081
-      authorized_keys: /etc/rally-ci/authorized_keys
-      user_data: |
-        #!/bin/sh
-        cat /home/ubuntu/.ssh/authorized_keys > /root/.ssh/authorized_keys
-    images:
-      bare_u1404:
-        url: https://cloud-images.ubuntu.com/trusty/current/trusty-server-cloudimg-amd64-disk1.img
-      dev:
-        parent: bare_u1404
-        build-scripts: ["init_ubuntu_dev", "clone_projects"]
-    vms:
-      dev:
-        image: dev
-        memory: 512
-        net: ["virbr0"]
-
 - job:
     name: test
     env:
@@ -100,10 +101,9 @@
       vms:
         - name: dev
           scripts: ["git_checkout", "run_tests"]
-          add-bridge: ["tmpbr%"]
+          scp: ["/var/log/", "varlog"]
         - name: dev
           scripts: ["git_checkout", "run_tests"]
-          add-bridge: ["tmpbr%"]
 
 - project:
     name: openstack-dev/ci-sandbox
