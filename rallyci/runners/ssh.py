@@ -13,6 +13,7 @@
 #    limitations under the License.
 
 import asyncio
+import os
 import logging
 
 LOG = logging.getLogger(__name__)
@@ -20,24 +21,36 @@ LOG = logging.getLogger(__name__)
 
 class Class:
 
-    def __init__(self, config):
-        self.config = config
+    def __init__(self, cfg, job, local_cfg):
+        """Represent SSH runner.
+
+        :param job: job instance
+        :param cfg: config.runner
+        :param local_cfg: config.job.runner
+        """
+        self.job = job
+        self.local_cfg = local_cfg
+        self.cfg = cfg
         self.vms = []
+        self.log_path = os.path.join(cfg["logs"], job.log_path)
+        os.makedirs(self.log_path, exist_ok=True)
+        self.logfile = open(os.path.join(self.log_path, "console.txt"), "wb")
 
     def cb(self, line):
-        print(line)
+        self.logfile.write(line)
 
     @asyncio.coroutine
-    def run(self, job):
-        self.prov = job.root.providers[self.config["provider"]]
-        scripts = [vm["scripts"] for vm in self.config.get("vms", [])]
-        self.vms = yield from self.prov.get_vms(self.config["vms"])
+    def run(self):
+        self.prov = self.job.root.providers[self.cfg["provider"]]
+        scripts = [vm["scripts"] for vm in self.local_cfg.get("vms", [])]
+        self.vms = yield from self.prov.get_vms(self.local_cfg["vms"])
         for vm, scripts in zip(self.vms, scripts):
             for script in scripts:
                 LOG.debug("Running test script %s on vm %s" % (script, vm))
-                s = job.root.config.data["script"][script]
-                yield from vm.run_script(s, cb=self.cb, env=job.env)
+                s = self.job.root.config.data["script"][script]
+                yield from vm.run_script(s, cb=self.cb, env=self.job.env)
 
     @asyncio.coroutine
     def cleanup(self):
+        self.logfile.close()
         yield from self.prov.cleanup(self.vms)

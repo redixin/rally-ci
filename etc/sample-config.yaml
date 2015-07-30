@@ -46,6 +46,12 @@
         memory: 512
         net: ["virbr0", "tmpbr% 02:01:01:01:01:01"]
 
+- runner:
+    name: main
+    provider: my_virsh
+    module: rallyci.runners.ssh
+    logs: /tmp/ci
+
 - service:
     name: status
     module: rallyci.services.status
@@ -87,17 +93,17 @@
     interpreter: /bin/bash -xe -s
     user: rally
     data: |
-      env && ls && echo "Hello world"
+      env && ls
       cd $GERRIT_PROJECT
       git status
+      echo "All ok"
 
 - job:
     name: test
     env:
       RCI_TOX_ENV: py27 # TODO
     runner:
-      module: rallyci.runners.ssh
-      provider: my_virsh
+      name: main
       vms:
         - name: dev
           scripts: ["git_checkout", "run_tests"]

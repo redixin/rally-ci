@@ -46,8 +46,8 @@ class Config:
 
         self._configure_logging()
 
-    def get_instance(self, cfg):
-        return self._get_module(cfg["module"]).Class(cfg)
+    def get_instance(self, cfg, *args, **kwargs):
+        return self._get_module(cfg["module"]).Class(cfg, *args, **kwargs)
 
     def iter_instances(self, section):
         section = self.data.get(section, {})

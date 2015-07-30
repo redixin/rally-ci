@@ -14,7 +14,7 @@
 
 import asyncio
 import time
-import os.path
+import os
 import string
 
 from rallyci import utils
@@ -45,24 +45,12 @@ class Job:
         self.root = event.root
         self.config = event.root.config.data["job"][name]
         self.id = utils.get_rnd_name(prefix="", length=10)
-        self.stream_number = 0
         self.env = self.config.get("env", {}).copy()
+        self.status = "__init__"
         self.log_path = os.path.join(self.event.id, self.id)
-        self.loggers = []
-        self.status = "queued"
         LOG.debug("Job %s initialized." % self.id)
 
-    def logger(self, data):
-        """Process script stdout+stderr."""
-        for logger in self.loggers:
-            logger.log(data)
-
     def set_status(self, status):
-        self.stream_number += 1
-        for logger in self.loggers:
-            logger.set_stream(self,
-                              "%02d-%s.txt" % (self.stream_number,
-                                               _get_valid_filename(status)))
         self.status = status
         self.root.job_updated(self)
 
@@ -76,21 +64,17 @@ class Job:
             self.error = 254
         finally:
             self.finished_at = time.time()
-        while self.loggers:
-            logger = self.loggers.pop()
-            try:
-                logger.cleanup()
-            except Exception:
-                LOG.exception("Error while logger cleanup")
 
     @asyncio.coroutine
     def _run(self):
         self.set_status("queued")
-        # TODO: env
-        self.runner = self.root.config.get_instance(self.config["runner"])
+        runner_local_cfg = self.config["runner"]
+        runner_cfg = self.root.config.data["runner"][runner_local_cfg["name"]]
+        self.runner = self.root.config.get_instance(runner_cfg, self,
+                                                    runner_local_cfg)
         LOG.debug("Runner initialized %r for job %r" % (self.runner, self))
         try:
-            self.error = yield from self.runner.run(self)
+            self.error = yield from self.runner.run()
         except:
             LOG.exception("Unhandled exception in job %s" % self)
             self.error = 1
