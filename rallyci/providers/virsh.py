@@ -31,7 +31,7 @@ from rallyci.common import asyncssh
 
 LOG = logging.getLogger(__name__)
 
-IFACE_RE = re.compile(r"\d+: (.+)(\d+): .*")
+IFACE_RE = re.compile(r"\d+: ([a-z]+)(\d+): .*")
 IP_RE = re.compile(r"(\d+\.\d+\.\d+\.\d+)\s")
 DYNAMIC_BRIDGES = {}
 DYNAMIC_BRIDGE_LOCK = asyncio.Lock()
@@ -209,15 +209,17 @@ class Host:
         yield from self.storage.snapshot(name)
 
     @asyncio.coroutine
-    def _get_vm(self, name, conf):
+    def _get_vm(self, local_cfg, conf):
         """
+        :param local_cfg: config.job.runner.vms item
         :param conf: config.provider.vms item
         """
         LOG.debug("Creating VM with conf %s" % conf)
+        name = local_cfg["name"]
         yield from self.build_image(conf["image"])
         rnd_name = utils.get_rnd_name(name)
         yield from self.storage.clone(name, rnd_name)
-        vm = VM(self, conf)
+        vm = VM(self, conf, local_cfg)
         files = yield from self.storage.list_files(rnd_name)
         for f in files:
             vm.add_disk(f)
@@ -255,7 +257,7 @@ class Host:
                         ifname[0] = br
                 net_conf.append(" ".join(ifname))
             conf["net"] = net_conf
-            vm = yield from self._get_vm(vm_conf["name"], conf)
+            vm = yield from self._get_vm(vm_conf, conf)
             self.br_vm.setdefault(br, [])
             self.br_vm[br].append(vm)
             vms.append(vm)
@@ -324,7 +326,7 @@ class Provider:
 
 
 class VM:
-    def __init__(self, host, cfg=None):
+    def __init__(self, host, cfg=None, local_cfg=None):
         """Represent a VM.
 
         :param host: Host instance
@@ -333,6 +335,7 @@ class VM:
         """
         self.host = host
         self.cfg = cfg or {}
+        self.local_cfg = local_cfg
         self._ssh = host.ssh
         self.macs = []
         self.bridges = []

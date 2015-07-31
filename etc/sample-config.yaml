@@ -107,7 +107,8 @@
       vms:
         - name: dev
           scripts: ["git_checkout", "run_tests"]
-          scp: ["/var/log/", "varlog"]
+          scp:
+            - ["/var/log/", "varlog"]
         - name: dev
           scripts: ["git_checkout", "run_tests"]
 

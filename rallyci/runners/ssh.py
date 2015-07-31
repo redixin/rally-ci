@@ -42,7 +42,7 @@ class Class:
     @asyncio.coroutine
     def run(self):
         self.prov = self.job.root.providers[self.cfg["provider"]]
-        scripts = [vm["scripts"] for vm in self.local_cfg.get("vms", [])]
+        scripts = [vm["scripts"] for vm in self.local_cfg["vms"]]
         self.vms = yield from self.prov.get_vms(self.local_cfg["vms"])
         for vm, scripts in zip(self.vms, scripts):
             for script in scripts:
@@ -53,4 +53,9 @@ class Class:
     @asyncio.coroutine
     def cleanup(self):
         self.logfile.close()
+        for vm in self.vms:
+            for src, dst in vm.local_cfg.get("scp", []):
+                dst = os.path.join(self.log_path, dst)
+                ssh = yield from vm.get_ssh()
+                yield from ssh.scp_get(src, dst)
         yield from self.prov.cleanup(self.vms)
