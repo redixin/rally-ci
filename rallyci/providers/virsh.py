@@ -264,12 +264,19 @@ class Host:
         return vms
 
     @asyncio.coroutine
-    def _get_bridge(self, prefix):
+    def cleanup_net(self):
+        clean = []
         with (yield from DYNAMIC_BRIDGE_LOCK):
             for br, vms in self.br_vm.items():
                 if not vms:
                     yield from self.ssh.run("ip link del %s" % br)
-                    del self.br_vm[br]
+                    clean.append(br)
+            for br in clean:
+                del self.br_vm[br]
+
+    @asyncio.coroutine
+    def _get_bridge(self, prefix):
+        with (yield from DYNAMIC_BRIDGE_LOCK):
             data = yield from self.ssh.run("ip link list", return_output=True)
             nums = set()
             for line in data.splitlines():
@@ -399,6 +406,7 @@ class VM:
             lst = self.host.br_vm.get(br)
             if lst and self in lst:
                 lst.remove(self)
+        yield from self.host.cleanup_net()
 
     @asyncio.coroutine
     def get_ssh(self):

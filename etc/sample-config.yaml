@@ -101,7 +101,7 @@
 - job:
     name: test
     env:
-      RCI_TOX_ENV: py27 # TODO
+      RCI_TOX_ENV: py27
     runner:
       name: main
       vms:
