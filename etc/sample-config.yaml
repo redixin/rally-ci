@@ -17,6 +17,11 @@
       GERRIT_PROJECT: change.project
       GERRIT_REF: patchSet.ref
 
+- service:
+    name: status
+    module: rallyci.services.status
+    listen: ["localhost", "8080"]
+
 - provider:
     name: my_virsh
     module: rallyci.providers.virsh
@@ -45,17 +50,15 @@
         image: dev
         memory: 512
         net: ["virbr0", "tmpbr% 02:01:01:01:01:01"]
+      noop:
+        net: ["tmpbr%"]
+        memory: 128
 
 - runner:
     name: main
     provider: my_virsh
     module: rallyci.runners.ssh
     logs: /tmp/ci
-
-- service:
-    name: status
-    module: rallyci.services.status
-    listen: ["localhost", "8080"]
 
 - script:
     name: init_ubuntu_dev
@@ -105,6 +108,7 @@
     runner:
       name: main
       vms:
+        - name: noop
         - name: dev
           scripts: ["git_checkout", "run_tests"]
           scp:

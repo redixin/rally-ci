@@ -200,7 +200,7 @@ class Host:
                     yield from vm.run_script(script)
                 yield from vm.shutdown()
             except:
-                LOG.error("Error building image")
+                LOG.exception("Error building image")
                 yield from vm.destroy()
                 raise
         else:
@@ -216,7 +216,9 @@ class Host:
         """
         LOG.debug("Creating VM with conf %s" % conf)
         name = local_cfg["name"]
-        yield from self.build_image(conf["image"])
+        image = conf.get("image")
+        if image:
+            yield from self.build_image(image)
         rnd_name = utils.get_rnd_name(name)
         yield from self.storage.clone(name, rnd_name)
         vm = VM(self, conf, local_cfg)
@@ -372,7 +374,6 @@ class VM:
     @asyncio.coroutine
     def run_script(self, script, env=None, raise_on_error=True, key=None, cb=None):
         yield from self.get_ip()
-        yield from asyncio.sleep(30)
         LOG.debug("Running script: %s on vm %s with env %s" % (script, self, env))
         cmd = "".join(["%s='%s' " % tuple(e) for e in env.items()]) if env else ""
         cmd += script["interpreter"]
@@ -384,6 +385,9 @@ class VM:
 
     @asyncio.coroutine
     def shutdown(self, timeout=30):
+        if not hasattr(self, ip):
+            yield from self.destroy()
+            return
         ssh = yield from self.get_ssh()
         yield from ssh.run("shutdown -h now")
         deadline = time.time() + timeout
@@ -422,7 +426,7 @@ class VM:
         cmd = "egrep -i '%s' /proc/net/arp" % "|".join(self.macs)
         while True:
             if time.time() > deadline:
-                return None
+                raise Exception("Unable to find ip of VM %s" % self.cfg)
             yield from asyncio.sleep(4)
             data = yield from self._ssh.run(cmd, return_output=True)
             for line in data.splitlines():

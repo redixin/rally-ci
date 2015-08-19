@@ -42,7 +42,7 @@ class Class:
     @asyncio.coroutine
     def run(self):
         self.prov = self.job.root.providers[self.cfg["provider"]]
-        scripts = [vm["scripts"] for vm in self.local_cfg["vms"]]
+        scripts = [vm.get("scripts", []) for vm in self.local_cfg["vms"]]
         self.vms = yield from self.prov.get_vms(self.local_cfg["vms"])
         for vm, scripts in zip(self.vms, scripts):
             for script in scripts:
