@@ -121,4 +121,3 @@ class Config:
                     raise ValueError("Unknown logging level")
 
         logging.config.dictConfig(LOGGING)
-        print("LOG SETTINGS COMPLETE")

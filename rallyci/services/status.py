@@ -16,7 +16,7 @@ import asyncio
 import logging
 import os.path
 import json
-
+import rallyci.common.periodictask as ptask
 import aiohttp
 from aiohttp import web
 
@@ -26,10 +26,11 @@ LOG = logging.getLogger(__name__)
 
 
 class Class:
-
     def __init__(self, **config):
         self.config = config
         self.clients = []
+        interval = self.config.get("interval")
+        self._periodic_task = ptask.PeriodicTask(interval, self._send_daemon_statistic)
 
     @asyncio.coroutine
     def index(self, request):
@@ -43,6 +44,10 @@ class Class:
         ws = web.WebSocketResponse()
         ws.start(request)
         self.clients.append(ws)
+
+        if not self._periodic_task.active:
+            self._periodic_task.start()
+
         try:
             tasks = [t.to_dict() for t in self.root.tasks.values()]
             ws.send_str(json.dumps({"type": "all-tasks",
@@ -56,6 +61,9 @@ class Class:
             LOG.info("WS %s disconnected" % ws)
 
         self.clients.remove(ws)
+        if not self.clients and self._periodic_task.active:
+            self._periodic_task.stop()
+
         return ws
 
     def _send_all(self, data):
@@ -70,6 +78,11 @@ class Class:
 
     def _task_finished_cb(self, event):
         self._send_all({"type": "task-finished", "id": event.id})
+
+    def _send_daemon_statistic(self):
+        stat = self.root.get_daemon_statistics()
+        LOG.debug(stat)
+        self._send_all(stat)
 
     @asyncio.coroutine
     def run(self):

@@ -15,7 +15,7 @@
 import asyncio
 from concurrent import futures
 import logging
-
+import resource
 from rallyci.config import Config
 
 LOG = logging.getLogger(__name__)
@@ -77,7 +77,7 @@ class Root:
         LOG.debug("Completed task: %s" % task)
         for cb in self.task_end_handlers:
             cb(task)
-        del(self.tasks[future])
+        del (self.tasks[future])
 
     def job_updated(self, job):
         for cb in self.job_update_handlers:
@@ -100,3 +100,7 @@ class Root:
             LOG.info("All tasks finished.")
         self.stop_services(True)
         self.loop.stop()
+
+    def get_daemon_statistics(self):
+        usage = resource.getrusage(resource.RUSAGE_SELF)
+        return {"type": "daemon-statistics", "memory-used": getattr(usage, "ru_maxrss")}
