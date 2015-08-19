@@ -18,7 +18,7 @@ import logging
 import os.path
 
 import json
-import rallyci.common.ptask as ptask
+import rallyci.common.periodictask as ptask
 import aiohttp
 import json
 from aiohttp import web
