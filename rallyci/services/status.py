@@ -29,7 +29,7 @@ class Class:
     def __init__(self, **config):
         self.config = config
         self.clients = []
-        interval = self.config.get("interval")
+        interval = self.config.get("interval", 60)
         self._periodic_task = ptask.PeriodicTask(interval, self._send_daemon_statistic)
 
     @asyncio.coroutine
