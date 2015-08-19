@@ -10,7 +10,6 @@
     module: rallyci.services.status
     stats-interval: 2
     listen: ["localhost", 8080]
-    interval: 60
 
 - job:
     name: noop
