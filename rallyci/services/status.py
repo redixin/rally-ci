@@ -13,14 +13,15 @@
 #    limitations under the License.
 
 import asyncio
+import pkgutil
 import logging
 import os.path
-import json
-import rallyci.common.periodictask as ptask
+
 import aiohttp
+import json
 from aiohttp import web
 
-import pkgutil
+from  rallyci.common import periodictask
 
 LOG = logging.getLogger(__name__)
 
@@ -29,8 +30,9 @@ class Class:
     def __init__(self, **config):
         self.config = config
         self.clients = []
-        interval = self.config.get("interval", 60)
-        self._periodic_task = ptask.PeriodicTask(interval, self._send_daemon_statistic)
+        interval = self.config.get("stats-interval", 60)
+        self.stats_sender = periodictask.PeriodicTask(
+            interval, self._send_daemon_statistic)
 
     @asyncio.coroutine
     def index(self, request):
@@ -45,8 +47,8 @@ class Class:
         ws.start(request)
         self.clients.append(ws)
 
-        if not self._periodic_task.active:
-            self._periodic_task.start()
+        if not self.stats_sender.active:
+            self.stats_sender.start()
 
         try:
             tasks = [t.to_dict() for t in self.root.tasks.values()]
@@ -61,8 +63,8 @@ class Class:
             LOG.info("WS %s disconnected" % ws)
 
         self.clients.remove(ws)
-        if not self.clients and self._periodic_task.active:
-            self._periodic_task.stop()
+        if not self.clients and self.stats_sender.active:
+            self.stats_sender.stop()
 
         return ws
 
