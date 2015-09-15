@@ -47,7 +47,7 @@ class Job:
         self.id = utils.get_rnd_name(prefix="", length=10)
         self.env = self.config.get("env", {}).copy()
         self.status = "__init__"
-        self.log_path = os.path.join(self.event.id, self.id)
+        self.log_path = os.path.join(self.event.id, self.name)
         LOG.debug("Job %s initialized." % self.id)
 
     def set_status(self, status):

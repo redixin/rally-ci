@@ -149,7 +149,7 @@ class BTRFS:
 
 class Host:
 
-    def __init__(self, ssh_conf, config, root):
+    def __init__(self, ssh_conf, config, root, vm_key):
         """
         ssh_config: item from hosts from provider
         config: full "provider" item
@@ -160,6 +160,7 @@ class Host:
         self.br_vm = {}
         self.ssh = asyncssh.AsyncSSH(**ssh_conf)
         self.storage = BTRFS(self.ssh, **config["storage"])
+        self.vm_key = vm_key
 
     @asyncio.coroutine
     def boot_image(self, name):
@@ -219,8 +220,10 @@ class Host:
         image = conf.get("image")
         if image:
             yield from self.build_image(image)
+        else:
+            image = name
         rnd_name = utils.get_rnd_name(name)
-        yield from self.storage.clone(name, rnd_name)
+        yield from self.storage.clone(image, rnd_name)
         vm = VM(self, conf, local_cfg)
         files = yield from self.storage.list_files(rnd_name)
         for f in files:
@@ -301,10 +304,11 @@ class Provider:
         self.root = root
         self.config = config
         self.name = config["name"]
+        self.key = config.get("key")
         self.ifs = {}
 
     def start(self):
-        self.hosts = [Host(c, self.config, self.root)
+        self.hosts = [Host(c, self.config, self.root, self.key)
                       for c in self.config["hosts"]]
         self.mds = MetadataServer(self.root.loop,
                                   self.config.get("metadata_server", {}))
@@ -372,12 +376,13 @@ class VM:
               slot="0x09", function="0x0")
 
     @asyncio.coroutine
-    def run_script(self, script, env=None, raise_on_error=True, key=None, cb=None):
+    def run_script(self, script, env=None, raise_on_error=True, cb=None):
         yield from self.get_ip()
         LOG.debug("Running script: %s on vm %s with env %s" % (script, self, env))
         cmd = "".join(["%s='%s' " % tuple(e) for e in env.items()]) if env else ""
         cmd += script["interpreter"]
-        ssh = asyncssh.AsyncSSH(script.get("user", "root"), self.ip, key=key, cb=cb)
+        ssh = asyncssh.AsyncSSH(script.get("user", "root"), self.ip,
+                                key=self.host.vm_key, cb=cb)
         status = yield from ssh.run(cmd, stdin=script["data"],
                                     raise_on_error=raise_on_error,
                                     user=script.get("user", "root"))
@@ -385,7 +390,7 @@ class VM:
 
     @asyncio.coroutine
     def shutdown(self, timeout=30):
-        if not hasattr(self, ip):
+        if not hasattr(self, "ip"):
             yield from self.destroy()
             return
         ssh = yield from self.get_ssh()
@@ -415,7 +420,7 @@ class VM:
     @asyncio.coroutine
     def get_ssh(self):
         yield from self.get_ip()
-        return asyncssh.AsyncSSH("root", self.ip)
+        return asyncssh.AsyncSSH("root", self.ip, key=self.host.vm_key)
 
     @asyncio.coroutine
     def get_ip(self, timeout=30):

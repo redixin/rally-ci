@@ -38,6 +38,7 @@ class Class:
 
     def cb(self, line):
         self.logfile.write(line)
+        self.logfile.flush()
 
     @asyncio.coroutine
     def run(self):
