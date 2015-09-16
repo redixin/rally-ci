@@ -22,8 +22,10 @@ LOG = logging.getLogger(__name__)
 
 class Class:
 
-    def __init__(self, cfg):
+    def __init__(self, cfg, job, local_cfg):
         self.cfg = cfg
+        self.job = job
+        self.local_cfg = local_cfg
 
     @asyncio.coroutine
     def boot(self):
@@ -37,8 +39,8 @@ class Class:
         yield from asyncio.sleep(random.randint(*sleep))
 
     @asyncio.coroutine
-    def run(self, job):
-        job.started_at = time.time()
+    def run(self):
+        self.job.started_at = time.time()
         sleep = self.cfg.get("sleep-run", (1, 2))
         yield from asyncio.sleep(random.randint(*sleep))
 
