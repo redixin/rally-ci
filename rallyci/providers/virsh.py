@@ -180,34 +180,35 @@ class Host:
             if (yield from self.storage.exist(name)):
                 LOG.debug("Image %s exist" % name)
                 return
-        LOG.info("Building image %s" % name)
-        image_conf = self.config["images"][name]
-        parent = image_conf.get("parent")
-        if parent:
-            yield from self.build_image(parent)
-            yield from self.storage.clone(parent, name)
-        else:
-            url = image_conf.get("url")
-            if url:
-                yield from self.storage.download(name, url)
-                return # TODO: support build_script for downloaded images
-        build_scripts = image_conf.get("build-scripts")
-        if build_scripts:
-            vm = yield from self.boot_image(name)
-            try:
-                for script in build_scripts:
-                    script = self.root.config.data["script"][script]
-                    LOG.debug("Running build script %s" % script)
-                    yield from vm.run_script(script)
-                yield from vm.shutdown()
-            except:
-                LOG.exception("Error building image")
-                yield from vm.destroy()
-                raise
-        else:
-            LOG.debug("No build script for image %s" % name)
-        yield from asyncio.sleep(2)
-        yield from self.storage.snapshot(name)
+            LOG.info("Building image %s" % name)
+            image_conf = self.config["images"][name]
+            parent = image_conf.get("parent")
+            if parent:
+                yield from self.build_image(parent)
+                yield from self.storage.clone(parent, name)
+            else:
+                url = image_conf.get("url")
+                if url:
+                    yield from self.storage.download(name, url)
+                    return # TODO: support build_script for downloaded images
+            build_scripts = image_conf.get("build-scripts")
+            if build_scripts:
+                vm = yield from self.boot_image(name)
+                yield from asyncio.sleep(5)
+                try:
+                    for script in build_scripts:
+                        script = self.root.config.data["script"][script]
+                        LOG.debug("Running build script %s" % script)
+                        yield from vm.run_script(script)
+                    yield from vm.shutdown(storage=False)
+                except:
+                    LOG.exception("Error building image")
+                    yield from vm.destroy()
+                    raise
+            else:
+                LOG.debug("No build script for image %s" % name)
+            yield from asyncio.sleep(2)
+            yield from self.storage.snapshot(name)
 
     @asyncio.coroutine
     def _get_vm(self, local_cfg, conf):
@@ -357,7 +358,7 @@ class VM:
         self.x = x
         x.se("name").x.text = self.name
         for mem in ("memory", "currentMemory"):
-            x.se(mem, unit="MiB").x.text = str(self.cfg.get("memory", 256))
+            x.se(mem, unit="MiB").x.text = str(self.cfg.get("memory", 512))
         x.se("vcpu", placement="static").x.text = "1"
         cpu = x.se("cpu", mode="host-model")
         cpu.se("model", fallback="forbid")
@@ -375,6 +376,12 @@ class VM:
         mb.se("address", type="pci", domain="0x0000", bus="0x00",
               slot="0x09", function="0x0")
 
+    def __str__(self):
+        return self.__repr__()
+
+    def __repr__(self):
+        return "<VM %s %s>" % (self.name, self.local_cfg)
+
     @asyncio.coroutine
     def run_script(self, script, env=None, raise_on_error=True, cb=None):
         yield from self.get_ip()
@@ -389,9 +396,9 @@ class VM:
         return status
 
     @asyncio.coroutine
-    def shutdown(self, timeout=30):
+    def shutdown(self, timeout=30, storage=False):
         if not hasattr(self, "ip"):
-            yield from self.destroy()
+            yield from self.destroy(storage=storage)
             return
         ssh = yield from self.get_ssh()
         yield from ssh.run("shutdown -h now")
@@ -407,10 +414,11 @@ class VM:
                 return
 
     @asyncio.coroutine
-    def destroy(self):
+    def destroy(self, storage=False):
         cmd = "virsh destroy {}".format(self.name)
         yield from self._ssh.run(cmd, raise_on_error=False)
-        yield from self.host.storage.destroy(self.storage_name)
+        if storage:
+            yield from self.host.storage.destroy(self.storage_name)
         for br in self.bridges:
             lst = self.host.br_vm.get(br)
             if lst and self in lst:
@@ -423,7 +431,7 @@ class VM:
         return asyncssh.AsyncSSH("root", self.ip, key=self.host.vm_key)
 
     @asyncio.coroutine
-    def get_ip(self, timeout=30):
+    def get_ip(self, timeout=60):
         if hasattr(self, "ip"):
             yield from asyncio.sleep(0)
             return self.ip

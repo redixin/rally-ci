@@ -42,6 +42,7 @@ class Class:
 
     @asyncio.coroutine
     def run(self):
+        self.job.set_status("started")
         self.prov = self.job.root.providers[self.cfg["provider"]]
         scripts = [vm.get("scripts", []) for vm in self.local_cfg["vms"]]
         self.vms = yield from self.prov.get_vms(self.local_cfg["vms"])
@@ -49,7 +50,9 @@ class Class:
             for script in scripts:
                 LOG.debug("Running test script %s on vm %s" % (script, vm))
                 s = self.job.root.config.data["script"][script]
+                self.job.set_status(script)
                 yield from vm.run_script(s, cb=self.cb, env=self.job.env)
+        self.job.set_status("finished")
 
     @asyncio.coroutine
     def cleanup(self):

@@ -19,7 +19,7 @@ function add_task(t) {
     html += "<table>";
     html += "<tr><td colspan=2>"+t.project+": <a href='"+t.url+"'>"+t.subject+"</a></td></tr>";
     for (var i=0, job; job = t["jobs"][i]; i++) {
-        html += "<tr><td><a href='/"+t.id+"/"+job.id+"/'>"+job.name+"</a></td><td id='"+job.id+"'>"+job.status+"</td></tr>";
+        html += "<tr><td><a href='/logs/"+t.id+"/"+job.name+"/'>"+job.name+"</a></td><td id='"+job.id+"'>"+job.status+"</td></tr>";
     }
     html += "<tr></tr>";
     html += "</table>";
@@ -51,7 +51,7 @@ function connect_ws() {
                 $("#" + d["id"]).remove();
                 break;
             case "all-tasks":
-                $("#jobs > tbody > tr").remove();
+                $("#jobs tbody tr").remove();
                 for (var i=0, item; item = d["tasks"][i]; i++) {
                     add_task(item);
                 }
