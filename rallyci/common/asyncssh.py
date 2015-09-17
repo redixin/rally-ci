@@ -13,6 +13,7 @@
 #    limitations under the License.
 
 import asyncio
+import datetime
 import subprocess
 import sys
 import tempfile
@@ -26,6 +27,7 @@ class SSHError(Exception):
 
 
 class AsyncSSH:
+    _ready = False
 
     def __init__(self, username=None, hostname=None, key=None, port=22, cb=None):
         if cb:
@@ -41,6 +43,8 @@ class AsyncSSH:
     @asyncio.coroutine
     def run(self, command, stdin=None, return_output=False,
             strip_output=True, raise_on_error=True, user=None):
+        if not self._ready:
+            yield from self.wait()
         if not user:
             user = self.username
         output = b""
@@ -89,6 +93,23 @@ class AsyncSSH:
             raise SSHError(msg)
         LOG.debug("Returning %s" % process.returncode)
         return process.returncode
+
+    @asyncio.coroutine
+    def wait(self, timeout=300):
+        start = time.time()
+        while 1:
+            try:
+                r, w = yield from asyncio.open_connection(self.hostname,
+                                                          int(self.port))
+                self._ready = True
+                w.close()
+                return
+            except ConnectionError:
+                pass
+            if time.time() - start > timeout:
+                raise Exception("Timeout waiting for "
+                                "%s:%s" % (self.hostname, self.port))
+            yield from asyncio.sleep(1)
 
     @asyncio.coroutine
     def scp_get(self, src, dst):

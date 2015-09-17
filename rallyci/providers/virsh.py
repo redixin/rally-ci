@@ -194,7 +194,6 @@ class Host:
             build_scripts = image_conf.get("build-scripts")
             if build_scripts:
                 vm = yield from self.boot_image(name)
-                yield from asyncio.sleep(5)
                 try:
                     for script in build_scripts:
                         script = self.root.config.data["script"][script]
@@ -207,7 +206,7 @@ class Host:
                     raise
             else:
                 LOG.debug("No build script for image %s" % name)
-            yield from asyncio.sleep(2)
+            yield from asyncio.sleep(4)
             yield from self.storage.snapshot(name)
 
     @asyncio.coroutine
@@ -321,7 +320,6 @@ class Provider:
         for vm in vms:
             LOG.debug("Cleaning %s" % vm)
             yield from vm.destroy()
-        yield from asyncio.sleep(1)
         LOG.debug("Cleanup completed")
 
     @asyncio.coroutine
@@ -390,7 +388,6 @@ class VM:
         cmd += script["interpreter"]
         ssh = asyncssh.AsyncSSH(script.get("user", "root"), self.ip,
                                 key=self.host.vm_key, cb=cb)
-        yield from asyncio.sleep(8)
         status = yield from ssh.run(cmd, stdin=script["data"],
                                     raise_on_error=raise_on_error,
                                     user=script.get("user", "root"))
@@ -429,7 +426,6 @@ class VM:
     @asyncio.coroutine
     def get_ssh(self):
         yield from self.get_ip()
-        yield from asyncio.sleep(16)
         return asyncssh.AsyncSSH("root", self.ip, key=self.host.vm_key)
 
     @asyncio.coroutine
