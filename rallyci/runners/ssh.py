@@ -16,6 +16,8 @@ import asyncio
 import os
 import logging
 
+from rallyci.common import asyncssh
+
 LOG = logging.getLogger(__name__)
 
 
@@ -51,7 +53,15 @@ class Class:
                 LOG.debug("Running test script %s on vm %s" % (script, vm))
                 s = self.job.root.config.data["script"][script]
                 self.job.set_status(script)
-                yield from vm.run_script(s, cb=self.cb, env=self.job.env)
+                try:
+                    yield from vm.run_script(s, cb=self.cb, env=self.job.env)
+                except asyncssh.SSHError:
+                    self.job.set_status("failed")
+                    return
+                except Exception:
+                    self.job.set_status("error")
+                    LOG.exception("Exception while executing script %s" % script)
+                    return
         self.job.set_status("finished")
 
     @asyncio.coroutine

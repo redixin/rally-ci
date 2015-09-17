@@ -390,6 +390,7 @@ class VM:
         cmd += script["interpreter"]
         ssh = asyncssh.AsyncSSH(script.get("user", "root"), self.ip,
                                 key=self.host.vm_key, cb=cb)
+        yield from asyncio.sleep(8)
         status = yield from ssh.run(cmd, stdin=script["data"],
                                     raise_on_error=raise_on_error,
                                     user=script.get("user", "root"))
@@ -428,6 +429,7 @@ class VM:
     @asyncio.coroutine
     def get_ssh(self):
         yield from self.get_ip()
+        yield from asyncio.sleep(16)
         return asyncssh.AsyncSSH("root", self.ip, key=self.host.vm_key)
 
     @asyncio.coroutine
