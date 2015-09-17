@@ -64,16 +64,22 @@ def get_key(raw_event):
 
 
 class Event:
-    def __init__(self, stream, raw_event):
+    def __init__(self, stream, project, raw_event):
         self.id = utils.get_rnd_name(prefix="", length=10)
         self.stream = stream
         self.root = stream.root
         self.raw_event = raw_event
-        self.project_name = self.get_project_name(raw_event)
+        self.project = project
         self.jobs = {}
         self.jobs_list = []
-        self.cfg = self.root.config.data["project"][self.project_name]
+        self.cfg = self.root.config.data["project"][self.project]
         env = self._get_env()
+        if raw_event["type"] == "ref-updated":
+            for job_name in self.cfg.get("on-ref-updated", []):
+                job = Job(self, job_name)
+                job.env.update(env)
+                self.jobs_list.append(job)
+            return
         for job_name in self.cfg.get("jobs", []):
             job = Job(self, job_name)
             job.env.update(env)
@@ -91,9 +97,12 @@ class Event:
             return {}
         for k, v in env.items():
             value = dict(self.raw_event)
-            for key in v.split("."):
-                value = value[key]
-            r[k] = value
+            try:
+                for key in v.split("."):
+                    value = value[key]
+                r[k] = value
+            except KeyError:
+                pass
         return r
 
     @asyncio.coroutine
@@ -113,8 +122,6 @@ class Event:
         if not self.stream.cfg.get("silent"):
             yield from self.publish_results()
 
-    def get_project_name(self, raw_event):
-        return raw_event["change"]["project"]
 
     @asyncio.coroutine
     def publish_results(self):
@@ -143,12 +150,15 @@ class Event:
     def to_dict(self):
         data = {"id": self.id, "jobs": [j.to_dict() for j in self.jobs_list]}
         subject = self.raw_event.get("change", {}).get("subject", "")
-        project = self.project_name
         data["subject"] = cgi.escape(subject)
-        data["project"] = cgi.escape(project)
-        uri = self.raw_event["patchSet"]["ref"].split("/", 3)[-1]
+        data["project"] = cgi.escape(self.project)
         # TODO: remove hardcode
-        data["url"] = "https://review.openstack.org/#/c/%s" % uri
+        if "patchSet" in self.raw_event:
+            uri = self.raw_event["patchSet"]["ref"].split("/", 3)[-1]
+            data["url"] = "https://review.openstack.org/#/c/%s" % uri
+        else:
+            data["url"] = "https://github.com/%s/commit/%s" % (
+                    self.project, self.raw_event["refUpdate"]["newRev"])
         return data
 
 
@@ -176,35 +186,44 @@ class Class:
         self.future.cancel()
 
     def _get_event(self, raw_event):
-        project_name = raw_event.get("change", {}).get("project")
-        if not project_name:
-            LOG.debug("No project name %s" % raw_event)
-            return
-        if project_name not in self.config.data["project"]:
-            LOG.debug("Unknown project %s" % project_name)
+
+        project = raw_event.get("change", {}).get("project")
+        if not project:
+            project= raw_event.get("refUpdate", {}).get("project")
+            if not project:
+                LOG.debug("No project name %s" % raw_event)
+                return
+
+        if project not in self.config.data["project"]:
+            LOG.debug("Unknown project %s" % project)
             return
         event_type = raw_event["type"]
+
         if event_type == "patchset-created":
-            LOG.debug("Patchset for project %s" % project_name)
+            LOG.debug("Patchset for %s" % project)
             key = get_key(raw_event)
             if key in self.tasks:
                 LOG.warning("Duplicate change %s" % key)
             else:
                 LOG.debug("Key %s not found in %s" % (key, self.tasks))
                 self.tasks.add(key)
-                return Event(self, raw_event)
+                return Event(self, project, raw_event)
+
         if event_type == "comment-added":
             r = self.cfg.get("recheck-regexp", "^rally-ci recheck$")
             m = re.search(r, raw_event["comment"], re.MULTILINE)
             if m:
-                LOG.debug("Recheck for project %s" % project_name)
+                LOG.debug("Recheck for %s" % project)
                 key = get_key(raw_event)
                 if key in self.tasks:
                     LOG.debug("Task is running already %s" % key)
                 else:
                     LOG.debug("Key %s not found in %s" % (key, self.tasks))
                     self.tasks.add(key)
-                    return Event(self, raw_event)
+                    return Event(self, project, raw_event)
+
+        if event_type == "ref-updated":
+            return Event(self, project, raw_event)
 
     def _handle_line(self, line):
         try:

@@ -13,10 +13,10 @@
 #    limitations under the License.
 
 import asyncio
-import datetime
 import subprocess
 import sys
 import tempfile
+import time
 import logging
 
 LOG = logging.getLogger(__name__)
@@ -109,6 +109,7 @@ class AsyncSSH:
             if time.time() - start > timeout:
                 raise Exception("Timeout waiting for "
                                 "%s:%s" % (self.hostname, self.port))
+            LOG.debug("Waiting for ssh %s:%s" % (self.hostname, self.port))
             yield from asyncio.sleep(1)
 
     @asyncio.coroutine
