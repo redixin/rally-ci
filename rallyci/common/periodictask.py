@@ -18,11 +18,15 @@ import logging
 LOG = logging.getLogger(__name__)
 
 class PeriodicTask(object):
-    def __init__(self, interval, method):
+
+    def __init__(self, interval, method, loop=None):
         self.active = False
         self._interval = interval
         self.method = method
-        self._loop = asyncio.get_event_loop()
+        if loop:
+            self._loop = loop
+        else:
+            self._loop = asyncio.get_event_loop()
 
     def _run(self):
         self._handler = self._loop.call_later(self._interval, self.method)

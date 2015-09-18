@@ -17,7 +17,7 @@ import socket
 import unittest
 import mock
 
-from rallyci.status import http
+from rallyci.services import status
 
 import aiohttp
 
@@ -36,7 +36,7 @@ class HttpTestCase(unittest.TestCase):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(None)
         config = {"listen": ("localhost", get_free_port())}
-        h = http.Class(**config)
+        h = status.Class(**config)
 
         @asyncio.coroutine
         def test(loop):

@@ -32,9 +32,6 @@ class Class:
     def __init__(self, **config):
         self.config = config
         self.clients = []
-        interval = self.config.get("stats-interval", 60)
-        self.stats_sender = periodictask.PeriodicTask(
-            interval, self._send_daemon_statistic)
 
     @asyncio.coroutine
     def index(self, request):
@@ -101,6 +98,10 @@ class Class:
     def start(self, root):
         self.loop = root.loop
         self.root = root
+        self.stats_sender = periodictask.PeriodicTask(
+            self.config.get("stats-interval", 60),
+            self._send_daemon_statistic,
+            loop=self.loop)
         asyncio.async(self.run(), loop=self.loop)
         root.task_start_handlers.append(self._task_started_cb)
         root.task_end_handlers.append(self._task_finished_cb)

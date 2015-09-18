@@ -163,6 +163,14 @@ class Host:
         self.vm_key = vm_key
 
     @asyncio.coroutine
+    def get_stats(self):
+        cmd = "uptime && cat /proc/meminfo"
+        data = yield from self.ssh.run(cmd, return_output=True)
+        la = RE_LA.match(data, re.MULTILINE).group(1)
+        free = RE_FREE.match(data, re.MULTILINE).group(1)
+        cached = RE_CACHED.match(data, re.MULTILINE).group(1)
+
+    @asyncio.coroutine
     def boot_image(self, name):
         conf = self.config["images"][name]
         vm = VM(self, conf)
@@ -326,6 +334,7 @@ class Provider:
     def stop(self):
         yield from self.mds_future.cancel()
 
+    @asyncio.coroutine
     def get_vms(self, vm_confs):
         host = self.hosts[0]
         vms = len(host.vms)

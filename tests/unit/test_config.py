@@ -24,5 +24,5 @@ class ConfigTestCase(unittest.TestCase):
     def test___init__(self):
         dirname = os.path.dirname(os.path.realpath(__file__))
         filename = os.path.join(dirname, "../../etc/sample-config.yaml")
-        c = config.Config(filename)
+        c = config.Config({}, filename)
         print(json.dumps(c.data, indent=2))

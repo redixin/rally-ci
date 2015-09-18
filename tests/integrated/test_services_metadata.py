@@ -36,8 +36,8 @@ def wait_for_port(port, timeout=4):
 class MetadataServiceTestCase(unittest.TestCase):
 
     def test_metadata(self):
-        r = request.urlopen(self.url + "openstack/")
-        self.assertEqual(b"latest", r.read())
+        r = request.urlopen(self.url + "openstack/latest/user_data")
+        self.assertEqual(b"userdata", r.read())
 
     def test_metadata_404(self):
         self.assertRaises(urllib.error.HTTPError,
@@ -53,10 +53,12 @@ class MetadataServiceTestCase(unittest.TestCase):
                     "name": "virsh",
                     "module": "rallyci.providers.virsh",
                     "nodes": [],
+                    "hosts": [],
                     "metadata_server": {
                         "listen_addr": "localhost",
                         "listen_port": port,
-                    }
+                        "user_data": "userdata",
+                    },
                 }
         }
         conf = base.get_config(conf)
