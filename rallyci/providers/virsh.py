@@ -16,6 +16,7 @@ import asyncio
 import contextlib
 import time
 import os
+import random
 import re
 import json
 import logging
@@ -31,6 +32,8 @@ from rallyci.common import asyncssh
 
 LOG = logging.getLogger(__name__)
 
+RE_LA = re.compile(r".*load average: (\d+\.\d+),.*")
+RE_MEM = re.compile(r".*Mem: +\d+ +\d+ +(\d+) +\d+ +\d+ +(\d+).*")
 IFACE_RE = re.compile(r"\d+: ([a-z]+)(\d+): .*")
 IP_RE = re.compile(r"(\d+\.\d+\.\d+\.\d+)\s")
 DYNAMIC_BRIDGES = {}
@@ -161,14 +164,20 @@ class Host:
         self.ssh = asyncssh.AsyncSSH(**ssh_conf)
         self.storage = BTRFS(self.ssh, **config["storage"])
         self.vm_key = vm_key
+        self.la = 0.0
+        self.free = 0
+
+    def __str__(self):
+        return "<Host %s (la: %s, free: %s)>" % (self.ssh.hostname,
+                                                 self.la, self.free)
 
     @asyncio.coroutine
-    def get_stats(self):
-        cmd = "uptime && cat /proc/meminfo"
+    def update_stats(self):
+        cmd = "uptime && free -m"
         data = yield from self.ssh.run(cmd, return_output=True)
-        la = RE_LA.match(data, re.MULTILINE).group(1)
-        free = RE_FREE.match(data, re.MULTILINE).group(1)
-        cached = RE_CACHED.match(data, re.MULTILINE).group(1)
+        self.la = float(RE_LA.search(data, re.MULTILINE).group(1))
+        free = RE_MEM.search(data, re.MULTILINE).groups()
+        self.free = sum(map(int, free))
 
     @asyncio.coroutine
     def boot_image(self, name):
@@ -309,11 +318,15 @@ class Host:
 class Provider:
 
     def __init__(self, root, config):
+        """
+        :param config: full provider config
+        """
         self.root = root
         self.config = config
         self.name = config["name"]
         self.key = config.get("key")
         self.ifs = {}
+        self.get_vms_lock = asyncio.Lock()
 
     def start(self):
         self.hosts = [Host(c, self.config, self.root, self.key)
@@ -336,15 +349,22 @@ class Provider:
 
     @asyncio.coroutine
     def get_vms(self, vm_confs):
-        host = self.hosts[0]
-        vms = len(host.vms)
-        for h in self.hosts:
-            n_vms = len(h.vms)
-            if n_vms < vms:
-                host = h
-                vms = n_vms
-        return host.get_vms(vm_confs)
+        """
+        :param vm_confs: job.runner.vms
+        """
+        memory_required = self.config.get("freemb", 1024)
+        for cfg in vm_confs:
+            memory_required += self.config["vms"][cfg["name"]]["memory"]
 
+        with (yield from self.get_vms_lock):
+            while True:
+                random.shuffle(self.hosts)
+                for host in self.hosts:
+                    yield from host.update_stats()
+                    if host.free >= memory_required and host.la < self.config.get("maxla", 4):
+                        LOG.debug("Chosen host: %s" % host)
+                        return (yield from host.get_vms(vm_confs))
+                yield from asyncio.sleep(30)
 
 class VM:
     def __init__(self, host, cfg=None, local_cfg=None):
