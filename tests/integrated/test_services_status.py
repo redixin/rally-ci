@@ -11,14 +11,8 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
-import os
 import socket
-import subprocess
-import tempfile
-import time
 import unittest
-
-import yaml
 
 
 def get_free_port():
@@ -44,16 +38,10 @@ def wait_for_port(port, timeout=4):
 
 
 class IntegrationTest(unittest.TestCase):
-    """Base class for integrated tests.
-
-    self._get_config should return tuple with two objects:
-        json encodable obect to be used for rally-ci config generation
-        list of ports to wait
-    """
 
     def setUp(self):
         self.tmpdir = tempfile.TemporaryDirectory(prefix="rci_tst_integration")
-        conf, ports = self._get_config()
+        conf = self._get_config()
         self.cf = os.path.join(self.tmpdir.name, "cf.yaml")
         with open(self.cf, "w") as cfg:
             cfg.write(yaml.dump(conf))
@@ -62,8 +50,7 @@ class IntegrationTest(unittest.TestCase):
         self.server = subprocess.Popen(["rally-ci", self.cf],
                                        stdout=self.server_out,
                                        stderr=self.server_err)
-        for port in ports:
-            wait_for_port(port)
+        wait_for_port(port)
 
     def tearDown(self):
         self.server.terminate()
