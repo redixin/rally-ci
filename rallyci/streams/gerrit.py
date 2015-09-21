@@ -231,7 +231,7 @@ class Class:
                 line = line.decode()
             raw_event = json.loads(line)
         except Exception:
-            LOG.exception("Unable to decode string: %s" % line)
+            LOG.warning("Unable to decode string: '%s'" % line)
             return
         try:
             event = self._get_event(raw_event)
@@ -249,10 +249,9 @@ class Class:
                     try:
                         self._handle_line(stream.readline())
                     except Exception:
-                        LOG.exception("Error handlin string")
+                        LOG.warning("Error handling string '%s'" % line)
                     finally:
                         yield from asyncio.sleep(self.cfg.get("fake_stream_delay", 4))
-            return
 
     @asyncio.coroutine
     def run(self):

@@ -14,23 +14,9 @@
     recheck-regexp: ^my-ci recheck$
 
 - service:
-    name: http_status
-    module: rallyci.status.http
+    name: status
+    module: rallyci.services.status
     listen: [0.0.0.0, 8080]
-
-- service:
-    name: metadata
-    module: rallyci.services.metadata
-    listen: [169.254.169.254, 8081]
-
-- nodepool:
-    name: test
-    module: rallyci.nodepools.fair
-    tasks_per_node: 4
-    nodes:
-      - hostname: localhost
-        username: root
-        key: /home/user/ci-key
 
 - runner:
     name: fake
