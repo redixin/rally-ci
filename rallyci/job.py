@@ -44,7 +44,7 @@ class Job:
         self.name = name
         self.root = event.root
         self.config = event.root.config.data["job"][name]
-        self.id = utils.get_rnd_name(prefix="", length=10)
+        self.id = utils.get_rnd_name("JOB", length=10)
         self.env = self.config.get("env", {}).copy()
         self.status = "__init__"
         self.log_path = os.path.join(self.event.id, self.name)
@@ -56,33 +56,26 @@ class Job:
 
     @asyncio.coroutine
     def run(self):
+        LOG.info("Starting job %s" % self)
+        self.set_status("queued")
+        self.started_at = time.time()
+        runner_local_cfg = self.config["runner"]
+        runner_cfg = self.root.config.data["runner"][runner_local_cfg["name"]]
         try:
-            self.started_at = time.time()
-            yield from self._run()
+            self.runner = self.root.config.get_instance(runner_cfg, self,
+                                                        runner_local_cfg)
+            self.error = yield from self.runner.run()
         except Exception:
-            LOG.exception("Error running job %s" % self.id)
+            LOG.exception("Error running job %s" % self)
             self.error = 254
         finally:
             self.finished_at = time.time()
-
-    @asyncio.coroutine
-    def _run(self):
-        self.set_status("queued")
-        runner_local_cfg = self.config["runner"]
-        runner_cfg = self.root.config.data["runner"][runner_local_cfg["name"]]
-        self.runner = self.root.config.get_instance(runner_cfg, self,
-                                                    runner_local_cfg)
-        LOG.debug("Runner initialized %r for job %r" % (self.runner, self))
+        LOG.info("Finished job %s with status %s." % (self, self.error))
         try:
-            self.error = yield from self.runner.run()
+            yield from self.runner.cleanup()
+            LOG.info("Cleanup completed for job %s" % self)
         except:
-            LOG.exception("Unhandled exception in job %s" % self)
-            self.error = 1
-        self.finished_at = int(time.time())
-        LOG.debug("Finished job %s." % self)
-        LOG.debug("Starting cleanup for job %s" % self)
-        yield from self.runner.cleanup()
-        LOG.debug("Finished cleanup for job %s" % self)
+            LOG.exception("Exception while cleanup job %s" % self)
 
     def to_dict(self):
         return {"id": self.id,

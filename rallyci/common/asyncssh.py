@@ -44,7 +44,13 @@ class AsyncSSH:
     def run(self, command, stdin=None, return_output=False,
             strip_output=True, raise_on_error=True, user=None):
         if not self._ready:
-            yield from self.wait()
+            try:
+                yield from self.wait()
+            except Exception:
+                if raise_on_error:
+                    raise
+                else:
+                    return -1
         if not user:
             user = self.username
         output = b""

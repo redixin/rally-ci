@@ -22,7 +22,8 @@ import logging
 LOG = logging.getLogger(__name__)
 
 
-def get_rnd_name(prefix="rci_", length=12):
+def get_rnd_name(prefix, length=12):
+    prefix = "_rci_" + prefix
     return prefix + "".join(random.sample(string.ascii_letters, length))
 
 

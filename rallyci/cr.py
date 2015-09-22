@@ -35,7 +35,7 @@ class CR:
         self.event = event
         self.jobs = []
 
-        self.id = utils.get_rnd_name(prefix="", length=10)
+        self.id = utils.get_rnd_name("CR", length=10)
 
         event_type = event["type"]
         LOG.debug("New event %s" % event_type)

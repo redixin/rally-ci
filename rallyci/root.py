@@ -74,10 +74,9 @@ class Root:
 
     def task_done(self, future):
         task = self.tasks[future]
-        LOG.debug("Completed task: %s" % task)
         for cb in self.task_end_handlers:
             cb(task)
-        del (self.tasks[future])
+        del(self.tasks[future])
 
     def job_updated(self, job):
         for cb in self.job_update_handlers:
@@ -92,9 +91,10 @@ class Root:
 
     def stop(self):
         LOG.info("Interrupted.")
-        self.stop_services(True)
         tasks = list(self.tasks.keys())
         if tasks:
+            for task in tasks:
+                task.cancel()
             LOG.info("Waiting for tasks %r." % tasks)
             yield from asyncio.gather(*tasks, return_exceptions=True)
             LOG.info("All tasks finished.")

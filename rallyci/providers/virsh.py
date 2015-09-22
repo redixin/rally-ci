@@ -182,11 +182,11 @@ class Host:
     @asyncio.coroutine
     def boot_image(self, name):
         conf = self.config["images"][name]
-        vm = VM(self, conf)
+        vm = VM(self, conf, {"name": name})
         vm.storage_name = name # FIXME
         for f in (yield from self.storage.list_files(name)):
             vm.add_disk(f)
-        vm.add_net(self.config.get("build_net", "virbr0"))
+        vm.add_net(conf.get("build-net", "virbr0"))
         yield from vm.boot()
         return vm
 
@@ -356,15 +356,22 @@ class Provider:
         for cfg in vm_confs:
             memory_required += self.config["vms"][cfg["name"]]["memory"]
 
+        best = None
         with (yield from self.get_vms_lock):
             while True:
                 random.shuffle(self.hosts)
+                LOG.debug("Chosing from %s" % self.hosts)
                 for host in self.hosts:
                     yield from host.update_stats()
                     if host.free >= memory_required and host.la < self.config.get("maxla", 4):
                         LOG.debug("Chosen host: %s" % host)
-                        return (yield from host.get_vms(vm_confs))
+                        best = host
+                        break
+                if best:
+                    break
+                LOG.info("All systems are overloaded. Waiting 30 seconds.")
                 yield from asyncio.sleep(30)
+        return (yield from host.get_vms(vm_confs))
 
 class VM:
     def __init__(self, host, cfg=None, local_cfg=None):
@@ -372,6 +379,7 @@ class VM:
 
         :param host: Host instance
         :param cfg: config.provider.vms item
+        :param local_cfg: job.runner.vms item
 
         """
         self.host = host
@@ -380,12 +388,12 @@ class VM:
         self._ssh = host.ssh
         self.macs = []
         self.bridges = []
-        self.name = self.cfg.get("name", utils.get_rnd_name())
+        self.name = utils.get_rnd_name(local_cfg["name"])
         x = XMLElement(None, "domain", type="kvm")
         self.x = x
         x.se("name").x.text = self.name
         for mem in ("memory", "currentMemory"):
-            x.se(mem, unit="MiB").x.text = str(self.cfg.get("memory", 512))
+            x.se(mem, unit="MiB").x.text = str(self.cfg.get("memory", 1024))
         x.se("vcpu", placement="static").x.text = "1"
         cpu = x.se("cpu", mode="host-model")
         cpu.se("model", fallback="forbid")
@@ -411,8 +419,8 @@ class VM:
 
     @asyncio.coroutine
     def run_script(self, script, env=None, raise_on_error=True, cb=None):
-        yield from self.get_ip()
         LOG.debug("Running script: %s on vm %s with env %s" % (script, self, env))
+        yield from self.get_ip()
         cmd = "".join(["%s='%s' " % tuple(e) for e in env.items()]) if env else ""
         cmd += script["interpreter"]
         ssh = asyncssh.AsyncSSH(script.get("user", "root"), self.ip,
@@ -479,7 +487,7 @@ class VM:
 
     @asyncio.coroutine
     def boot(self):
-        conf = "/tmp/.conf.%s.xml" % utils.get_rnd_name()
+        conf = "/tmp/.conf.%s.xml" % utils.get_rnd_name("CFG")
         with self.fd() as fd:
             yield from self._ssh.run("cat > %s" % conf, stdin=fd)
         yield from self._ssh.run("virsh create {c}; rm {c}".format(c=conf))

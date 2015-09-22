@@ -65,7 +65,7 @@ def get_key(raw_event):
 
 class Event:
     def __init__(self, stream, project, raw_event):
-        self.id = utils.get_rnd_name(prefix="", length=10)
+        self.id = utils.get_rnd_name("EVNT", length=10)
         self.stream = stream
         self.root = stream.root
         self.raw_event = raw_event
@@ -109,7 +109,6 @@ class Event:
     def run_jobs(self):
         for job in self.jobs_list:
             future = asyncio.async(job.run(), loop=self.root.loop)
-            job.future = future  # FIXME: this used by nodepool
             self.jobs[future] = job
         while self.jobs:
             done, pending = yield from asyncio.\
