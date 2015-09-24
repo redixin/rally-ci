@@ -13,6 +13,7 @@
 #    limitations under the License.
 
 import asyncio
+import copy
 import contextlib
 import time
 import os
@@ -116,6 +117,9 @@ class BTRFS:
 
     @asyncio.coroutine
     def clone(self, src, dst):
+        cmd = "btrfs subvolume delete {path}/{dst}"
+        cmd = cmd.format(path=self.path, src=src, dst=dst)
+        yield from self.ssh.run(cmd, raise_on_error=False)
         cmd = "btrfs subvolume snapshot {path}/{src} {path}/{dst}"
         cmd = cmd.format(path=self.path, src=src, dst=dst)
         yield from self.ssh.run(cmd)
@@ -183,7 +187,7 @@ class Host:
     def boot_image(self, name):
         conf = self.config["images"][name]
         vm = VM(self, conf, {"name": name})
-        vm.storage_name = name # FIXME
+        vm.disks.append(name)
         for f in (yield from self.storage.list_files(name)):
             vm.add_disk(f)
         vm.add_net(conf.get("build-net", "virbr0"))
@@ -243,6 +247,7 @@ class Host:
         yield from self.storage.clone(image, rnd_name)
         vm = VM(self, conf, local_cfg)
         files = yield from self.storage.list_files(rnd_name)
+        vm.disks.append(rnd_name)
         for f in files:
             vm.add_disk(f)
         for net in conf["net"]:
@@ -253,7 +258,6 @@ class Host:
                 vm.add_net(net[0], mac=net[1])
         yield from vm.boot()
         self.vms.append(vm)
-        vm.storage_name = rnd_name # FIXME
         return vm
 
     @asyncio.coroutine
@@ -264,8 +268,9 @@ class Host:
         """
         vms = []
         ifs = {}
+        LOG.debug("Getting VMS %s" % vm_confs)
         for vm_conf in vm_confs:
-            conf = self.config["vms"][vm_conf["name"]]
+            conf = copy.deepcopy(self.config["vms"][vm_conf["name"]])
             br = None
             net_conf = []
             for net in conf["net"]:
@@ -387,6 +392,7 @@ class VM:
         self.local_cfg = local_cfg
         self._ssh = host.ssh
         self.macs = []
+        self.disks = []
         self.bridges = []
         self.name = utils.get_rnd_name(local_cfg["name"])
         x = XMLElement(None, "domain", type="kvm")
@@ -449,11 +455,12 @@ class VM:
                 return
 
     @asyncio.coroutine
-    def destroy(self, storage=False):
+    def destroy(self, storage=True):
         cmd = "virsh destroy {}".format(self.name)
         yield from self._ssh.run(cmd, raise_on_error=False)
         if storage:
-            yield from self.host.storage.destroy(self.storage_name)
+            for disk in self.disks:
+                yield from self.host.storage.destroy(disk)
         for br in self.bridges:
             lst = self.host.br_vm.get(br)
             if lst and self in lst:
@@ -466,7 +473,7 @@ class VM:
         return asyncssh.AsyncSSH("root", self.ip, key=self.host.vm_key)
 
     @asyncio.coroutine
-    def get_ip(self, timeout=60):
+    def get_ip(self, timeout=300):
         if hasattr(self, "ip"):
             yield from asyncio.sleep(0)
             return self.ip
@@ -476,6 +483,7 @@ class VM:
             if time.time() > deadline:
                 raise Exception("Unable to find ip of VM %s" % self.cfg)
             yield from asyncio.sleep(4)
+            LOG.debug("Checking for ip for vm %s (%s)" % (self.name, repr(self.macs)))
             data = yield from self._ssh.run(cmd, return_output=True)
             for line in data.splitlines():
                 m = IP_RE.match(line)
@@ -487,10 +495,10 @@ class VM:
 
     @asyncio.coroutine
     def boot(self):
-        conf = "/tmp/.conf.%s.xml" % utils.get_rnd_name("CFG")
+        conf = "/tmp/.conf.%s.xml" % self.name
         with self.fd() as fd:
             yield from self._ssh.run("cat > %s" % conf, stdin=fd)
-        yield from self._ssh.run("virsh create {c}; rm {c}".format(c=conf))
+        yield from self._ssh.run("virsh create {c}".format(c=conf))
 
     @contextlib.contextmanager
     def fd(self):
