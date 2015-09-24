@@ -68,6 +68,7 @@ class Job:
         except Exception:
             LOG.exception("Error running job %s" % self)
             self.error = 254
+            self.set_status("ERROR")
         finally:
             self.finished_at = time.time()
         LOG.info("Finished job %s with status %s." % (self, self.error))
