@@ -81,22 +81,25 @@ class AsyncSSH:
                 if return_output:
                     output += line
         except asyncio.CancelledError:
+            LOG.debug("Terminated. Killing child process.")
             process.terminate()
             asyncio.async(process.wait(), loop=asyncio.get_event_loop())
             raise
 
         yield from process.wait()
 
-        if return_output:
-            output = output.decode()
-            if strip_output:
-                return output.strip()
-            return output
         if process.returncode and raise_on_error:
             LOG.error("Command failed: %s" % line)
             msg = "Cmd '%s' failed. Exit code: %d" % (" ".join(cmd),
                                                       process.returncode)
             raise SSHError(msg)
+
+        if return_output:
+            output = output.decode()
+            if strip_output:
+                return output.strip()
+            return output
+
         LOG.debug("Returning %s" % process.returncode)
         return process.returncode
 
