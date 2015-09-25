@@ -44,7 +44,6 @@ class Class:
 
     @asyncio.coroutine
     def run(self):
-        self.job.set_status("started")
         self.prov = self.job.root.providers[self.cfg["provider"]]
         scripts = [vm.get("scripts", []) for vm in self.local_cfg["vms"]]
         self.vms = yield from self.prov.get_vms(self.local_cfg["vms"])
@@ -56,13 +55,7 @@ class Class:
                 try:
                     yield from vm.run_script(s, cb=self.cb, env=self.job.env)
                 except asyncssh.SSHError:
-                    self.job.set_status("failed")
-                    return
-                except Exception:
-                    self.job.set_status("error")
-                    LOG.exception("Exception while executing script %s" % script)
-                    return
-        self.job.set_status("finished")
+                    return 1
 
     @asyncio.coroutine
     def cleanup(self):

@@ -65,9 +65,12 @@ class Job:
             self.runner = self.root.config.get_instance(runner_cfg, self,
                                                         runner_local_cfg)
             self.error = yield from self.runner.run()
+            if self.error:
+                self.set_status("FAIL")
+            else:
+                self.set_status("SUCCESS")
         except Exception:
             LOG.exception("Error running job %s" % self)
-            self.error = 254
             self.set_status("ERROR")
         finally:
             self.finished_at = time.time()

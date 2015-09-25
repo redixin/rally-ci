@@ -31,8 +31,7 @@ def run():
     loop = asyncio.get_event_loop()
     r = root.Root(loop)
     r.load_config(config)
-    for signame in ("SIGINT", ):
-        loop.add_signal_handler(getattr(signal, signame),
-                                asyncio.async, r.stop())
+    loop.add_signal_handler(signal.SIGINT,
+                            lambda: asyncio.async(r.stop()))
     LOG.info("Daemon started. Entering event loop.")
     loop.run_forever()

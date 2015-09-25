@@ -121,7 +121,6 @@ class Event:
         if not self.stream.cfg.get("silent"):
             yield from self.publish_results()
 
-
     @asyncio.coroutine
     def publish_results(self):
         comment_header = self.stream.cfg.get("comment-header")
@@ -167,6 +166,7 @@ class Class:
         self.cfg = kwargs
         self.name = kwargs["name"]
         self.tasks = set()
+        self.stop = False
 
     def start(self, root):
         self.root = root
@@ -182,6 +182,7 @@ class Class:
             self.future = asyncio.async(self.run(), loop=root.loop)
 
     def stop(self):
+        self.stop = True
         self.future.cancel()
 
     def _get_event(self, raw_event):
@@ -225,13 +226,10 @@ class Class:
             return Event(self, project, raw_event)
 
     def _handle_line(self, line):
-        try:
-            if isinstance(line, bytes):
-                line = line.decode()
-            raw_event = json.loads(line)
-        except Exception:
-            LOG.warning("Unable to decode string: '%s'" % line)
+        if not (line and isinstance(line, bytes)):
             return
+        line = line.decode()
+        raw_event = json.loads(line)
         try:
             event = self._get_event(raw_event)
         except Exception:
@@ -248,15 +246,18 @@ class Class:
                     try:
                         self._handle_line(stream.readline())
                     except Exception:
-                        LOG.warning("Error handling string '%s'" % line)
+                        LOG.exception("Error handlin string")
                     finally:
                         yield from asyncio.sleep(self.cfg.get("fake_stream_delay", 4))
+            return
 
     @asyncio.coroutine
     def run(self):
         while 1:
             yield from self.ssh.run("gerrit stream-events",
                                     raise_on_error=False)
+            if self.stop:
+                return
             LOG.warning("Stream %s exited. Restarting" % self.name)
             asyncio.sleep(4)
 

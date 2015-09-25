@@ -484,7 +484,7 @@ class VM:
                 raise Exception("Unable to find ip of VM %s" % self.cfg)
             yield from asyncio.sleep(4)
             LOG.debug("Checking for ip for vm %s (%s)" % (self.name, repr(self.macs)))
-            data = yield from self._ssh.run(cmd, return_output=True)
+            data = yield from self._ssh.run(cmd, return_output=True, raise_on_error=False)
             for line in data.splitlines():
                 m = IP_RE.match(line)
                 if m:

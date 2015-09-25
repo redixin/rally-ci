@@ -89,15 +89,16 @@ class Root:
         for cb in self.task_start_handlers:
             cb(event)
 
+    @asyncio.coroutine
     def stop(self):
         LOG.info("Interrupted.")
         tasks = list(self.tasks.keys())
         if tasks:
             for task in tasks:
+                LOG.debug("Cancelling task %s" % task)
                 task.cancel()
-            LOG.info("Waiting for tasks %r." % tasks)
-            yield from asyncio.gather(*tasks, return_exceptions=True)
-            LOG.info("All tasks finished.")
+                for job in task.jobs_list:
+                    yield from job.runner.cleanup()
         self.stop_services(True)
         self.loop.stop()
 
