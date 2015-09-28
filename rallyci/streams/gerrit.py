@@ -114,17 +114,32 @@ class Event:
             done, pending = yield from asyncio.\
                     wait(self.jobs.keys(), return_when=futures.FIRST_COMPLETED)
             for future in done:
-                LOG.debug("Finished job %s" % self.jobs[future])
+                LOG.debug("Finished %s" % self.jobs[future])
+                job = self.jobs[future]
                 del(self.jobs[future])
+                LOG.debug("getting ex")
+                ex = future.exception()
+                LOG.debug("got %s" % ex)
+                if ex:
+                    LOG.info("Failed %s with exception" % (job, future.exception()))
+                    job.set_status("ERROR")
+                del(job)
+                LOG.debug("JOBS: %s" % self.jobs.keys())
+        LOG.debug("Finished jobs fro task %s" % self)
         key = get_key(self.raw_event)
         self.stream.tasks.remove(key)
         if not self.stream.cfg.get("silent"):
-            yield from self.publish_results()
+            try:
+                yield from self.publish_results()
+            except:
+                LOG.exception("Failed to publish results for task %s" % self)
 
     @asyncio.coroutine
     def publish_results(self):
+        LOG.debug("Publishing results for task %s" % self)
         comment_header = self.stream.cfg.get("comment-header")
         if not comment_header:
+            LOG.warning("No comment-header configured. Can't publish.")
             return
         cmd = ["gerrit", "review"]
         fail = any([j.error for j in self.jobs_list if j.voting])
@@ -134,8 +149,7 @@ class Event:
         summary = comment_header.format(succeeded=succeeded)
         tpl = self.stream.cfg["comment-job-template"]
         for job in self.jobs_list:
-            success = "FAILURE" if job.error else "SUCCESS"
-            success += "" if job.voting else " (non-voting)"
+            success = job.status + "" if job.voting else " (non-voting)"
             time = human_time(job.finished_at - job.started_at)
             summary += tpl.format(success=success,
                                   name=job.config["name"],
@@ -147,7 +161,7 @@ class Event:
 
     def to_dict(self):
         data = {"id": self.id, "jobs": [j.to_dict() for j in self.jobs_list]}
-        subject = self.raw_event.get("change", {}).get("subject", "")
+        subject = self.raw_event.get("change", {}).get("subject", "#####")
         data["subject"] = cgi.escape(subject)
         data["project"] = cgi.escape(self.project)
         # TODO: remove hardcode
@@ -195,7 +209,6 @@ class Class:
                 return
 
         if project not in self.config.data["project"]:
-            LOG.debug("Unknown project %s" % project)
             return
         event_type = raw_event["type"]
 

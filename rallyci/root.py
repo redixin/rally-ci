@@ -83,11 +83,14 @@ class Root:
             cb(job)
 
     def handle(self, event):
+        LOG.debug("Event occured %s" % event)
+        LOG.debug(self.tasks)
         future = asyncio.async(event.run_jobs(), loop=self.loop)
         self.tasks[future] = event
         future.add_done_callback(self.task_done)
         for cb in self.task_start_handlers:
             cb(event)
+        LOG.debug(self.tasks)
 
     @asyncio.coroutine
     def stop(self):

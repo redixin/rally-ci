@@ -13,6 +13,7 @@
 #    limitations under the License.
 
 import asyncio
+from concurrent import futures
 import time
 import os
 import string
@@ -36,6 +37,7 @@ def _get_valid_filename(name):
 
 
 class Job:
+
     def __init__(self, event, name):
         self.voting = True
         self.error = 254 # FIXME
@@ -44,11 +46,15 @@ class Job:
         self.name = name
         self.root = event.root
         self.config = event.root.config.data["job"][name]
+        self.timeout = self.config.get("timeout", 180) * 60
         self.id = utils.get_rnd_name("JOB", length=10)
         self.env = self.config.get("env", {}).copy()
         self.status = "__init__"
         self.log_path = os.path.join(self.event.id, self.name)
         LOG.debug("Job %s initialized." % self.id)
+
+    def __str__(self):
+        return "<Job %s [%s]>" % (self.name, self.id)
 
     def set_status(self, status):
         self.status = status
@@ -56,30 +62,27 @@ class Job:
 
     @asyncio.coroutine
     def run(self):
-        LOG.info("Starting job %s" % self)
+        LOG.info("Starting %s (timeout: %s)" % (self, self.timeout))
         self.set_status("queued")
         self.started_at = time.time()
         runner_local_cfg = self.config["runner"]
         runner_cfg = self.root.config.data["runner"][runner_local_cfg["name"]]
+        self.runner = self.root.config.get_instance(runner_cfg, self,
+                                                    runner_local_cfg)
+
+        fut = asyncio.async(self.runner.run())
         try:
-            self.runner = self.root.config.get_instance(runner_cfg, self,
-                                                        runner_local_cfg)
-            self.error = yield from self.runner.run()
-            if self.error:
-                self.set_status("FAIL")
-            else:
-                self.set_status("SUCCESS")
-        except Exception:
-            LOG.exception("Error running job %s" % self)
-            self.set_status("ERROR")
+            error = yield from asyncio.wait_for(fut, timeout=self.timeout)
+            self.set_status("FAILURE" if error else "SUCCESS")
+        except asyncio.TimeoutError:
+            self.set_status("TIMEOUT")
+            LOG.info("Timed out %s" % self)
         finally:
             self.finished_at = time.time()
-        LOG.info("Finished job %s with status %s." % (self, self.error))
         try:
             yield from self.runner.cleanup()
-            LOG.info("Cleanup completed for job %s" % self)
         except:
-            LOG.exception("Exception while cleanup job %s" % self)
+            LOG.exception("Failed to clean up %s" % self)
 
     def to_dict(self):
         return {"id": self.id,

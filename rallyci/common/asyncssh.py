@@ -60,7 +60,7 @@ class AsyncSSH:
             f.flush()
             f.seek(0)
             stdin = f
-        cmd = ["ssh", "-o", "StrictHostKeyChecking=no",
+        cmd = ["ssh", "-T", "-o", "StrictHostKeyChecking=no",
                "%s@%s" % (user, self.hostname), "-p", self.port]
         if self.key:
             cmd += ["-i", self.key]
