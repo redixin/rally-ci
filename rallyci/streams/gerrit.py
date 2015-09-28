@@ -149,7 +149,7 @@ class Event:
         summary = comment_header.format(succeeded=succeeded)
         tpl = self.stream.cfg["comment-job-template"]
         for job in self.jobs_list:
-            success = job.status + "" if job.voting else " (non-voting)"
+            success = job.status + ("" if job.voting else " (non-voting)")
             time = human_time(job.finished_at - job.started_at)
             summary += tpl.format(success=success,
                                   name=job.config["name"],

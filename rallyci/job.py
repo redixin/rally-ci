@@ -46,10 +46,11 @@ class Job:
         self.name = name
         self.root = event.root
         self.config = event.root.config.data["job"][name]
-        self.timeout = self.config.get("timeout", 180) * 60
+        self.timeout = self.config.get("timeout", 90) * 60
         self.id = utils.get_rnd_name("JOB", length=10)
         self.env = self.config.get("env", {}).copy()
         self.status = "__init__"
+        self.finished_at = 0
         self.log_path = os.path.join(self.event.id, self.name)
         LOG.debug("Job %s initialized." % self.id)
 
@@ -72,8 +73,8 @@ class Job:
 
         fut = asyncio.async(self.runner.run())
         try:
-            error = yield from asyncio.wait_for(fut, timeout=self.timeout)
-            self.set_status("FAILURE" if error else "SUCCESS")
+            self.error = yield from asyncio.wait_for(fut, timeout=self.timeout)
+            self.set_status("FAILURE" if self.error else "SUCCESS")
         except asyncio.TimeoutError:
             self.set_status("TIMEOUT")
             LOG.info("Timed out %s" % self)
@@ -88,5 +89,6 @@ class Job:
         return {"id": self.id,
                 "name": self.name,
                 "status": self.status,
+                "finished_at": self.finished_at,
                 "seconds": int(time.time()) - self.queued_at,
                 }
