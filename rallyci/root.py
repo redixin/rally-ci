@@ -18,8 +18,6 @@ import logging
 import resource
 from rallyci.config import Config
 
-LOG = logging.getLogger(__name__)
-
 
 class Root:
     def __init__(self, loop):
@@ -45,6 +43,7 @@ class Root:
     def stop_services(self, wait=False):
         fs = []
         for service in self.services + list(self.providers.values()):
+            self.log.info("Stopping service %s" % service)
             fs.append(service.stop())
         if wait and fs:
             asyncio.wait(fs, return_when=futures.ALL_COMPLETED)
@@ -54,7 +53,7 @@ class Root:
     def load_config(self, filename):
         self.filename = filename
         self.config = Config(self, filename)
-        self.start()
+        self.log = logging.getLogger(__name__)
 
     @asyncio.coroutine
     def run(self):
@@ -64,12 +63,12 @@ class Root:
             self.providers[prov.name] = prov
             prov.start()
         yield from self.stop_event.wait()
-        LOG.info("Interrupted.")
+        self.log.info("Interrupted.")
         self.stop_services(True)
         tasks = list(self.tasks.keys())
         if tasks:
             for task in tasks:
-                LOG.debug("Cancelling task %s" % task)
+                self.log.debug("Cancelling task %s" % task)
                 task.cancel()
         self.loop.stop()
 

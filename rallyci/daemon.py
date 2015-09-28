@@ -17,10 +17,6 @@ from rallyci import root
 import asyncio
 import sys
 import signal
-import logging
-
-
-LOG = logging.getLogger(__name__)
 
 
 def run():
@@ -30,8 +26,6 @@ def run():
     config = sys.argv[1]
     loop = asyncio.get_event_loop()
     r = root.Root(loop)
-    loop.add_signal_handler(signal.SIGINT,
-                            lambda: asyncio.async(r.stop()))
+    loop.add_signal_handler(signal.SIGINT, r.stop_event.set)
     r.load_config(config)
-    LOG.info("Daemon started. Entering event loop.")
-    loop.run_forever()
+    loop.run_until_complete(r.run())

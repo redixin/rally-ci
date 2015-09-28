@@ -180,7 +180,6 @@ class Class:
         self.cfg = kwargs
         self.name = kwargs["name"]
         self.tasks = set()
-        self.stop = False
 
     def start(self, root):
         self.root = root
@@ -196,7 +195,6 @@ class Class:
             self.future = asyncio.async(self.run(), loop=root.loop)
 
     def stop(self):
-        self.stop = True
         self.future.cancel()
 
     def _get_event(self, raw_event):
@@ -269,8 +267,6 @@ class Class:
         while 1:
             yield from self.ssh.run("gerrit stream-events",
                                     raise_on_error=False)
-            if self.stop:
-                return
             LOG.warning("Stream %s exited. Restarting" % self.name)
             asyncio.sleep(4)
 
