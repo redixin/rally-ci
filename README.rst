@@ -1,5 +1,5 @@
-How to run third party CI on single node
-########################################
+How to run third party CI on a single node
+##########################################
 
 Prerequesites
 *************
@@ -11,7 +11,7 @@ SSH key
 Third party CI can be tested using you main gerrit account. There is a project
 openstack-dev/ci-sandbox for testing purpose. Any active gerrit account can
 upload patches, approve, vote and so on. You may want to generate separate ssh
-key for rally-ci::
+key for this::
 
     ssh-keygen -N '' -f ci-key -t rsa
     cat ci-key.pub
@@ -19,9 +19,8 @@ key for rally-ci::
 You need to paste this public key in gerrit settings page (add key in
 https://review.openstack.org/#/settings/ssh-keys )
 
-NOTE: Keep private key (ci-key) in safe. Do not publish this file. This file
-should not be readable by users other then system users used to run rally-ci.
-Do not forget to delete this key from gerrit settings when it is not needed
+NOTE: Keep private key (ci-key) in safe. Do not publish this file.
+Do not forget to delete this key from gerrit settings when it is not used 
 anymore.
 
 The worker
@@ -62,7 +61,7 @@ RallyCI
 Access to worker node(s)
 ========================
 Main node should have root access to worker node(s) by ssh key. Use ssh-copy-id
-to copy your ssh key to remote host::
+to copy your ssh key to worker node::
 
     ssh-copy-id root@host.example.com
 
@@ -105,11 +104,11 @@ Save file and run rally-ci::
 
 Now you can go in https://review.openstack.org/#/q/status:open+project:openstack-dev/ci-sandbox,n,z
 and write a comment `my-ci recheck` for any patchset. Wait few seconds and reload the page.
-You should see a commend from Rally-CI.
+You should see a comment from Rally-CI.
 
 Configure access to host machine
 ================================
-Open rally-conf.yaml again, and edit nodepool. There is one node in nodes list
+Open rally-conf.yaml again, and edit provider. There is one node in nodes list
 in sample configuration. Edit hostname and path to private key. If you running
 rally-ci on the worker node, you only need to change path to private key.
 Obviously you should be able to ssh to localhost with this private key.
@@ -136,16 +135,31 @@ scenario.
 This sample is mostly self documented, but some sections needs further
 description::
 
-
-    - runner:
+    - provider:
         name: virsh
         module: rallyci.runners.virsh
-        nodepool: local
-        scp-root: /store/rally-ci/logs/
+        hosts:
+          - hostname: localhost
+            key: /home/user/.ssh/ci-key
+        storage:
+          backend: btrfs
+          path: /ci/rally
+        metadata_server:
+          listen_addr: 127.0.0.1
+          listen_port: 8080
+          authorized_keys: /etc/rally-ci/authorized_keys
+          user_data: |
+            #cloud-config
+            manage_etc_hosts: true
+            bootcmd:
+              - echo 'root:r00tme' | chpasswd
+            disable_root: 0
+            ssh_pwauth: True
         images:
+          u1404:
+            url: https://cloud-images.ubuntu.com/trusty/current/trusty-server-cloudimg-amd64-disk1.img
           dsvm:
-            dataset: all/ci
-            source: bare-ubuntu-1404@1
+            parent: u1404
             build-scripts: ["init_dsvm", "clone_projects"]
         vms:
           dsvm:
@@ -156,33 +170,24 @@ description::
 
 Images section
 ^^^^^^^^^^^^^^
-In this section images are defined. Here we define one image based
-on pre created ubuntu 1404. Two scripts "prepare_node" and
-"clone_projects" will be run and then VM will be shutdowned
-and image snapshot will be created.
+In this section images are defined. Here we define base image "u1404", which
+will be downloaded from cloud-images.ubuntu.com. Second image "dsvm" will
+be created based on u1404 by running two scripts "init_dsvm" and "clone_projects".
 
-New image will be stored in all/ci/u1404-base@1. This image will
-be base for our test VMs. Image may be deleted by hand at any moment,
-and rally-ci will rebuild it from scratch.
+New image will be stored /ci/rally/dsvm. This image will be base for our test VMs.
+Image may be deleted by hand at any moment, and rally-ci will rebuild it from scratch.
 
 Vms section
 ^^^^^^^^^^^
-In this section vms are defined. Here we make one VM called u1404-base
-based on image u1404-base with 2G of RAM and attached to virbr0.
+In this section vms are defined. Here we make one VM called dsvm
+based on image dsvm with 3G of RAM and attached to virbr0.
 
 When running tests, base image will be cloned, and VM is started. When
-tests finished, image will be destroyed.
+tests finished, image clone will be destroyed.
 
-Why ZFS?
-========
-The biggest problem in running many VMs on single host is not CPU or RAM,
-it is storage IO performance. Single hard drive can give 300 IOPS,
-which is not enough if we want to run many VMs on one host.
-
-The solution may be SSD or Raid, which is expensive. Or we can just add
-more RAM and use ZFS.
-
+Why BTRFS?
+==========
+The biggest problem in running many VMs on single host is disk performance.
 When we create one parent image and make child images by cloning parent,
 all VMs are using the same shared blocks from parent image, and only
-changed blocks are copied. This dramatically reduces IO operations performed
-by host.
+changed blocks are copied (COW).

@@ -8,7 +8,7 @@
       key: /etc/rally-ci/rally-ci
       hostname: review.openstack.org
     vote: false
-    silent: true
+    silent: false
     comment-header: |
       Build {succeeded} by RallyCI. Use "rally-ci recheck" to recheck
     comment-job-template: "- {name} http://185.8.56.88/{log_path}/ : {success} in {time}"
@@ -31,15 +31,6 @@
     name: dummy
     module: rallyci.environments.dummy
     # just dummy env which exports env variable (see below)
-
-- nodepool:
-    name: local
-    module: rallyci.nodepools.fair
-    tasks_per_node: 2
-    nodes:
-      - hostname: localhost
-        username: root
-    # this nodepool contain list of nodes which are used serve runners (see below)
 
 - logger:
     name: main
@@ -257,15 +248,31 @@
       $DSVM_SLAVE_IP slave
       EOF
 
-- runner:
+- provider:
     name: virsh
     module: rallyci.runners.virsh
-    nodepool: local
-    scp-root: /store/rally-ci/logs/
+    hosts:
+      - hostname: localhost
+        key: /home/user/.ssh/ci-key
+    storage:
+      backend: btrfs
+      path: /ci/rally
+    metadata_server:
+      listen_addr: 127.0.0.1
+      listen_port: 8080
+      authorized_keys: /etc/rally-ci/authorized_keys
+      user_data: |
+        #cloud-config
+        manage_etc_hosts: true
+        bootcmd:
+          - echo 'root:r00tme' | chpasswd
+        disable_root: 0
+        ssh_pwauth: True
     images:
+      u1404:
+        url: https://cloud-images.ubuntu.com/trusty/current/trusty-server-cloudimg-amd64-disk1.img
       dsvm:
-        dataset: all/ci
-        source: bare-ubuntu-1404@1
+        parent: u1404
         build-scripts: ["init_dsvm", "clone_projects"]
     vms:
       dsvm:
@@ -274,12 +281,19 @@
         net:
           - bridge: virbr0
 
+- runner:
+    name: ssh
+    provider: cirsh
+    module: rallyci.runners.ssh
+    key: /home/user/.ssh/ci-key
+    logs: /store/rally-ci/logs
+
 - job:
     name: dsvm-rally-block-migrate
     envs:
       - name: event
     runner:
-      name: virsh
+      name: ssh
       vms:
         - name: dsvm
           ip_env_var: DSVM_SLAVE_IP
