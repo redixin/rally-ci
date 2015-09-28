@@ -30,6 +30,7 @@ class Root:
         self.task_start_handlers = []
         self.task_end_handlers = []
         self.job_update_handlers = []
+        self.stop_event = asyncio.Event()
 
     def start_streams(self):
         for stream in self.config.iter_instances("stream"):
@@ -55,12 +56,22 @@ class Root:
         self.config = Config(self, filename)
         self.start()
 
-    def start(self):
+    @asyncio.coroutine
+    def run(self):
         self.start_streams()
         self.start_services()
         for prov in self.config.iter_providers():
             self.providers[prov.name] = prov
             prov.start()
+        yield from self.stop_event.wait()
+        LOG.info("Interrupted.")
+        self.stop_services(True)
+        tasks = list(self.tasks.keys())
+        if tasks:
+            for task in tasks:
+                LOG.debug("Cancelling task %s" % task)
+                task.cancel()
+        self.loop.stop()
 
     def reload(self):
         try:
@@ -92,18 +103,6 @@ class Root:
             cb(event)
         LOG.debug(self.tasks)
 
-    @asyncio.coroutine
-    def stop(self):
-        LOG.info("Interrupted.")
-        tasks = list(self.tasks.keys())
-        if tasks:
-            for task in tasks:
-                LOG.debug("Cancelling task %s" % task)
-                task.cancel()
-                for job in task.jobs_list:
-                    yield from job.runner.cleanup()
-        self.stop_services(True)
-        self.loop.stop()
 
     def get_daemon_statistics(self):
         usage = resource.getrusage(resource.RUSAGE_SELF)

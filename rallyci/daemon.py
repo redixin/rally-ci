@@ -30,8 +30,8 @@ def run():
     config = sys.argv[1]
     loop = asyncio.get_event_loop()
     r = root.Root(loop)
-    r.load_config(config)
     loop.add_signal_handler(signal.SIGINT,
                             lambda: asyncio.async(r.stop()))
+    r.load_config(config)
     LOG.info("Daemon started. Entering event loop.")
     loop.run_forever()

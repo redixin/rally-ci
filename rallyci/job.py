@@ -78,6 +78,9 @@ class Job:
         except asyncio.TimeoutError:
             self.set_status("TIMEOUT")
             LOG.info("Timed out %s" % self)
+        except asyncio.CancelledError:
+            self.set_status("CANCELLED")
+            LOG.info("Cancelled %s" % self)
         finally:
             self.finished_at = time.time()
         try:

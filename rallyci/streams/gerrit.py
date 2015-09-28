@@ -259,7 +259,7 @@ class Class:
                     try:
                         self._handle_line(stream.readline())
                     except Exception:
-                        LOG.exception("Error handlin string")
+                        LOG.exception("Error handling string")
                     finally:
                         yield from asyncio.sleep(self.cfg.get("fake_stream_delay", 4))
             return
