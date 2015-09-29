@@ -107,6 +107,7 @@ class Event:
 
     @asyncio.coroutine
     def run_jobs(self):
+        LOG.debug("Starting jobs for event %s" % self)
         for job in self.jobs_list:
             future = asyncio.async(job.run(), loop=self.root.loop)
             self.jobs[future] = job
@@ -243,11 +244,10 @@ class Class:
         raw_event = json.loads(line)
         try:
             event = self._get_event(raw_event)
+            if event:
+                self.root.handle(event)
         except Exception:
             LOG.exception("Event processing error")
-            return
-        if event:
-            self.root.handle(event)
 
     @asyncio.coroutine
     def run_fake(self, path):

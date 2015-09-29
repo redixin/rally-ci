@@ -76,7 +76,7 @@ class Root:
         try:
             new_config = Config(self.filename)
         except Exception:
-            LOG.exception("Error loading new config")
+            self.log.exception("Error loading new config")
             return
         self.stop_services()
         self.config = new_config
@@ -93,14 +93,12 @@ class Root:
             cb(job)
 
     def handle(self, event):
-        LOG.debug("Event occured %s" % event)
-        LOG.debug(self.tasks)
         future = asyncio.async(event.run_jobs(), loop=self.loop)
         self.tasks[future] = event
         future.add_done_callback(self.task_done)
         for cb in self.task_start_handlers:
             cb(event)
-        LOG.debug(self.tasks)
+        self.log.debug(self.tasks)
 
 
     def get_daemon_statistics(self):
