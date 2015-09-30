@@ -95,6 +95,7 @@ class Job:
         return {"id": self.id,
                 "name": self.name,
                 "status": self.status,
+                "task": self.event.id,
                 "finished_at": self.finished_at,
                 "seconds": int(time.time()) - self.queued_at,
                 }

@@ -14,21 +14,55 @@ body {font-family: sans-serif; margin: 0; padding: 0;}
 </style>
 <script type="text/javascript">
 
-function add_task(t) {
-    var html = "<div id='"+t.id+"'>";
-    html += "<table>";
-    html += "<tr><td colspan=2>"+t.project+": <a href='"+t.url+"'>"+t.subject+"</a></td></tr>";
-    for (var i=0, job; job = t["jobs"][i]; i++) {
-        html += "<tr><td><a href='/logs/"+t.id+"/"+job.name+"/'>"+job.name+"</a></td><td id='"+job.id+"'>"+job.status+"</td></tr>";
+function Task(task) {
+    this.t = task;
+
+    this.render = function (id) {
+        var html = "<div id='"+this.t.id+"'>";
+        html += "<table>";
+        html += "<tr><td colspan=2>"+this.t.project;
+        html += ": <a href='"+t.url+"'>"+this.t.subject+"</a></td></tr>";
+        for (var i=0, job; job = this.t["jobs"][i]; i++) {
+            html += "<tr><td><a href='/logs/"+this.t.id+"/"+job.name+"/'>"
+            html += job.name+"</a></td><td id='"+job.id+"'>"
+            html += job.status+"</td></tr>";
+        }
+        html += "<tr></tr>";
+        html += "</table>";
+        html += "</div>";
+        $("#" + id).prepend(html);
     }
-    html += "<tr></tr>";
-    html += "</table>";
-    html += "</div>";
-    $('#jobs').append(html);
+
+    this.update = function (job) {
+        $("#"+job.id).html(job.status);
+    }
+
+    this.clear = function () {
+        $("#" + this.task.id).remove();
+    }
+}
+
+function Tasks() {
+    this._tasks = {};
+    this._finished = [];
+
+    this.add = function(task) {
+        this._tasks[task.id] = new Task(task);
+    }
+
+    this.finished = function(id) {
+        var task = this._tasks[id];
+        delete this._tasks[id];
+        this._finished.unshift(task);
+    }
+
+    this.update = function(job) {
+        //
+    }
+
 }
 
 function update_job(job) {
-    $("#"+job.id).html(job.status);
 }
 
 function ci_status_update(ci_status) {

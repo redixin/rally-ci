@@ -29,7 +29,9 @@ LOG = logging.getLogger(__name__)
 
 
 class Class:
-    def __init__(self, **config):
+    def __init__(self, root, **config):
+        self.root = root
+        self.loop = root.loop
         self.config = config
         self.clients = []
 
@@ -85,39 +87,38 @@ class Class:
         LOG.debug(stat)
         self._send_all(stat)
 
+
     @asyncio.coroutine
     def run(self):
+        self.stats_sender = periodictask.PeriodicTask(
+            self.config.get("stats-interval", 60),
+            self._send_daemon_statistic,
+            loop=self.loop)
+        root.task_start_handlers.append(self._task_started_cb)
+        root.task_end_handlers.append(self._task_finished_cb)
+        root.job_update_handlers.append(self._job_status_cb)
         self.app = web.Application(loop=self.loop)
         self.app.router.add_route("GET", "/", self.index)
         self.app.router.add_route("GET", "/ws/", self.ws)
         addr, port = self.config.get("listen", ("localhost", 8080))
         self.handler = self.app.make_handler()
-        self.srv = yield from self.loop.create_server(self.handler, addr, port)
-        LOG.debug("HTTP server started at %s:%s" % (addr, port))
-
-    def start(self, root):
-        self.loop = root.loop
-        self.root = root
-        self.stats_sender = periodictask.PeriodicTask(
-            self.config.get("stats-interval", 60),
-            self._send_daemon_statistic,
-            loop=self.loop)
-        asyncio.async(self.run(), loop=self.loop)
-        root.task_start_handlers.append(self._task_started_cb)
-        root.task_end_handlers.append(self._task_finished_cb)
-        root.job_update_handlers.append(self._job_status_cb)
-
-    @asyncio.coroutine
-    def _stop(self, timeout=1.0):
-        for c in self.clients:
-            yield from c.close()
-        yield from self.handler.finish_connections(timeout)
-        self.srv.close()
-        yield from self.srv.wait_closed()
-        yield from self.app.finish()
-
-    def stop(self):
-        self.root.task_start_handlers.remove(self._task_started_cb)
-        self.root.task_end_handlers.remove(self._task_finished_cb)
-        self.root.job_update_handlers.remove(self._job_status_cb)
-        return asyncio.async(self._stop(), loop=self.loop)
+        try:
+            self.srv = yield from self.loop.create_server(self.handler, addr, port)
+            LOG.info("HTTP server started at %s:%s" % (addr, port))
+            yield from asyncio.Event().wait()
+        except CancelledError:
+            raise
+        except:
+            LOG.exception("Exception in http server")
+            raise
+        finally:
+            LOG.info("Stopping HTTP server")
+            self.root.task_start_handlers.remove(self._task_started_cb)
+            self.root.task_end_handlers.remove(self._task_finished_cb)
+            self.root.job_update_handlers.remove(self._job_status_cb)
+            for c in self.clients:
+                yield from c.close()
+            yield from self.handler.finish_connections(timeout)
+            self.srv.close()
+            yield from self.srv.wait_closed()
+            yield from self.app.finish()
