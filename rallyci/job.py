@@ -55,7 +55,10 @@ class Job:
         LOG.debug("Job %s initialized." % self.id)
 
     def __str__(self):
-        return "<Job %s [%s]>" % (self.name, self.id)
+        return "<Job %s(%s) [%s]>" % (self.name, self.status, self.id)
+
+    def __repr__(self):
+        return self.__str__()
 
     def set_status(self, status):
         self.status = status

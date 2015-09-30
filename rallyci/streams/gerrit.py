@@ -107,6 +107,14 @@ class Event:
 
     @asyncio.coroutine
     def run_jobs(self):
+        try:
+            yield from self._run_jobs()
+        except:
+            LOG.exception("Failed to run jobs %s" % self)
+            raise
+
+    @asyncio.coroutine
+    def _run_jobs(self):
         LOG.debug("Starting jobs for event %s" % self)
         for job in self.jobs_list:
             future = asyncio.async(job.run(), loop=self.root.loop)
@@ -122,11 +130,11 @@ class Event:
                 ex = future.exception()
                 LOG.debug("got %s" % ex)
                 if ex:
-                    LOG.info("Failed %s with exception" % (job, future.exception()))
+                    LOG.info("Failed %s with exception %s" % (job, future.exception()))
                     job.set_status("ERROR")
                 del(job)
-                LOG.debug("JOBS: %s" % self.jobs.keys())
-        LOG.debug("Finished jobs fro task %s" % self)
+                LOG.debug("JOBS: %s" % self.jobs.values())
+        LOG.debug("Finished all jobs %s" % self)
         key = get_key(self.raw_event)
         self.stream.tasks.remove(key)
         if not self.stream.cfg.get("silent"):
