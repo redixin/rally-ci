@@ -13,6 +13,7 @@
 #    limitations under the License.
 
 import asyncio
+import collections
 import pkgutil
 import logging
 import os.path
@@ -34,6 +35,7 @@ class Class:
         self.loop = root.loop
         self.config = config
         self.clients = []
+        self._finished = collections.deque(maxlen=10)
 
     @asyncio.coroutine
     def index(self, request):
@@ -54,7 +56,7 @@ class Class:
         try:
             tasks = [t.to_dict() for t in self.root.tasks.values()]
             ws.send_str(json.dumps({"type": "all-tasks",
-                                    "tasks": tasks}))
+                                    "tasks": tasks + list(self._finished)}))
             while True:
                 msg = yield from ws.receive()
                 LOG.debug("Websocket received: %s" % str(msg))
@@ -80,6 +82,7 @@ class Class:
         self._send_all({"type": "job-status-update", "job": job.to_dict()})
 
     def _task_finished_cb(self, event):
+        self._finished.append(event.to_dict())
         self._send_all({"type": "task-finished", "id": event.id})
 
     def _send_daemon_statistic(self):
