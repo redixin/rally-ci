@@ -30,25 +30,30 @@ class Root:
         self.job_update_handlers = []
         self.stop_event = asyncio.Event()
 
-    def start_streams(self):
-        for stream in self.config.iter_instances("stream"):
-            self.services.append(stream)
-            stream.start(self)
+    @asyncio.coroutine
+    def run_service(self, service):
+        try:
+            yield from service.run()
+        except asyncio.CancelledError:
+            self.log.info("Stopped %s" % service)
+        except Exception:
+            self.log.exception("Exception in %s" % service)
+        try:
+            yield from asyncio.shield(service.cleanup())
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            self.log.exception("Exception while cleanup %s" % service)
 
     def start_services(self):
         for service in self.config.iter_instances("service"):
-            self.services.append(service)
-            service.start(self)
+            fut = asyncio.async(self.run_service(service), loop=self.loop)
+            self.services.append(fut)
+            fut.add_done_callback(self.services.remove)
 
-    def stop_services(self, wait=False):
-        fs = []
-        for service in self.services + list(self.providers.values()):
-            self.log.info("Stopping service %s" % service)
-            fs.append(service.stop())
-        if wait and fs:
-            asyncio.wait(fs, return_when=futures.ALL_COMPLETED)
-        self.services = []
-        self.providers = {}
+    def stop_services(self):
+        for service in self.services:
+            service.cancel()
 
     def load_config(self, filename):
         self.filename = filename
@@ -56,20 +61,32 @@ class Root:
         self.log = logging.getLogger(__name__)
 
     @asyncio.coroutine
+    def wait_fs(self, fs):
+        """Wait for futures.
+
+        :param fs: dict where key is future and value is related object
+        """
+        while fs:
+            done, pending = yield from asyncio.wait(
+                    list(fs.keys()), return_when=futures.FIRST_COMPLETED)
+            for fut in done:
+                self.log.debug("Finished %s" % fs[fut])
+                del(fs[fut])
+
+    @asyncio.coroutine
     def run(self):
-        self.start_streams()
         self.start_services()
         for prov in self.config.iter_providers():
             self.providers[prov.name] = prov
             prov.start()
         yield from self.stop_event.wait()
         self.log.info("Interrupted.")
-        self.stop_services(True)
-        tasks = list(self.tasks.keys())
-        if tasks:
-            for task in tasks:
-                self.log.debug("Cancelling task %s" % task)
-                task.cancel()
+        self.stop_services()
+        if self.tasks:
+            for fut in self.tasks.keys():
+                self.log.debug("Cancelling task %s" % self.tasks[fut])
+                fut.cancel()
+            yield from asyncio.shield(self.wait_fs(self.tasks))
         self.loop.stop()
 
     def reload(self):
@@ -82,24 +99,23 @@ class Root:
         self.config = new_config
         self.start()
 
-    def task_done(self, future):
-        task = self.tasks[future]
+    def task_done(self, fut):
+        self.log.info("Task done %s" % fut)
+        task = self.tasks[fut]
         for cb in self.task_end_handlers:
             cb(task)
-        del(self.tasks[future])
 
     def job_updated(self, job):
         for cb in self.job_update_handlers:
             cb(job)
 
-    def handle(self, event):
-        future = asyncio.async(event.run_jobs(), loop=self.loop)
-        self.tasks[future] = event
-        future.add_done_callback(self.task_done)
+    def handle(self, task):
+        self.log.debug("Starting task %s" % task)
+        fut = asyncio.async(task.run_jobs(), loop=self.loop)
+        self.tasks[fut] = task
+        fut.add_done_callback(self.task_done)
         for cb in self.task_start_handlers:
-            cb(event)
-        self.log.debug(self.tasks)
-
+            cb(task)
 
     def get_daemon_statistics(self):
         usage = resource.getrusage(resource.RUSAGE_SELF)

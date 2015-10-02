@@ -53,7 +53,7 @@ class Config:
         section = self.data.get(section, {})
         for config in section.values():
             cls = self._get_module(config["module"]).Class
-            yield cls(root, **config)
+            yield cls(self.root, **config)
 
     def iter_providers(self):
         for cfg in self.data.get("provider", {}).values():

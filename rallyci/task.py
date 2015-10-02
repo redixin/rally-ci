@@ -12,9 +12,12 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
-
+import asyncio
+from concurrent import futures
 import cgi
 
+from rallyci.job import Job
+from rallyci import utils
 
 def human_time(seconds):
     seconds = int(seconds)
@@ -36,6 +39,7 @@ class Task:
         self.id = utils.get_rnd_name("EVNT", length=10)
         self.stream = stream
         self.root = stream.root
+        self.log = stream.root.log
         self.event = event
         self.project = project
         self.jobs = {}
@@ -58,6 +62,9 @@ class Task:
             job.voting = False
             self.jobs_list.append(job)
 
+    def __repr__(self):
+        return "<Task %s %s>" % (self.project, self.id)
+
     def _get_env(self):
         env = self.stream.cfg.get("env")
         r = {}
@@ -75,40 +82,52 @@ class Task:
 
     @asyncio.coroutine
     def run_jobs(self):
-        LOG.debug("Starting jobs for event %s" % self)
+        try:
+            yield from self._run_jobs()
+        except asyncio.CancelledError:
+            self.log.info("Jobs cancelled in task %s" % self)
+        except Exception:
+            self.log.exception("Failed to run jobs")
+
+    @asyncio.coroutine
+    def _run_jobs(self):
+        self.log.debug("Starting jobs for event %s" % self)
+        fs = {}
         for job in self.jobs_list:
-            future = asyncio.async(job.run(), loop=self.root.loop)
-            self.jobs[future] = job
-        while self.jobs:
-            done, pending = yield from asyncio.\
-                    wait(self.jobs.keys(), return_when=futures.FIRST_COMPLETED)
-            for future in done:
-                LOG.debug("Finished %s" % self.jobs[future])
-                job = self.jobs[future]
-                del(self.jobs[future])
-                LOG.debug("getting ex")
-                ex = future.exception()
-                LOG.debug("got %s" % ex)
-                if ex:
-                    LOG.info("Failed %s with exception" % (job, future.exception()))
-                    job.set_status("ERROR")
-                del(job)
-                LOG.debug("JOBS: %s" % self.jobs.keys())
-        LOG.debug("Finished jobs fro task %s" % self)
+            fs[(asyncio.async(job.run(), loop=self.root.loop))] = job
+        try:
+            yield from self.root.wait_fs(fs)
+        except asyncio.CancelledError:
+            self.log.debug("Cancelled %s" % self)
+
+        if fs:
+            self.log.info("Cancelling remainig jobs %s" % list(fs.values()))
+            for fut in fs.keys():
+                fut.cancel()
+
+        self.log.debug("Waiting jobs cleanup")
+        try:
+            yield from asyncio.shield(self.root.wait_fs(fs))
+        except:
+            self.log.exception("WAIT FAIL")
+        self.log.debug("Waiting jobs cleanup done")
+        if fs:
+            self.log.error("Some jobs still pending: %s" % fs)
+
         key = get_key(self.event) # TODO: move it to gerrit
         self.stream.tasks.remove(key)
         if not self.stream.cfg.get("silent"):
             try:
                 yield from self.publish_results()
             except:
-                LOG.exception("Failed to publish results for task %s" % self)
+                self.log.exception("Failed to publish results for task %s" % self)
 
     @asyncio.coroutine
     def publish_results(self):
-        LOG.debug("Publishing results for task %s" % self)
+        self.log.debug("Publishing results for task %s" % self)
         comment_header = self.stream.cfg.get("comment-header")
         if not comment_header:
-            LOG.warning("No comment-header configured. Can't publish.")
+            self.log.warning("No comment-header configured. Can't publish.")
             return
         cmd = ["gerrit", "review"]
         fail = any([j.error for j in self.jobs_list if j.voting])

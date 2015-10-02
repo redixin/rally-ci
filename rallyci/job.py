@@ -73,7 +73,6 @@ class Job:
         runner_cfg = self.root.config.data["runner"][runner_local_cfg["name"]]
         self.runner = self.root.config.get_instance(runner_cfg, self,
                                                     runner_local_cfg)
-
         fut = asyncio.async(self.runner.run())
         try:
             self.error = yield from asyncio.wait_for(fut, timeout=self.timeout)
@@ -83,13 +82,18 @@ class Job:
             LOG.info("Timed out %s" % self)
         except asyncio.CancelledError:
             self.set_status("CANCELLED")
-            LOG.info("Cancelled %s" % self)
+            LOG.debug("Cancelled %s" % self)
         finally:
             self.finished_at = time.time()
         try:
-            yield from self.runner.cleanup()
-        except:
-            LOG.exception("Failed to clean up %s" % self)
+            LOG.info("Starting cleanup %s" % self)
+            cleanup_fut = asyncio.async(self.runner.cleanup())
+            yield from asyncio.shield(cleanup_fut)
+        except asyncio.CancelledError:
+            LOG.debug("Job cancelled during cleanup. Resuming cleanup.")
+            yield from asyncio.shield(cleanup_fut)
+        except Exception:
+            LOG.exception("Failed to cleanup %s" % self)
 
     def to_dict(self):
         return {"id": self.id,

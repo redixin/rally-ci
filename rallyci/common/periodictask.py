@@ -35,4 +35,6 @@ class PeriodicTask(object):
         self._handler = self._loop.call_later(self._interval, self._run)
 
     def stop(self):
-        self._handler.cancel()
+        handler = getattr(self, "_handler", None)
+        if handler:
+            handler.cancel()

@@ -84,7 +84,7 @@ class Class:
 
     def _send_daemon_statistic(self):
         stat = self.root.get_daemon_statistics()
-        LOG.debug(stat)
+        LOG.debug("Senging stats to websocket %s" % stat)
         self._send_all(stat)
 
 
@@ -94,31 +94,27 @@ class Class:
             self.config.get("stats-interval", 60),
             self._send_daemon_statistic,
             loop=self.loop)
-        root.task_start_handlers.append(self._task_started_cb)
-        root.task_end_handlers.append(self._task_finished_cb)
-        root.job_update_handlers.append(self._job_status_cb)
+        self.root.task_start_handlers.append(self._task_started_cb)
+        self.root.task_end_handlers.append(self._task_finished_cb)
+        self.root.job_update_handlers.append(self._job_status_cb)
         self.app = web.Application(loop=self.loop)
         self.app.router.add_route("GET", "/", self.index)
         self.app.router.add_route("GET", "/ws/", self.ws)
         addr, port = self.config.get("listen", ("localhost", 8080))
         self.handler = self.app.make_handler()
-        try:
-            self.srv = yield from self.loop.create_server(self.handler, addr, port)
-            LOG.info("HTTP server started at %s:%s" % (addr, port))
-            yield from asyncio.Event().wait()
-        except CancelledError:
-            raise
-        except:
-            LOG.exception("Exception in http server")
-            raise
-        finally:
-            LOG.info("Stopping HTTP server")
-            self.root.task_start_handlers.remove(self._task_started_cb)
-            self.root.task_end_handlers.remove(self._task_finished_cb)
-            self.root.job_update_handlers.remove(self._job_status_cb)
-            for c in self.clients:
-                yield from c.close()
-            yield from self.handler.finish_connections(timeout)
-            self.srv.close()
-            yield from self.srv.wait_closed()
-            yield from self.app.finish()
+        self.srv = yield from self.loop.create_server(self.handler, addr, port)
+        LOG.info("HTTP server started at %s:%s" % (addr, port))
+        yield from asyncio.Event().wait()
+
+    @asyncio.coroutine
+    def cleanup(self):
+        self.stats_sender.stop()
+        self.root.task_start_handlers.remove(self._task_started_cb)
+        self.root.task_end_handlers.remove(self._task_finished_cb)
+        self.root.job_update_handlers.remove(self._job_status_cb)
+        for c in self.clients:
+            yield from c.close()
+        yield from self.handler.finish_connections(8)
+        self.srv.close()
+        yield from self.srv.wait_closed()
+        yield from self.app.finish()

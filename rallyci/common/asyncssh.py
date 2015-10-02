@@ -74,16 +74,23 @@ class AsyncSSH:
                                                  stdout=subprocess.PIPE,
                                                  stderr=subprocess.STDOUT)
         process = yield from process
+
         try:
+
             while not process.stdout.at_eof():
                 line = yield from process.stdout.readline()
                 self.cb(line)
                 if return_output:
                     output += line
+
         except asyncio.CancelledError:
-            LOG.debug("Terminated. Killing child process.")
-            process.terminate()
-            asyncio.async(process.wait(), loop=asyncio.get_event_loop())
+            LOG.debug("Terminated.")# Killing child process.")
+            raise
+            try:
+                process.terminate()
+                yield from process.wait()
+            except:
+                LOG.exception("Error waiting for child")
             raise
 
         yield from process.wait()

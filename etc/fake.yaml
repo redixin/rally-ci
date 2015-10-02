@@ -1,8 +1,8 @@
 ---
 
-- stream:
-    name: openstack
-    module: rallyci.streams.gerrit
+- service:
+    name: fake-stream
+    module: rallyci.services.gerrit
     fake-stream: resources/gerrit-sample-stream.json
 
 - service:

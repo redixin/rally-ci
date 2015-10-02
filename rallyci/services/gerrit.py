@@ -14,7 +14,6 @@
 
 
 import asyncio
-from concurrent import futures
 import json
 import re
 import time
@@ -58,18 +57,14 @@ class Class:
         self.tasks = set()
         self.config = self.root.config
 
-
-    def stop(self):
-        self.future.cancel()
-
-    def _get_event(self, event):
-
+    def _get_task(self, event):
         project = event.get("change", {}).get("project")
         if not project:
             project= event.get("refUpdate", {}).get("project")
             if not project:
                 LOG.debug("No project name %s" % event)
                 return
+        LOG.debug("Project: %s" % project)
 
         if project not in self.config.data["project"]:
             return
@@ -102,75 +97,35 @@ class Class:
             return task.Task(self, project, event)
 
     def _handle_line(self, line):
+        LOG.debug("Handling line %s..." % line[:16])
         if not (line and isinstance(line, bytes)):
+            LOG.warning("Bad line type %s" % type(line))
             return
         line = line.decode()
         event = json.loads(line)
         try:
-            event = self._get_event(event)
-            if event:
-                self.root.handle(event)
+            task = self._get_task(event)
+            if task:
+                self.root.handle(task)
         except Exception:
             LOG.exception("Event processing error")
+
+    @asyncio.coroutine
+    def cleanup(self):
+        yield from asyncio.sleep(0)
 
     @asyncio.coroutine
     def run(self):
         fake_stream = self.cfg.get("fake-stream")
         if fake_stream:
-            self.future = asyncio.async(self.run_fake(fake_stream),
-                                                      loop=root.loop)
+            LOG.info("Entering fake_stream loop")
+            while 1:
+                with open(fake_stream, 'rb') as fs:
+                    for line in fs:
+                        yield from asyncio.sleep(2)
+                        self._handle_line(line)
         else:
             if "port" not in self.cfg["ssh"]:
                 self.cfg["ssh"]["port"] = 29418
             self.ssh = asyncssh.AsyncSSH(cb=self._handle_line, **self.cfg["ssh"])
-            self.future = asyncio.async(self.run(), loop=root.loop)
-        try:
-            yield from self.future
-        except asyncio.CancelledError:
-            raise
-
-    @asyncio.coroutine
-    def run_fake(self, path):
-        while 1:
-            with open(path) as stream:
-                for line in stream:
-                    try:
-                        self._handle_line(stream.readline())
-                    except Exception:
-                        LOG.exception("Error handling string")
-                    finally:
-                        yield from asyncio.sleep(self.cfg.get("fake_stream_delay", 4))
-            return
-
-    @asyncio.coroutine
-    def run(self):
-        while 1:
-            yield from self.ssh.run("gerrit stream-events",
-                                    raise_on_error=False)
-            LOG.warning("Stream %s exited. Restarting" % self.name)
-            asyncio.sleep(4)
-
-    def start_client(self):
-        cmd = "ssh -p %(port)d %(username)s@%(hostname)s gerrit stream-events" % \
-              self.config["ssh"]
-        self.pipe = subprocess.Popen(cmd.split(" "),
-                                     stdout=subprocess.PIPE,
-                                     stderr=subprocess.STDOUT)
-
-    def generate(self):
-        try:
-            while True:
-                for line in self._gen():
-                    yield line
-                time.sleep(10)
-        finally:
-            self.pipe.terminate()
-
-    def _gen(self):
-        self.start_client()
-        with open(self.config.get("pidfile", PIDFILE), "w") as pidfile:
-            pidfile.write(str(self.pipe.pid))
-        for line in iter(self.pipe.stdout.readline, b''):
-            if not line:
-                break
-            yield(json.loads(line))
+            yield from self.ssh.run("gerrit stream-events", cb=self._handle_line)
