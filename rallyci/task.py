@@ -15,6 +15,7 @@
 import asyncio
 from concurrent import futures
 import cgi
+import time
 
 from rallyci.job import Job
 from rallyci import utils
@@ -44,6 +45,7 @@ class Task:
         self.project = project
         self.jobs = {}
         self.jobs_list = []
+        self.finished_at = 0
         self.cfg = self.root.config.data["project"][self.project]
         env = self._get_env()
         if event["type"] == "ref-updated":
@@ -88,6 +90,8 @@ class Task:
             self.log.info("Jobs cancelled in task %s" % self)
         except Exception:
             self.log.exception("Failed to run jobs")
+        finally:
+            self.finished_at = int(time.time())
 
     @asyncio.coroutine
     def _run_jobs(self):
@@ -150,6 +154,7 @@ class Task:
     def to_dict(self):
         data = {"id": self.id, "jobs": [j.to_dict() for j in self.jobs_list]}
         subject = self.event.get("change", {}).get("subject", "#####")
+        data["finished_at"] = self.finished_at
         data["subject"] = cgi.escape(subject)
         data["project"] = cgi.escape(self.project)
         # TODO: remove hardcode

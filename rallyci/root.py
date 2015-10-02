@@ -70,8 +70,8 @@ class Root:
             done, pending = yield from asyncio.wait(
                     list(fs.keys()), return_when=futures.FIRST_COMPLETED)
             for fut in done:
-                self.log.debug("Finished %s" % fs[fut])
-                del(fs[fut])
+                if fut in fs:
+                    del(fs[fut])
 
     @asyncio.coroutine
     def run(self):
@@ -104,6 +104,7 @@ class Root:
         task = self.tasks[fut]
         for cb in self.task_end_handlers:
             cb(task)
+        del(self.tasks[fut])
 
     def job_updated(self, job):
         for cb in self.job_update_handlers:

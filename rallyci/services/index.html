@@ -2,29 +2,17 @@
 <head>
 <title>Rally-CI</title>
 <script src="//ajax.googleapis.com/ajax/libs/jquery/1.11.2/jquery.min.js"></script>
-<style type="text/css">
-
-body {font-family: sans-serif; margin: 0; padding: 0;}
-#jobs { width: 100%; }
-#jobs div { width: 40em; border-collapse: collapse; margin: 1em; float: left; margin: 2pt; padding: 0; }
-#jobs div table { width: 100%; margin: 0; padding: 0; border-collapse: collapse; }
-#jobs div table tr td:nth-child(1) { width: 20em; }
-#jobs div table tr td { font-family: monospace; border: 1px solid; margin: 0; }
-
-</style>
 <script type="text/javascript">
-
 function Task(task) {
-    this.t = task;
-
     this.render = function (id) {
         var html = "<div id='"+this.t.id+"'>";
         html += "<table>";
         html += "<tr><td colspan=2>"+this.t.project;
-        html += ": <a href='"+t.url+"'>"+this.t.subject+"</a></td></tr>";
-        for (var i=0, job; job = this.t["jobs"][i]; i++) {
+        html += ": <a href='"+this.t.url+"'>"+this.t.subject+"</a></td></tr>";
+        for (job_id in this.jobs) {
+            var job = this.jobs[job_id];
             html += "<tr><td><a href='/logs/"+this.t.id+"/"+job.name+"/'>"
-            html += job.name+"</a></td><td id='"+job.id+"'>"
+            html += job.name+"</a></td><td id='"+job_id+"'>"
             html += job.status+"</td></tr>";
         }
         html += "<tr></tr>";
@@ -32,14 +20,21 @@ function Task(task) {
         html += "</div>";
         $("#" + id).prepend(html);
     }
-
     this.update = function (job) {
+        this.jobs[job.id] = job;
         $("#"+job.id).html(job.status);
     }
-
     this.clear = function () {
-        $("#" + this.task.id).remove();
+        $("#" + this.t.id).remove();
     }
+
+    this.t = task;
+    this.jobs = {};
+    for (var i=0, job; job = this.t.jobs[i]; i++) {
+        this.jobs[job.id] = job;
+    }
+    delete(this.t.jobs);
+    this.render(task.finished_at ? "finished" : "running");
 }
 
 function Tasks() {
@@ -51,63 +46,59 @@ function Tasks() {
     }
 
     this.finished = function(id) {
+        $("#" + id).css("color", "red");
         var task = this._tasks[id];
+        task.clear();
         delete this._tasks[id];
         this._finished.unshift(task);
+        if (this._finished.length > 10) {
+            var d = this._finished.pop();
+            d.clear();
+        }
+        task.render("finished");
     }
 
     this.update = function(job) {
-        //
+        $("#"+job.id).html(job.status);
+        this._tasks[job.task].update(job);
     }
-
 }
-
-function update_job(job) {
-}
-
 function ci_status_update(ci_status) {
     document.title = "RallyCI ("+ci_status+")";
 }
-
 function connect_ws() {
-
     var ws = new WebSocket("ws://" + window.location.host + "/ws/");
     var interval;
-
+    var tasks = new Tasks();
     ws.onmessage = function(e) {
-        var d = JSON.parse(e.data);
-        console.log(d);
-        switch(d["type"]) {
+        var e = JSON.parse(e.data);
+        switch(e["type"]) {
             case "task-started":
-                add_task(d["task"]);
+                tasks.add(e.task);
                 break;
             case "task-finished":
-                $("#" + d["id"]).remove();
+                tasks.finished(e.id);
                 break;
             case "all-tasks":
-                $("#jobs tbody tr").remove();
-                for (var i=0, item; item = d["tasks"][i]; i++) {
-                    add_task(item);
+                for (var i=0, item; item = e.tasks[i]; i++) {
+                    tasks.add(item);
                 }
                 break;
             case "job-status-update":
-                var job = d["job"];
-                update_job(job);
+                tasks.update(e.job);
                 break;
             default:
-                console.log(d);
+                console.log("Unknown event");
+                console.log(e);
         }
     };
-
     ws.onopen = function(e) {
         interval = setInterval(function () {ws.send("ping")}, 50000);
         ci_status_update("online");
     }
-
     ws.onerror = function(e) {
         console.log(e);
     }
-
     ws.onclose = function(e) {
         console.log("Websocket is closed. Reconnecting in 3 seconds.");
         clearInterval(interval);
@@ -115,15 +106,29 @@ function connect_ws() {
         ci_status_update("offline");
     }
 }
-
 connect_ws();
-
 </script>
-</head>
 
+<style type="text/css">
+body { font-family: sans-serif; margin: 0; padding: 0; }
+div.jobs { width: 41em; }
+div.jobs div { width: 40em; border-collapse: collapse; margin: 1em;
+               margin: 2pt; padding: 0; }
+div.jobs div table { width: 100%; margin: 0; padding: 0; border-collapse: collapse; }
+div.jobs div table tr td:nth-child(1) { width: 20em; }
+div.jobs div table tr td { font-family: monospace; border: 1px solid; margin: 0;
+                           background-color: #f7f7f7; }
+div#finished_c { float: left; }
+div#running_c { float: left; }
+h3 { display: inline; }
+</style>
+
+</head>
 <body>
+
 <h1>Rally CI</h1>
-<div id="jobs"></div>
+<div id=running_c><h3>Running tasks</h1><div class=jobs id="running"></div></div>
+<div id=finished_c><h3>Finished tasks</h1><div class=jobs id="finished"></div></div>
 
 </body>
 </html>
