@@ -27,7 +27,6 @@ function Task(task) {
     this.clear = function () {
         $("#" + this.t.id).remove();
     }
-
     this.t = task;
     this.jobs = {};
     for (var i=0, job; job = this.t.jobs[i]; i++) {
@@ -36,15 +35,12 @@ function Task(task) {
     delete(this.t.jobs);
     this.render(task.finished_at ? "finished" : "running");
 }
-
 function Tasks() {
     this._tasks = {};
     this._finished = [];
-
     this.add = function(task) {
         this._tasks[task.id] = new Task(task);
     }
-
     this.finished = function(id) {
         $("#" + id).css("color", "red");
         var task = this._tasks[id];
@@ -57,19 +53,30 @@ function Tasks() {
         }
         task.render("finished");
     }
-
     this.update = function(job) {
         $("#"+job.id).html(job.status);
         this._tasks[job.task].update(job);
     }
+    this.offline = function() {
+        $("body").css("background-color", "#ccc");
+        document.title = "Rally CI (offline)";
+        $("#status").html("offline");
+    }
+    this.online = function() {
+        $("body").css("background-color", "white");
+        document.title = "Rally CI (online)";
+        $("#status").html("online");
+        for(key in this._tasks){
+            var task = this._tasks[key];
+            task.clear();
+            delete(this._tasks[key]);
+        }
+    }
 }
-function ci_status_update(ci_status) {
-    document.title = "RallyCI ("+ci_status+")";
-}
+var tasks = new Tasks();
 function connect_ws() {
     var ws = new WebSocket("ws://" + window.location.host + "/ws/");
     var interval;
-    var tasks = new Tasks();
     ws.onmessage = function(e) {
         var e = JSON.parse(e.data);
         switch(e["type"]) {
@@ -94,7 +101,7 @@ function connect_ws() {
     };
     ws.onopen = function(e) {
         interval = setInterval(function () {ws.send("ping")}, 50000);
-        ci_status_update("online");
+        tasks.online();
     }
     ws.onerror = function(e) {
         console.log(e);
@@ -103,7 +110,7 @@ function connect_ws() {
         console.log("Websocket is closed. Reconnecting in 3 seconds.");
         clearInterval(interval);
         window.setTimeout(connect_ws, 3000);
-        ci_status_update("offline");
+        tasks.offline();
     }
 }
 connect_ws();
@@ -111,24 +118,28 @@ connect_ws();
 
 <style type="text/css">
 body { font-family: sans-serif; margin: 0; padding: 0; }
-div.jobs { width: 41em; }
+.header { text-align:left; background:#333; font-size:18px;
+          padding: 9pt 4em; margin: 0 0 1em 0; color:#888;
+          background-image:linear-gradient(to bottom, #444 0px, #222 100%) }
+.header a, .header a:visited, .header a:focus { color:#bbb }
+div.jobs { width: 35em; }
 div.jobs div { width: 40em; border-collapse: collapse; margin: 1em;
                margin: 2pt; padding: 0; }
 div.jobs div table { width: 100%; margin: 0; padding: 0; border-collapse: collapse; }
-div.jobs div table tr td:nth-child(1) { width: 20em; }
+div.jobs div table tr:nth-child(1) td { background-color: #eee; }
+div.jobs div table tr:nth-child(2) td:nth-child(1) { width: 30em; }
 div.jobs div table tr td { font-family: monospace; border: 1px solid; margin: 0;
                            background-color: #f7f7f7; }
-div#finished_c { float: left; }
-div#running_c { float: left; }
+div.jobs-c { float: left; margin: 0 4em; }
 h3 { display: inline; }
 </style>
-
+<title>Rally CI (offline)</title>
 </head>
 <body>
 
-<h1>Rally CI</h1>
-<div id=running_c><h3>Running tasks</h1><div class=jobs id="running"></div></div>
-<div id=finished_c><h3>Finished tasks</h1><div class=jobs id="finished"></div></div>
+<h1 class=header>Rally CI (<a id=status>offline</a>)</h1>
+<div class=jobs-c><h3>Running tasks</h1><div class=jobs id="running"></div></div>
+<div class=jobs-c><h3>Last finished tasks</h1><div class=jobs id="finished"></div></div>
 
 </body>
 </html>

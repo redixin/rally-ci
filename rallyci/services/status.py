@@ -111,6 +111,7 @@ class Class:
 
     @asyncio.coroutine
     def cleanup(self):
+        LOG.debug("Cleanup http status")
         self.stats_sender.stop()
         self.root.task_start_handlers.remove(self._task_started_cb)
         self.root.task_end_handlers.remove(self._task_finished_cb)
@@ -121,3 +122,4 @@ class Class:
         self.srv.close()
         yield from self.srv.wait_closed()
         yield from self.app.finish()
+        LOG.debug("Finished cleanup http status")
