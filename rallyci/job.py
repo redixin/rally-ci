@@ -85,15 +85,11 @@ class Job:
             LOG.debug("Cancelled %s" % self)
         finally:
             self.finished_at = time.time()
-        try:
-            LOG.info("Starting cleanup %s" % self)
-            cleanup_fut = asyncio.async(self.runner.cleanup())
-            yield from asyncio.shield(cleanup_fut)
-        except asyncio.CancelledError:
-            LOG.debug("Job cancelled during cleanup. Resuming cleanup.")
-            yield from asyncio.shield(cleanup_fut)
-        except Exception:
-            LOG.exception("Failed to cleanup %s" % self)
+        LOG.info("Finished %s" % self)
+
+    @asyncio.coroutine
+    def cleanup(self):
+        yield from self.runner.cleanup()
 
     def to_dict(self):
         return {"id": self.id,

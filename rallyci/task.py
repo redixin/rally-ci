@@ -83,41 +83,25 @@ class Task:
         return r
 
     @asyncio.coroutine
-    def run_jobs(self):
-        try:
-            yield from self._run_jobs()
-        except asyncio.CancelledError:
-            self.log.info("Jobs cancelled in task %s" % self)
-        except Exception:
-            self.log.exception("Failed to run jobs")
-        finally:
-            self.finished_at = int(time.time())
-
-    @asyncio.coroutine
-    def _run_jobs(self):
-        self.log.debug("Starting jobs for event %s" % self)
+    def run(self):
         fs = {}
         for job in self.jobs_list:
-            fs[(asyncio.async(job.run(), loop=self.root.loop))] = job
+            self.log.debug("Scheduling job %s" % job)
+            fs[self.root.start_obj(job)] = job
         try:
             yield from self.root.wait_fs(fs)
         except asyncio.CancelledError:
             self.log.debug("Cancelled %s" % self)
-
+            if fs:
+                for fut in fs:
+                    fs.cancel()
+        except Exception:
+            log.exception("WAT")
         if fs:
-            self.log.info("Cancelling remainig jobs %s" % list(fs.values()))
-            for fut in fs.keys():
-                fut.cancel()
+            yield from self.root.wait_fs(fs)
 
-        self.log.debug("Waiting jobs cleanup")
-        try:
-            yield from asyncio.shield(self.root.wait_fs(fs))
-        except:
-            self.log.exception("WAIT FAIL")
-        self.log.debug("Waiting jobs cleanup done")
-        if fs:
-            self.log.error("Some jobs still pending: %s" % fs)
-
+    @asyncio.coroutine
+    def cleanup(self):
         key = get_key(self.event) # TODO: move it to gerrit
         self.stream.tasks.remove(key)
         if not self.stream.cfg.get("silent"):
@@ -125,6 +109,8 @@ class Task:
                 yield from self.publish_results()
             except:
                 self.log.exception("Failed to publish results for task %s" % self)
+        else:
+            yield from asyncio.sleep(0)
 
     @asyncio.coroutine
     def publish_results(self):

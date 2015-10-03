@@ -17,13 +17,16 @@ from concurrent import futures
 import logging
 import resource
 from rallyci.config import Config
-
+import time
 
 class Root:
     def __init__(self, loop):
+        self._running_objects = {}
+        self._running_cleanups = []
+
         self.tasks = {}
         self.loop = loop
-        self.services = []
+        self.services = {}
         self.providers = {}
         self.task_start_handlers = []
         self.task_end_handlers = []
@@ -31,26 +34,36 @@ class Root:
         self.stop_event = asyncio.Event()
 
     @asyncio.coroutine
-    def run_service(self, service):
+    def run_obj(self, obj):
         try:
-            self.log.debug("Starting %s" % service)
-            yield from service.run()
+            self.log.debug("Running obj %s" % obj)
+            yield from obj.run()
         except asyncio.CancelledError:
-            self.log.info("Stopped %s" % service)
+            self.log.info("Cancelled %s" % obj)
         except Exception:
-            self.log.exception("Exception in %s" % service)
+            self.log.exception("Exception running %s" % obj)
+
+    def start_obj(self, obj):
+        fut = asyncio.async(self.run_obj(obj), loop=self.loop)
+        fut.add_done_callback(self.schedule_cleanup)
+        self._running_objects[fut] = obj
+        return fut
+
+    @asyncio.coroutine
+    def run_cleanup(self, obj):
         try:
-            yield from asyncio.shield(service.cleanup())
-        except asyncio.CancelledError:
-            pass
+            yield from obj.cleanup()
         except Exception:
-            self.log.exception("Exception while cleanup %s" % service)
+            self.log.exception("Exception in cleanup %s" % obj)
+
+    def schedule_cleanup(self, fut):
+        obj = self._running_objects.pop(fut)
+        fut = asyncio.async(self.run_cleanup(obj), loop=self.loop)
+        self._running_cleanups.append(fut)
 
     def start_services(self):
         for service in self.config.iter_instances("service"):
-            fut = asyncio.async(self.run_service(service), loop=self.loop)
-            self.services.append(fut)
-            fut.add_done_callback(self.services.remove)
+            self.start_obj(service)
 
     def stop_services(self):
         for service in self.services:
@@ -67,6 +80,7 @@ class Root:
 
         :param fs: dict where key is future and value is related object
         """
+        self.log.debug("Waiting for %s" % fs.values())
         while fs:
             done, pending = yield from asyncio.wait(
                     list(fs.keys()), return_when=futures.FIRST_COMPLETED)
@@ -82,27 +96,18 @@ class Root:
             prov.start()
         yield from self.stop_event.wait()
         self.log.info("Interrupted.")
-        self.stop_services()
-        if self.tasks:
-            for fut in self.tasks.keys():
-                self.log.debug("Cancelling task %s" % self.tasks[fut])
-                fut.cancel()
-            yield from asyncio.shield(self.wait_fs(self.tasks))
+        for obj in self._running_objects:
+            obj.cancel()
+        yield from self.wait_fs(self._running_objects)
+        if self._running_cleanups:
+            yield from asyncio.wait(self._running_cleanups,
+                                    return_when=futures.ALL_COMPLETED)
         self.loop.stop()
-
-    def reload(self):
-        try:
-            new_config = Config(self.filename)
-        except Exception:
-            self.log.exception("Error loading new config")
-            return
-        self.stop_services()
-        self.config = new_config
-        self.start()
 
     def task_done(self, fut):
         self.log.info("Task done %s" % fut)
         task = self.tasks[fut]
+        task.finished_at = int(time.time())
         for cb in self.task_end_handlers:
             cb(task)
         del(self.tasks[fut])
@@ -113,7 +118,7 @@ class Root:
 
     def handle(self, task):
         self.log.debug("Starting task %s" % task)
-        fut = asyncio.async(task.run_jobs(), loop=self.loop)
+        fut = asyncio.async(self.run_obj(task), loop=self.loop)
         self.tasks[fut] = task
         fut.add_done_callback(self.task_done)
         for cb in self.task_start_handlers:
