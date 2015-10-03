@@ -33,6 +33,7 @@ class Root:
     @asyncio.coroutine
     def run_service(self, service):
         try:
+            self.log.debug("Starting %s" % service)
             yield from service.run()
         except asyncio.CancelledError:
             self.log.info("Stopped %s" % service)

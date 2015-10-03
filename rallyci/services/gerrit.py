@@ -116,6 +116,7 @@ class Class:
 
     @asyncio.coroutine
     def run(self):
+        LOG.debug("Connectng to gerrit...")
         fake_stream = self.cfg.get("fake-stream")
         if fake_stream:
             LOG.info("Entering fake_stream loop")
@@ -125,7 +126,8 @@ class Class:
                         yield from asyncio.sleep(2)
                         self._handle_line(line)
         else:
+            LOG.debug("Starting ssh client")
             if "port" not in self.cfg["ssh"]:
                 self.cfg["ssh"]["port"] = 29418
             self.ssh = asyncssh.AsyncSSH(cb=self._handle_line, **self.cfg["ssh"])
-            yield from self.ssh.run("gerrit stream-events", cb=self._handle_line)
+            yield from self.ssh.run("gerrit stream-events")
