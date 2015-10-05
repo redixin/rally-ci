@@ -27,12 +27,6 @@ from rallyci import utils
 
 LOG = logging.getLogger(__name__)
 
-INTERVALS = [1, 60, 3600, 86400]
-NAMES = [('s', 's'),
-         ('m', 'm'),
-         ('h', 'h'),
-         ('day', 'days')]
-
 """
 
 {
@@ -106,7 +100,9 @@ class Class:
         try:
             task = self._get_task(event)
             if task:
-                self.root.handle(task)
+                for cb in self.root.task_start_handlers:
+                    cb(task)
+                self.root.start_obj(task)
         except Exception:
             LOG.exception("Event processing error")
 

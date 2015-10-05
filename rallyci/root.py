@@ -26,7 +26,6 @@ class Root:
 
         self.tasks = {}
         self.loop = loop
-        self.services = {}
         self.providers = {}
         self.task_start_handlers = []
         self.task_end_handlers = []
@@ -65,10 +64,6 @@ class Root:
         for service in self.config.iter_instances("service"):
             self.start_obj(service)
 
-    def stop_services(self):
-        for service in self.services:
-            service.cancel()
-
     def load_config(self, filename):
         self.filename = filename
         self.config = Config(self, filename)
@@ -104,25 +99,9 @@ class Root:
                                     return_when=futures.ALL_COMPLETED)
         self.loop.stop()
 
-    def task_done(self, fut):
-        self.log.info("Task done %s" % fut)
-        task = self.tasks[fut]
-        task.finished_at = int(time.time())
-        for cb in self.task_end_handlers:
-            cb(task)
-        del(self.tasks[fut])
-
     def job_updated(self, job):
         for cb in self.job_update_handlers:
             cb(job)
-
-    def handle(self, task):
-        self.log.debug("Starting task %s" % task)
-        fut = asyncio.async(self.run_obj(task), loop=self.loop)
-        self.tasks[fut] = task
-        fut.add_done_callback(self.task_done)
-        for cb in self.task_start_handlers:
-            cb(task)
 
     def get_daemon_statistics(self):
         usage = resource.getrusage(resource.RUSAGE_SELF)

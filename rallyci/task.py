@@ -17,8 +17,17 @@ from concurrent import futures
 import cgi
 import time
 
+from rallyci.common import asyncssh
 from rallyci.job import Job
 from rallyci import utils
+
+
+INTERVALS = [1, 60, 3600, 86400]
+NAMES = [('s', 's'),
+         ('m', 'm'),
+         ('h', 'h'),
+         ('day', 'days')]
+
 
 def human_time(seconds):
     seconds = int(seconds)
@@ -94,14 +103,13 @@ class Task:
             self.log.debug("Cancelled %s" % self)
             if fs:
                 for fut in fs:
-                    fs.cancel()
-        except Exception:
-            log.exception("WAT")
+                    fut.cancel()
         if fs:
             yield from self.root.wait_fs(fs)
 
     @asyncio.coroutine
     def cleanup(self):
+        self.finished_at = int(time.time())
         key = get_key(self.event) # TODO: move it to gerrit
         self.stream.tasks.remove(key)
         if not self.stream.cfg.get("silent"):
@@ -111,6 +119,11 @@ class Task:
                 self.log.exception("Failed to publish results for task %s" % self)
         else:
             yield from asyncio.sleep(0)
+        for cb in self.root.task_end_handlers:
+            try:
+                cb(self)
+            except Exception:
+                self.log.exception("Exception in task callback %s %s" % (self, cb))
 
     @asyncio.coroutine
     def publish_results(self):
