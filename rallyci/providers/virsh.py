@@ -43,21 +43,10 @@ DYNAMIC_BRIDGE_LOCK = asyncio.Lock()
 
 class ZFS:
 
-    def __init__(self, ssh, **kwargs):
+    def __init__(self, ssh, path, dataset, **kwargs):
         self.ssh = ssh
-        self.dataset = kwargs["dataset"]
-
-    @asyncio.coroutine
-    def clone(self, src, dst):
-        cmd = "zfs clone {dataset}/{src}@1 {dataset}/{dst}"
-        cmd = cmd.format(dataset=self.dataset, src=src, dst=dst)
-        yield from self.ssh.run(cmd)
-
-    @asyncio.coroutine
-    def snapshot(self, name, snapshot="1"):
-        cmd = "zfs snapshot {dataset}/{name}@{snapshot}".format(
-                dataset=self.dataset, name=name, snapshot=snapshot)
-        yield from self.ssh.run(cmd)
+        self.path = path
+        self.dataset = dataset
 
     @asyncio.coroutine
     def create(self, name):
@@ -66,33 +55,46 @@ class ZFS:
         yield from self.ssh.run(cmd)
 
     @asyncio.coroutine
-    def exist(self, name):
-        cmd = "zfs list {dataset}/{name}@1".format(dataset=self.dataset,
-                                                   name=name)
-        error = yield from self.ssh.run(cmd, raise_on_error=False)
-        return not error
-
-    @asyncio.coroutine
     def list_files(self, name):
-        cmd = "ls /{dataset}/{name}".format(dataset=self.dataset, name=name)
+        cmd = "ls /{path}/{name}".format(path=self.path, name=name)
         ls = yield from self.ssh.run(cmd, return_output=True)
         return [os.path.join("/", self.dataset, name, f) for f in ls.splitlines()]
 
     @asyncio.coroutine
-    def download(self, name, url):
-        # TODO: cache
-        yield from self.create(name)
-        cmd = "wget {url} -O /{dataset}/{name}/vda.qcow2"
-        cmd = cmd.format(name=name, dataset=self.dataset, url=url)
+    def clone(self, src, dst):
+        cmd = "zfs clone {dataset}/{src}@1 {dataset}/{dst}"
+        cmd = cmd.format(dataset=self.dataset, src=src, dst=dst)
         yield from self.ssh.run(cmd)
-        cmd = "qemu-img resize /{dataset}/{name}/vda.qcow2 32G"
-        cmd = cmd.format(name=name, dataset=self.dataset, url=url)
+
+    @asyncio.coroutine
+    def exist(self, name):
+        LOG.debug("Checking if image %s exist" % name)
+        cmd = "zfs list"
+        data = yield from self.ssh.run(cmd, return_output=True)
+        r = re.search("^%s/%s " % (self.dataset, name), data, re.MULTILINE)
+        return bool(r)
+
+    @asyncio.coroutine
+    def snapshot(self, name, snapshot="1"):
+        cmd = "zfs snapshot {dataset}/{name}@{snapshot}".format(
+                dataset=self.dataset, name=name, snapshot=snapshot)
         yield from self.ssh.run(cmd)
 
     @asyncio.coroutine
     def destroy(self, name):
         cmd = "zfs destroy {dataset}/{name}".format(name=name,
                                                     dataset=self.dataset)
+        yield from self.ssh.run(cmd)
+
+    @asyncio.coroutine
+    def download(self, name, url):
+        # TODO: cache
+        yield from self.create(name)
+        cmd = "wget -nv {url} -O {path}/{name}/vda.qcow2"
+        cmd = cmd.format(name=name, path=self.path, url=url)
+        yield from self.ssh.run(cmd)
+        cmd = "qemu-img resize {path}/{name}/vda.qcow2 32G"
+        cmd = cmd.format(name=name, path=self.path)
         yield from self.ssh.run(cmd)
 
 
@@ -145,13 +147,16 @@ class BTRFS:
     def download(self, name, url):
         # TODO: cache
         yield from self.create(name)
-        cmd = "wget {url} -O /{path}/{name}/vda.qcow2 2> /dev/null"
+        cmd = "wget -nv {url} -O /{path}/{name}/vda.qcow2"
         cmd = cmd.format(name=name, path=self.path, url=url)
         yield from self.ssh.run(cmd)
         # TODO: size should be set in config
         cmd = "qemu-img resize /{path}/{name}/vda.qcow2 32G"
-        cmd = cmd.format(name=name, path=self.path, url=url)
+        cmd = cmd.format(name=name, path=self.path)
         yield from self.ssh.run(cmd)
+
+
+BACKENDS = {"btrfs": BTRFS, "zfs": ZFS}
 
 
 class Host:
@@ -167,10 +172,11 @@ class Host:
         self.vms = []
         self.br_vm = {}
         self.ssh = asyncssh.AsyncSSH(**ssh_conf)
-        self.storage = BTRFS(self.ssh, **config["storage"])
         self.vm_key = vm_key
         self.la = 0.0
         self.free = 0
+        storage_cf = config["storage"]
+        self.storage = BACKENDS[storage_cf["backend"]](self.ssh, **storage_cf)
 
     def __str__(self):
         return "<Host %s (la: %s, free: %s)>" % (self.ssh.hostname,
@@ -197,12 +203,12 @@ class Host:
 
     @asyncio.coroutine
     def build_image(self, name):
+        LOG.info("Building image %s" % name)
         self.image_locks.setdefault(name, asyncio.Lock())
         with (yield from self.image_locks[name]):
             if (yield from self.storage.exist(name)):
                 LOG.debug("Image %s exist" % name)
                 return
-            LOG.info("Building image %s" % name)
             image_conf = self.config["images"][name]
             parent = image_conf.get("parent")
             if parent:
@@ -212,6 +218,7 @@ class Host:
                 url = image_conf.get("url")
                 if url:
                     yield from self.storage.download(name, url)
+                    yield from self.storage.snapshot(name)
                     return # TODO: support build_script for downloaded images
             build_scripts = image_conf.get("build-scripts")
             if build_scripts:
