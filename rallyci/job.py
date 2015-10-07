@@ -83,6 +83,9 @@ class Job:
         except asyncio.CancelledError:
             self.set_status("CANCELLED")
             LOG.debug("Cancelled %s" % self)
+        except Exception:
+            self.set_status("ERROR")
+            LOG.exception("Error running %s" % self)
         finally:
             self.finished_at = time.time()
         LOG.info("Finished %s" % self)

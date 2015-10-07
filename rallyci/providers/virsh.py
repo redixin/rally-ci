@@ -39,7 +39,6 @@ IFACE_RE = re.compile(r"\d+: ([a-z]+)(\d+): .*")
 IP_RE = re.compile(r"(\d+\.\d+\.\d+\.\d+)\s")
 DYNAMIC_BRIDGES = {}
 DYNAMIC_BRIDGE_LOCK = asyncio.Lock()
-IMAGE_LOCKS = {}
 
 
 class ZFS:
@@ -126,10 +125,11 @@ class BTRFS:
 
     @asyncio.coroutine
     def exist(self, name):
-        cmd = "btrfs subvolume show {path}/{name}".format(path=self.path,
-                                                          name=name)
-        error = yield from self.ssh.run(cmd, raise_on_error=False)
-        return not error
+        LOG.debug("Checking if image %s exist" % name)
+        cmd = "btrfs subvolume list %s" % self.path
+        data = yield from self.ssh.run(cmd, return_output=True)
+        r = re.search(" %s$" % name, data, re.MULTILINE)
+        return bool(r)
 
     @asyncio.coroutine
     def snapshot(self, *args, **kwargs):
@@ -161,6 +161,7 @@ class Host:
         ssh_config: item from hosts from provider
         config: full "provider" item
         """
+        self.image_locks = {}
         self.config = config
         self.root = root
         self.vms = []
@@ -196,8 +197,8 @@ class Host:
 
     @asyncio.coroutine
     def build_image(self, name):
-        IMAGE_LOCKS.setdefault(name, asyncio.Lock())
-        with (yield from IMAGE_LOCKS[name]):
+        self.image_locks.setdefault(name, asyncio.Lock())
+        with (yield from self.image_locks[name]):
             if (yield from self.storage.exist(name)):
                 LOG.debug("Image %s exist" % name)
                 return
@@ -331,7 +332,11 @@ class Provider:
         self.name = config["name"]
         self.key = config.get("key")
         self.ifs = {}
+        self.last = time.time()
         self.get_vms_lock = asyncio.Lock()
+
+    def get_stats(self):
+        pass
 
     def start(self):
         self.hosts = [Host(c, self.config, self.root, self.key)
@@ -363,6 +368,9 @@ class Provider:
 
         best = None
         with (yield from self.get_vms_lock):
+            sleep = self.last + 5 - time.time()
+            if sleep > 1:
+                yield from asyncio.sleep(sleep)
             while True:
                 random.shuffle(self.hosts)
                 LOG.debug("Chosing from %s" % self.hosts)
@@ -376,6 +384,7 @@ class Provider:
                     break
                 LOG.info("All systems are overloaded. Waiting 30 seconds.")
                 yield from asyncio.sleep(30)
+            self.last = time.time()
         return (yield from host.get_vms(vm_confs))
 
 class VM:
@@ -451,7 +460,7 @@ class VM:
             if error:
                 return
             elif time.time() > timeout:
-                yield from self.destroy()
+                yield from self.destroy(storage=storage)
                 return
 
     @asyncio.coroutine

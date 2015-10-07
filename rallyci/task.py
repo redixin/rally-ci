@@ -41,7 +41,10 @@ def human_time(seconds):
 
 
 def get_key(event):
-    return event["change"]["project"] + event["patchSet"]["ref"]
+    try:
+        return event["change"]["project"] + event["patchSet"]["ref"]
+    except:
+        return ""
 
 
 class Task:
@@ -152,7 +155,7 @@ class Task:
 
     def to_dict(self):
         data = {"id": self.id, "jobs": [j.to_dict() for j in self.jobs_list]}
-        subject = self.event.get("change", {}).get("subject", "#####")
+        subject = self.event.get("change", {}).get("subject", "[view on github]")
         data["finished_at"] = self.finished_at
         data["subject"] = cgi.escape(subject)
         data["project"] = cgi.escape(self.project)

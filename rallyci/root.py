@@ -42,6 +42,13 @@ class Root:
         except Exception:
             self.log.exception("Exception running %s" % obj)
 
+    def start_task(self, task):
+        for cb in self.task_start_handlers:
+            cb(task)
+        fut = self.start_obj(task)
+        self.tasks[fut] = task
+        fut.add_done_callback(self.tasks.pop)
+
     def start_obj(self, obj):
         fut = asyncio.async(self.run_obj(obj), loop=self.loop)
         fut.add_done_callback(self.schedule_cleanup)

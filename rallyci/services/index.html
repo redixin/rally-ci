@@ -118,13 +118,23 @@ connect_ws();
 
 <style type="text/css">
 body { font-family: sans-serif; margin: 0; padding: 0; }
-.header { text-align:left; background:#333; font-size:18px;
+.header { text-align:left; background:#333;
           padding: 9pt 4em; margin: 0 0 1em 0; color:#888;
           background-image:linear-gradient(to bottom, #444 0px, #222 100%) }
 .header a, .header a:visited, .header a:focus { color:#bbb }
+div.jobs div { width: 40em; }
+</style>
+
+<style type="text/css" media="screen and (max-device-width:480px)">
+.header { font-size: 44pt; }
+div.jobs-c { width: 100%; margin: 10pt; border: 1pt solid; }
+body { font-size: 24pt; }
+</style>
+
+<style type="text/css" media="screen and (min-device-width:1024px)">
+.header { font-size: 18pt; }
 div.jobs { width: 35em; }
-div.jobs div { width: 40em; border-collapse: collapse; margin: 1em;
-               margin: 2pt; padding: 0; }
+div.jobs div { border-collapse: collapse; margin: 1em; margin: 2pt; padding: 0; }
 div.jobs div table { width: 100%; margin: 0; padding: 0; border-collapse: collapse; }
 div.jobs div table tr:nth-child(1) td { background-color: #eee; }
 div.jobs div table tr:nth-child(2) td:nth-child(1) { width: 30em; }
@@ -133,6 +143,7 @@ div.jobs div table tr td { font-family: monospace; border: 1px solid; margin: 0;
 div.jobs-c { float: left; margin: 0 4em; }
 h3 { display: inline; }
 </style>
+
 <title>Rally CI (offline)</title>
 </head>
 <body>

@@ -91,7 +91,7 @@ class Class:
             return task.Task(self, project, event)
 
     def _handle_line(self, line):
-        LOG.debug("Handling line %s..." % line[:16])
+        LOG.debug("Handling line %s..." % line[:64])
         if not (line and isinstance(line, bytes)):
             LOG.warning("Bad line type %s" % type(line))
             return
@@ -100,9 +100,7 @@ class Class:
         try:
             task = self._get_task(event)
             if task:
-                for cb in self.root.task_start_handlers:
-                    cb(task)
-                self.root.start_obj(task)
+                self.root.start_task(task)
         except Exception:
             LOG.exception("Event processing error")
 
