@@ -7,12 +7,12 @@ function Task(task) {
     this.render = function (id) {
         var html = "<div id='"+this.t.id+"'>";
         html += "<table>";
-        html += "<tr><td colspan=2>"+this.t.project;
-        html += ": <a href='"+this.t.url+"'>"+this.t.subject+"</a></td></tr>";
+        html += "<tr><td colspan=2><h4>"+this.t.project+"</h4><tr>";
+        html += "<tr><td colspan=2><h4><a href='"+this.t.url+"'>"+this.t.subject+"</a></h4></td></tr>";
         for (job_id in this.jobs) {
             var job = this.jobs[job_id];
-            html += "<tr><td><a href='/logs/"+this.t.id+"/"+job.name+"/'>"
-            html += job.name+"</a></td><td id='"+job_id+"'>"
+            html += "<tr><td class=job><a href='/logs/"+this.t.id+"/"+job.name+"/'>"
+            html += job.name+"</a></td><td class='result "+job.status+"' id='"+job_id+"'>"
             html += job.status+"</td></tr>";
         }
         html += "<tr></tr>";
@@ -22,7 +22,7 @@ function Task(task) {
     }
     this.update = function (job) {
         this.jobs[job.id] = job;
-        $("#"+job.id).html(job.status);
+        $("#"+job.id).html(job.status).addClass(job.status);
     }
     this.clear = function () {
         $("#" + this.t.id).remove();
@@ -117,31 +117,33 @@ connect_ws();
 </script>
 
 <style type="text/css">
-body { font-family: sans-serif; margin: 0; padding: 0; }
+body { font-family: sans-serif; margin: 0; padding: 0; font-size: 11pt; }
 .header { text-align:left; background:#333;
-          padding: 9pt 4em; margin: 0 0 1em 0; color:#888;
+          margin: 0; color:#888; padding: 5pt 1em;
           background-image:linear-gradient(to bottom, #444 0px, #222 100%) }
 .header a, .header a:visited, .header a:focus { color:#bbb }
-div.jobs div { width: 40em; }
+div.jobs div { border-collapse: collapse; margin: 2pt; padding: 0; }
+div.jobs table { margin: 0 0 1em 0; padding: 0; border-collapse: collapse; width: 100%; }
+div.column { margin: 0; padding; 0; background-color: #666; color: #eee; width: 30em; }
+div.finished { background-color: #ee9; color: black; }
+div.jobs { color: black; margin: 0 0.5em; }
+div.jobs div table tr:nth-child(1) td { background-color: #ddd; }
+div.column { float: left; margin: 0 0.5em; }
+h3 {margin: 0; padding: 1em; }
+h4 {text-align: center; margin: 0; padding: 0;}
+div.jobs div table tr td { font-family: monospace; border: 1px solid; border-color: white; margin: 0; background-color: #eee; }
+td.result {text-overflow: ellipsis; width: 30%;}
+.SUCCESS { color: green; }
+.FAILURE { color: red; }
+.ERROR { color: #a22; }
 </style>
 
 <style type="text/css" media="screen and (max-device-width:480px)">
-.header { font-size: 44pt; }
-div.jobs-c { width: 100%; margin: 10pt; border: 1pt solid; }
-body { font-size: 24pt; }
-</style>
-
-<style type="text/css" media="screen and (min-device-width:1024px)">
-.header { font-size: 18pt; }
-div.jobs { width: 35em; }
-div.jobs div { border-collapse: collapse; margin: 1em; margin: 2pt; padding: 0; }
-div.jobs div table { width: 100%; margin: 0; padding: 0; border-collapse: collapse; }
-div.jobs div table tr:nth-child(1) td { background-color: #eee; }
-div.jobs div table tr:nth-child(2) td:nth-child(1) { width: 30em; }
-div.jobs div table tr td { font-family: monospace; border: 1px solid; margin: 0;
-                           background-color: #f7f7f7; }
-div.jobs-c { float: left; margin: 0 4em; }
-h3 { display: inline; }
+.header { padding: 0.5em 1em; text-align: center; }
+body { font-size: 2.2em; }
+div.column { padding: 0; margin: 0; border: 1pt solid; float: none; width: 100%;}
+div.jobs { margin: 0; }
+div.jobs div table tr td { font-size: 1.4em; }
 </style>
 
 <title>Rally CI (offline)</title>
@@ -149,8 +151,8 @@ h3 { display: inline; }
 <body>
 
 <h1 class=header>Rally CI (<a id=status>offline</a>)</h1>
-<div class=jobs-c><h3>Running tasks</h1><div class=jobs id="running"></div></div>
-<div class=jobs-c><h3>Last finished tasks</h1><div class=jobs id="finished"></div></div>
+<div class="column running"><h3>Running tasks</h1><div class=jobs id="running"></div></div>
+<div class="column finished"><h3>Last finished tasks</h1><div class=jobs id="finished"></div></div>
 
 </body>
 </html>
