@@ -33,19 +33,22 @@ def get_free_port():
 class HttpTestCase(unittest.TestCase):
 
     def test_index(self):
-        loop = asyncio.new_event_loop()
+        loop = asyncio.get_event_loop()
         asyncio.set_event_loop(None)
         config = {"listen": ("localhost", get_free_port())}
-        h = status.Class(**config)
+        root = mock.Mock(loop=loop)
+        ss = status.Class(root, **config)
 
         @asyncio.coroutine
         def test(loop):
             url = "http://localhost:%d" % config["listen"][1]
+            yield from asyncio.sleep(1, loop=loop) #  FIXME
             response = yield from aiohttp.request("GET", url, loop=loop)
             body = yield from response.read()
             self.assertIn("Rally-CI", str(body))
-        m_root = mock.Mock()
-        m_root.loop = loop
-        h.start(m_root)
+
+        fut = asyncio.async(ss.run(), loop=loop)
         loop.run_until_complete(test(loop))
-        h.stop()
+        fut.cancel()
+        loop.run_until_complete(fut)
+        loop.run_until_complete(ss.cleanup())

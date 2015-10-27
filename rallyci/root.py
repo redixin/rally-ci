@@ -31,6 +31,7 @@ class Root:
         self.task_end_handlers = []
         self.job_update_handlers = []
         self.stop_event = asyncio.Event()
+        self.reload_event = asyncio.Event()
 
     @asyncio.coroutine
     def run_obj(self, obj):
@@ -74,6 +75,7 @@ class Root:
     def load_config(self, filename):
         self.filename = filename
         self.config = Config(self, filename)
+        self.config.configure_logging()
         self.log = logging.getLogger(__name__)
 
     @asyncio.coroutine
@@ -91,12 +93,37 @@ class Root:
                     del(fs[fut])
 
     @asyncio.coroutine
+    def reload(self):
+        """Wait for reload events and reload config when event set."""
+        while 1:
+            try:
+                yield from self.reload_event.wait()
+                self.log.info("Reloading configuration...")
+            except asyncio.CancelledError:
+                return
+            finally:
+                self.reload_event.clear()
+            try:
+                config = Config(self, self.filename)
+                self.log.debug("New config instance %s" % config)
+                yield from config.validate()
+                self.config = config
+                self.log.info("Done")
+            except asyncio.CancelledError:
+                return
+            except Exception as e:
+                self.log.exception("Error loading new config")
+
+    @asyncio.coroutine
     def run(self):
         self.start_services()
         for prov in self.config.iter_providers():
             self.providers[prov.name] = prov
             prov.start()
+        reload_fut = asyncio.async(self.reload(), loop=self.loop)
         yield from self.stop_event.wait()
+        reload_fut.cancel()
+        yield from reload_fut
         self.log.info("Interrupted.")
         for obj in self._running_objects:
             obj.cancel()
@@ -104,7 +131,6 @@ class Root:
         if self._running_cleanups:
             yield from asyncio.wait(self._running_cleanups,
                                     return_when=futures.ALL_COMPLETED)
-        self.loop.stop()
 
     def job_updated(self, job):
         for cb in self.job_update_handlers:

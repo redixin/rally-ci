@@ -27,20 +27,6 @@ from rallyci import utils
 
 LOG = logging.getLogger(__name__)
 
-"""
-
-{
-    'type': 'ref-updated',
-    'refUpdate': {
-        'newRev': '1a8c2369ed141a50ac5c109c53cf5fde68375afc',
-        'refName': 'master',
-        'oldRev': '0fc633318d0103e81af00840679661d3df0534aa',
-        'project': 'stackforge/stackalytics'
-    }
-}
-
-"""
-
 
 class Class:
 
@@ -49,7 +35,6 @@ class Class:
         self.cfg = kwargs
         self.name = kwargs["name"]
         self.tasks = set()
-        self.config = self.root.config
 
     def _get_task(self, event):
         project = event.get("change", {}).get("project")
@@ -60,7 +45,7 @@ class Class:
                 return
         LOG.debug("Project: %s" % project)
 
-        if project not in self.config.data["project"]:
+        if project not in self.root.config.data["project"]:
             return
         event_type = event["type"]
 

@@ -12,6 +12,7 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
+import asyncio
 import importlib
 import logging
 import logging.config
@@ -21,6 +22,7 @@ LOG = logging.getLogger(__name__)
 
 
 class Config:
+
     def __init__(self, root, filename):
         self.root = root
         self.filename = filename
@@ -44,7 +46,9 @@ class Config:
                 self.data.setdefault(key, [])
                 self.data[key].append(value)
 
-        self._configure_logging()
+    @asyncio.coroutine
+    def validate(self):
+        yield from asyncio.sleep(0)
 
     def get_instance(self, cfg, *args, **kwargs):
         return self._get_module(cfg["module"]).Class(cfg, *args, **kwargs)
@@ -70,7 +74,7 @@ class Config:
             self._modules[name] = module
         return module
 
-    def _configure_logging(self):
+    def configure_logging(self):
         LOGGING = {
             "version": 1,
             "formatters": {

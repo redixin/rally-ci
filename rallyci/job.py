@@ -73,7 +73,7 @@ class Job:
         runner_cfg = self.root.config.data["runner"][runner_local_cfg["name"]]
         self.runner = self.root.config.get_instance(runner_cfg, self,
                                                     runner_local_cfg)
-        fut = asyncio.async(self.runner.run())
+        fut = asyncio.async(self.runner.run(), loop=self.root.loop)
         try:
             self.error = yield from asyncio.wait_for(fut, timeout=self.timeout)
             self.set_status("FAILURE" if self.error else "SUCCESS")

@@ -107,7 +107,10 @@ class Class:
         self.handler = self.app.make_handler()
         self.srv = yield from self.loop.create_server(self.handler, addr, port)
         LOG.info("HTTP server started at %s:%s" % (addr, port))
-        yield from asyncio.Event().wait()
+        try:
+            yield from asyncio.Event(loop=self.loop).wait()
+        except asyncio.CancelledError:
+            pass
 
     @asyncio.coroutine
     def cleanup(self):

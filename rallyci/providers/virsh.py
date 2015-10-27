@@ -350,7 +350,7 @@ class Provider:
                       for c in self.config["hosts"]]
         self.mds = MetadataServer(self.root.loop,
                                   self.config.get("metadata_server", {}))
-        self.mds_future = asyncio.async(self.mds.start())
+        self.mds_future = asyncio.async(self.mds.start(), loop=self.root.loop)
 
     @asyncio.coroutine
     def cleanup(self, vms):

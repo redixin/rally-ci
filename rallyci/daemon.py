@@ -27,5 +27,6 @@ def run():
     loop = asyncio.get_event_loop()
     r = root.Root(loop)
     loop.add_signal_handler(signal.SIGINT, r.stop_event.set)
+    loop.add_signal_handler(signal.SIGHUP, r.reload_event.set)
     r.load_config(config)
     loop.run_until_complete(r.run())

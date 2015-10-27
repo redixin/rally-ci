@@ -24,6 +24,7 @@ class HostTestCase(unittest.TestCase):
 
     def setUp(self):
         self.loop = asyncio.get_event_loop()
+
     @unittest.mock.patch("rallyci.providers.virsh.asyncssh")
     def test_update_stats(self, mock_ssh):
 
@@ -39,7 +40,9 @@ Swap:       524284     524284          0"""
         fake_ssh.run = Mock(wraps=ssh)
         mock_ssh.AsyncSSH.return_value = fake_ssh
 
-        h = virsh.Host({}, {"storage": {"path": "path"}}, None, None)
+        h = virsh.Host({},
+                       {"storage": {"path": "path", "backend": "btrfs"}},
+                       None, None)
         self.loop.run_until_complete(h.update_stats())
         self.assertEqual(70.23, h.la)
         self.assertEqual(81847932, h.free)

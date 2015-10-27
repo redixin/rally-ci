@@ -114,7 +114,10 @@ class Task:
     def cleanup(self):
         self.finished_at = int(time.time())
         key = get_key(self.event) # TODO: move it to gerrit
-        self.stream.tasks.remove(key)
+        try:
+            self.stream.tasks.remove(key)
+        except KeyError:
+            pass
         if not self.stream.cfg.get("silent"):
             try:
                 yield from self.publish_results()
