@@ -17,17 +17,22 @@ import importlib
 import logging
 import logging.config
 import yaml
+import argparse
 
 LOG = logging.getLogger(__name__)
 
 
 class Config:
 
-    def __init__(self, root, filename):
+    def __init__(self, root):
         self.root = root
-        self.filename = filename
         self._modules = {}
         self.data = {}
+
+        self._parse_args()
+        self.args = self.parser.parse_args()
+        filename = self.args.filename
+
         with open(filename, "rb") as cf:
             self.raw_data = yaml.safe_load(cf)
 
@@ -74,6 +79,15 @@ class Config:
             self._modules[name] = module
         return module
 
+    def _parse_args(self):
+        self.parser = argparse.ArgumentParser()
+        group = self.parser.add_mutually_exclusive_group()
+        group.add_argument("-v", "--verbose", help="verbose mode",
+                    action="store_true")
+        group.add_argument("-q", "--quiet", help="quiet mode",
+                    action="store_true")
+        self.parser.add_argument("filename", type=str, help="config file")
+
     def configure_logging(self):
         LOGGING = {
             "version": 1,
@@ -100,6 +114,11 @@ class Config:
                 }
             }
         }
+
+        if self.args.quiet:
+            LOGGING["loggers"][""]["handlers"].remove("console")
+        elif self.args.verbose:
+            LOGGING["handlers"]["console"]["level"] = "DEBUG"
 
         def _get_handler(key, value):
             return {

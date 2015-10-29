@@ -72,9 +72,8 @@ class Root:
         for service in self.config.iter_instances("service"):
             self.start_obj(service)
 
-    def load_config(self, filename):
-        self.filename = filename
-        self.config = Config(self, filename)
+    def load_config(self):
+        self.config = Config(self)
         self.config.configure_logging()
         self.log = logging.getLogger(__name__)
 

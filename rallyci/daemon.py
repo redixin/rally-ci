@@ -20,13 +20,9 @@ import signal
 
 
 def run():
-    if len(sys.argv) < 2:
-        print("Usage\n\t%s <config.yaml>\n\n" % sys.argv[0])
-        sys.exit(1)
-    config = sys.argv[1]
     loop = asyncio.get_event_loop()
     r = root.Root(loop)
     loop.add_signal_handler(signal.SIGINT, r.stop_event.set)
     loop.add_signal_handler(signal.SIGHUP, r.reload_event.set)
-    r.load_config(config)
+    r.load_config()
     loop.run_until_complete(r.run())
