@@ -72,8 +72,9 @@ class Root:
         for service in self.config.iter_instances("service"):
             self.start_obj(service)
 
-    def load_config(self):
-        self.config = Config(self)
+    def load_config(self, args):
+        self.args = args
+        self.config = Config(self, args)
         self.config.configure_logging()
         self.log = logging.getLogger(__name__)
 
@@ -103,7 +104,7 @@ class Root:
             finally:
                 self.reload_event.clear()
             try:
-                config = Config(self, self.filename)
+                config = Config(self, self.args)
                 self.log.debug("New config instance %s" % config)
                 yield from config.validate()
                 self.config = config

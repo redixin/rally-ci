@@ -17,12 +17,19 @@ from rallyci import root
 import asyncio
 import sys
 import signal
+import argparse
 
 
 def run():
+    parser = argparse.ArgumentParser()
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("-v", "--verbose", help="verbose mode", action="store_true")
+    group.add_argument("-q", "--quiet", help="quiet mode", action="store_true")
+    parser.add_argument("filename", type=str, help="config file")
+    args = parser.parse_args()
     loop = asyncio.get_event_loop()
     r = root.Root(loop)
     loop.add_signal_handler(signal.SIGINT, r.stop_event.set)
     loop.add_signal_handler(signal.SIGHUP, r.reload_event.set)
-    r.load_config()
+    r.load_config(args)
     loop.run_until_complete(r.run())

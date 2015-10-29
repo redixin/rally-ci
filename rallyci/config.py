@@ -17,23 +17,19 @@ import importlib
 import logging
 import logging.config
 import yaml
-import argparse
 
 LOG = logging.getLogger(__name__)
 
 
 class Config:
-
-    def __init__(self, root):
+    def __init__(self, root, args):
         self.root = root
         self._modules = {}
         self.data = {}
+        self.args = args
+        self.filename = args.filename
 
-        self._parse_args()
-        self.args = self.parser.parse_args()
-        filename = self.args.filename
-
-        with open(filename, "rb") as cf:
+        with open(self.filename, "rb") as cf:
             self.raw_data = yaml.safe_load(cf)
 
         for item in self.raw_data:
@@ -78,15 +74,6 @@ class Config:
             module = importlib.import_module(name)
             self._modules[name] = module
         return module
-
-    def _parse_args(self):
-        self.parser = argparse.ArgumentParser()
-        group = self.parser.add_mutually_exclusive_group()
-        group.add_argument("-v", "--verbose", help="verbose mode",
-                    action="store_true")
-        group.add_argument("-q", "--quiet", help="quiet mode",
-                    action="store_true")
-        self.parser.add_argument("filename", type=str, help="config file")
 
     def configure_logging(self):
         LOGGING = {
