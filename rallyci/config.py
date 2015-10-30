@@ -22,13 +22,14 @@ LOG = logging.getLogger(__name__)
 
 
 class Config:
-
-    def __init__(self, root, filename):
+    def __init__(self, root, filename, verbose):
         self.root = root
-        self.filename = filename
         self._modules = {}
         self.data = {}
-        with open(filename, "rb") as cf:
+        self.filename = filename
+        self.verbose = verbose
+
+        with open(self.filename, "rb") as cf:
             self.raw_data = yaml.safe_load(cf)
 
         for item in self.raw_data:
@@ -100,6 +101,11 @@ class Config:
                 }
             }
         }
+
+        if self.verbose:
+            LOGGING["handlers"]["console"]["level"] = "DEBUG"
+        else:
+            LOGGING["loggers"][""]["handlers"].remove("console")
 
         def _get_handler(key, value):
             return {
