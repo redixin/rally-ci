@@ -20,9 +20,12 @@ from rallyci.config import Config
 import time
 
 class Root:
-    def __init__(self, loop):
+    def __init__(self, loop, filename, verbose):
         self._running_objects = {}
         self._running_cleanups = []
+
+        self.filename = filename
+        self.verbose = verbose
 
         self.tasks = {}
         self.loop = loop
@@ -72,9 +75,8 @@ class Root:
         for service in self.config.iter_instances("service"):
             self.start_obj(service)
 
-    def load_config(self, args):
-        self.args = args
-        self.config = Config(self, args)
+    def _load_config(self):
+        self.config = Config(self, self.filename, self.verbose)
         self.config.configure_logging()
         self.log = logging.getLogger(__name__)
 
@@ -104,7 +106,7 @@ class Root:
             finally:
                 self.reload_event.clear()
             try:
-                config = Config(self, self.args)
+                config = Config(self, self.filename, self.verbose)
                 self.log.debug("New config instance %s" % config)
                 yield from config.validate()
                 self.config = config
@@ -116,6 +118,7 @@ class Root:
 
     @asyncio.coroutine
     def run(self):
+        self._load_config()
         self.start_services()
         for prov in self.config.iter_providers():
             self.providers[prov.name] = prov
