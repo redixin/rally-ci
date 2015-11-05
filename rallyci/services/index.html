@@ -75,7 +75,8 @@ function Tasks() {
 }
 var tasks = new Tasks();
 function connect_ws() {
-    var ws = new WebSocket("ws://" + window.location.host + "/ws/");
+    var scheme = location.protocol == 'https:' ? 'wss://' : 'ws://';
+    var ws = new WebSocket(scheme + window.location.host + "/ws/");
     var interval;
     ws.onmessage = function(e) {
         var e = JSON.parse(e.data);
@@ -124,7 +125,7 @@ body { font-family: sans-serif; margin: 0; padding: 0; font-size: 11pt; }
 .header a, .header a:visited, .header a:focus { color:#bbb }
 div.jobs div { border-collapse: collapse; margin: 2pt; padding: 0; }
 div.jobs table { margin: 0 0 1em 0; padding: 0; border-collapse: collapse; width: 100%; }
-div.column { margin: 0; padding; 0; background-color: #666; color: #eee; width: 30em; }
+div.column { margin: 0; padding: 0; background-color: #666; color: #eee; width: 30em; }
 div.finished { background-color: #ee9; color: black; }
 div.jobs { color: black; margin: 0 0.5em; }
 div.jobs div table tr:nth-child(1) td { background-color: #ddd; }
