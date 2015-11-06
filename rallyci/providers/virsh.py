@@ -93,7 +93,7 @@ class ZFS:
         cmd = "wget -nv {url} -O {path}/{name}/vda.qcow2"
         cmd = cmd.format(name=name, path=self.path, url=url)
         yield from self.ssh.run(cmd)
-        cmd = "qemu-img resize {path}/{name}/vda.qcow2 32G"
+        cmd = "qemu-img resize {path}/{name}/vda.qcow2 64G"
         cmd = cmd.format(name=name, path=self.path)
         yield from self.ssh.run(cmd)
 
@@ -151,7 +151,7 @@ class BTRFS:
         cmd = cmd.format(name=name, path=self.path, url=url)
         yield from self.ssh.run(cmd)
         # TODO: size should be set in config
-        cmd = "qemu-img resize /{path}/{name}/vda.qcow2 32G"
+        cmd = "qemu-img resize /{path}/{name}/vda.qcow2 64G"
         cmd = cmd.format(name=name, path=self.path)
         yield from self.ssh.run(cmd)
 
