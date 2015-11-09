@@ -51,14 +51,13 @@ class SSHClientSession(asyncssh.SSHClientSession):
 
     def __init__(self, callbacks, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._callbacks = callbacks
+        self._stdout_cb, self._stderr_cb = callbacks
 
     def data_received(self, data, datatype):
-        if datatype is None:
-            self._callbacks[0](data)
-        elif datatype == asyncssh.EXTENDED_DATA_STDERR:
-            if len(self._callbacks) > 1:
-                self._callbacks[1](data)
+        if self._stdout_cb and datatype is None:
+            self._stdout_cb(data)
+        elif self._stderr_cb and (datatype == asyncssh.EXTENDED_DATA_STDERR):
+            self._stderr_cb(data)
 
 
 class Client:
@@ -94,31 +93,24 @@ class Client:
 
         :param string cmd: command to be executed
         :param stdin: either string, bytes or file like object
-        :param stdout: either file like object or executable
-        :param stderr: either file like object or executable
+        :param stdout: executable (e.g. sys.stdout.write)
+        :param stderr: executable (e.g. sys.stderr.write)
         :param boolean check: Raise an exception in case of non-zero exit status.
         """
         yield from self._ensure_connected()
-        callbacks = []
-        for stream in (stdout, stderr):
-            if stream:
-                if hasattr(stream, "write"):
-                    callbacks.append(stream.write)
-                else:
-                    callbacks.append(stream)
-        session_factory = functools.partial(SSHClientSession, callbacks)
+        session_factory = functools.partial(SSHClientSession, (stdout, stderr))
         chan, session = yield from self.conn.create_session(session_factory, cmd)
         if stdin:
             if hasattr(stdin, "read"):
                 while True:
                     chunk = stdin.read(4096)
                     if not chunk:
-                        chan.write_eof()
+                        break
                     chan.write(chunk)
                     yield from chan.drain()
             else:
                 chan.write(stdin)
-                chan.write_eof()
+            chan.write_eof()
         yield from chan.wait_closed()
         status = chan.get_exit_status()
         if check and status == -1:
@@ -134,8 +126,8 @@ if __name__ == "__main__":
     futs = []
     for i in range(10):
         futs.append(ssh.run("/bin/bash -xe",
-                    stdout=sys.stdout,
-                    stderr=sys.stderr,
+                    stdout=sys.stdout.write,
+                    stderr=sys.stderr.write,
                     stdin="env\nsleep 20"))
     for f in asyncio.as_completed(futs, loop=loop):
         try:
