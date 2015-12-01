@@ -375,7 +375,7 @@ class Provider:
 
         best = None
         with (yield from self.get_vms_lock):
-            sleep = self.last + 5 - time.time()
+            sleep = self.last + 30 - time.time()
             if sleep > 1:
                 yield from asyncio.sleep(sleep)
             while True:
@@ -416,7 +416,7 @@ class VM:
         x.se("name").x.text = self.name
         for mem in ("memory", "currentMemory"):
             x.se(mem, unit="MiB").x.text = str(self.cfg.get("memory", 1024))
-        x.se("vcpu", placement="static").x.text = "1"
+        x.se("vcpu", placement="static").x.text = str(self.cfg.get("vcpu", 1))
         cpu = x.se("cpu", mode="host-model")
         cpu.se("model", fallback="forbid")
         os = x.se("os")

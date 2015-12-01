@@ -1,0 +1,10 @@
+---
+
+- source:
+    module: rallyci.source.github
+    name: mygh
+    bind: 0.0.0.0:8090
+
+- provider:
+    module: rallyci.providers.lxc
+
