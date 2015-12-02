@@ -1,21 +1,13 @@
 ---
 
-- stream:
-    name: openstack
-    module: rallyci.streams.gerrit
+- service:
+    name: gerrit
+    module: rallyci.services.gerrit2
+    fetch: https://review.openstack.org/gitweb?p={project}.git;a=blob_plain;f={path};hb={commit}
     ssh:
-      username: CHANGEME
       hostname: review.openstack.org
-    vote: false
-    silent: true
-    fake-stream: tests/test-stream.yaml
-    comment-header: |
-      Build {succeeded} by RallyCI. Use "my-ci recheck" to recheck
-    comment-job-template: "- {name} http://example.com/{log_path}/ : {success} in {time}"
-    recheck-regexp: ^my-ci recheck$
-    env:
-      GERRIT_PROJECT: change.project
-      GERRIT_REF: patchSet.ref
+      username: CHANGEME
+      keys: ["/etc/rally-ci/rally"]
 
 - service:
     name: status
@@ -23,36 +15,46 @@
     listen: ["localhost", "8080"]
 
 - provider:
-    name: my_virsh
-    module: rallyci.providers.virsh
+    name: my_lxc
+    module: rallyci.providers.lxc
     hosts:
       - hostname: 10.1.1.1
         port: 16622
-    max_vms: 4
-    storage:
-      backend: btrfs
-      path: /ci/rally
-    metadata_server:
-      listen_addr: 127.0.0.1
-      listen_port: 8081
-      authorized_keys: /etc/rally-ci/authorized_keys
-      user_data: |
-        #!/bin/sh
-        cat /home/ubuntu/.ssh/authorized_keys > /root/.ssh/authorized_keys
+    backingstore: zfs
     images:
-      bare_u1404:
-        url: https://cloud-images.ubuntu.com/trusty/current/trusty-server-cloudimg-amd64-disk1.img
-      dev:
-        parent: bare_u1404
-        build-scripts: ["init_ubuntu_dev", "clone_projects"]
-    vms:
-      dev:
-        image: dev
-        memory: 512
-        net: ["virbr0", "tmpbr% 02:01:01:01:01:01"]
-      noop:
-        net: ["tmpbr%"]
-        memory: 128
+      ubuntu-1510-py35-dev:
+        template: ubuntu
+        args: -r wily
+        build-scripts: ["install-py35-dev"]
+
+- runner:
+    name: lxc
+    provider: my_lxc
+    module: rallyci.runners.ssh
+    logs: /tmp/ci
+
+- job:
+    name: pytest
+    env:
+      PYTEST_PATH: tests/unit
+    runner:
+      name: lxc
+      vms:
+        - name: ubuntu-1510-py35-dev
+          scripts:
+            - git_checkout
+            - run_pytest
+          publish:
+            - ["/tmp/report.html", ""]
+
+- script:
+    name: run_pytest
+    interpreter: /bin/bash -xe -s
+    user: rally
+    data: |
+      cd $PROJECT
+      pip install .
+      pytest -n auto --html=/tmp/report.html $PYTEST_PATH
 
 - runner:
     name: main
