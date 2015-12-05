@@ -13,11 +13,55 @@
 #    limitations under the License.
 
 import asyncio
+import collections
+import functools
+
+from rallyci import utils
+
+COMMON_OPTS = (("-B", "backingstore"), )
+CREATE_OPTS = (("--zfsroot", "zfsroot"), )
 
 
-class Class:
-    def __init__(self, nodepool, template):
-        pass
+class Provider(BaseProvider):
+    def __init__(self, root, cfg):
+        """
+        :param dict cfg: provider config
+        """
+        self.root = root
+        self.cfg = cfg
+        self._building_images = collections.defaultdict(
+                functools.partial(asyncio.Event, loop=root.loop))
+
+        self._opts = list(self._get_opts(COMMON_OPTS))
+        self._create_opts = list(self._get_opts(CREATE_OPTS))
+        self._create_opts.extend(self._opts)
+
+    def _get_opts(self, opts):
+        for opt, name in opts:
+            opt_value = self.cfg.get(name)
+            if opt_value:
+                yield [opt, opt_value]
+
+    @asyncio.coroutine
+    def _build_image(self, host, image):
+        image_cfg = self.cfg["images"][image]
+        cmd = ["lxc-create", "--name", image, *self._create_opts]
+        cmd.extend(["-t", image_cfg["template"],
+                    "--", image_cfg.get("args", "")])
+        with self._build_images[image]:
+            yield from host.ssh.run(cmd)
+
+    @asyncio.coroutine
+    def get_vm(self, image, job):
+        host = yield from self._get_host()
+        cmd = ["lxc-info", "--name", image]
+        no_image = yield from host.run(cmd, check=False)
+        if no_image:
+            yield from self._build_image(host, image)
+        name = utils.get_rnd_name("vm_")
+        cmd = ["lxc-clone", "-s", image, "-n", name, *self._opts]
+        yield from host.ssh.run(cmd)
+        yield from host.ssh.run(["lxc-start", "-d", "-n", name])
 
     @asyncio.coroutine
     def boot(self, name):

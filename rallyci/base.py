@@ -13,8 +13,46 @@
 #    limitations under the License.
 
 
-class BaseEvent:
+import abc
+
+
+class BaseVM(metaclass=abc.ABCMeta):
+
+    @abc.abstractmethod
+    def run_script(self, script):
+        """
+        :param dict script:
+        """
+        pass
+
+    @abc.abstractmethod
+    def destroy(self):
+        pass
+
+
+class BaseProvider(metaclass=abc.ABCMeta):
+
+    @abc.abstractmethod
+    def __init__(self, root, config):
+        """
+        :param Root root:
+        :param dict config: full provider config
+        """
+        pass
+
+    @abc.abstractmethod
+    def get_vms(self, cfg):
+        """Return list of VM instances.
+
+        :param cfg: job.runner part of job config
+        """
+        pass
+
+
+class BaseEvent(metaclass=abc.ABCMeta):
     """Represent event."""
+
+    @abc.abstractmethod
     def __init__(self, cfg, raw_event):
         """Wrap raw_event.
 
@@ -30,4 +68,4 @@ class BaseEvent:
         :param dict cfg: service config section
         :param dict raw_event: event data decoded from json
         """
-        raise NotImplementedError()
+        pass

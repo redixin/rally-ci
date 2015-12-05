@@ -6,6 +6,7 @@
     cfg-url-template: https://review.openstack.org/gitweb?p={project}.git;a=blob_plain;f=.rally-ci.yaml;hb={commit}
     cr-url-template: https://review.openstack.org/#q,{id},n,z
     commit-url-template: http://git.openstack.org/cgit/{project}/commit/?id={id}
+    silent: true
     env:
       GERRIT_PROJECT: change.project
       GERRIT_REF: patchSet.ref

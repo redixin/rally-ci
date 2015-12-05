@@ -204,7 +204,7 @@ class Host:
     @asyncio.coroutine
     def build_image(self, name):
         LOG.info("Building image %s" % name)
-        self.image_locks.setdefault(name, asyncio.Lock())
+        self.image_locks.setdefault(name, asyncio.Lock(loop=self.root.loop))
         with (yield from self.image_locks[name]):
             if (yield from self.storage.exist(name)):
                 LOG.debug("Image %s exist" % name)
