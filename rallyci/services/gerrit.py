@@ -20,6 +20,7 @@ import json
 from rallyci.common.ssh import Client
 from rallyci import base
 from rallyci import utils
+from rallyci import task
 
 
 class Event(base.BaseEvent):
@@ -27,6 +28,7 @@ class Event(base.BaseEvent):
         """
         :param cfg: service config section
         """
+        self.raw_event = raw_event
         self.env = _get_env(raw_event, cfg.get("env", {}))
         self.project = _get_project_name(raw_event)
         if "patchSet" in raw_event:
@@ -59,8 +61,9 @@ class Service:
             "ref-updated": self._start_task,
         }
 
-    def _start_task(self, event, project):
-        self.root.start_task(Task(self.root, project, self.cfg, env, commit, url))
+    def _start_task(self, raw_event):
+        event = Event(self.cfg, raw_event)
+        self.root.start_task(task.Task(self.root, event))
 
     def _handle_comment_added(self, event):
         r = self.cfg.get("recheck-regexp", "^rally-ci recheck$")
@@ -72,7 +75,11 @@ class Service:
     def _handle_event(self, event):
         event = json.loads(event)
         project = _get_project_name(event)
+        self.log.debug("Event '%s' for project '%s'" % (event["type"],
+                                                        project))
         if project:
+            if not self.root.config.is_project_configured(project):
+                return
             handler = self.handler_map.get(event["type"])
             if handler:
                 handler(event)
@@ -106,7 +113,7 @@ class Service:
                                                  stdout=self._handle_stdout,
                                                  stderr=self._handle_stderr)
                 self.log.info("Gerrit stream was closed with status %s" % status)
-            except asyncio.CancelledError:
+            except (asyncio.CancelledError, GeneratorExit):
                 self.log.info("Stopping gerrit")
                 self.root.task_end_handlers.remove(self._handle_task_end)
                 del self.ssh

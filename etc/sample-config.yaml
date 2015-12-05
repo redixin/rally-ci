@@ -4,8 +4,8 @@
     name: gerrit
     module: rallyci.services.gerrit
     cfg-url-template: https://review.openstack.org/gitweb?p={project}.git;a=blob_plain;f=.rally-ci.yaml;hb={commit}
-    cr-url-template: https://review.openstack.org/#q,{id},n,z
-    commit-url-template: http://git.openstack.org/cgit/{project}/commit/?id={id}
+    cr-url-template: https://review.openstack.org/#q,{commit},n,z
+    commit-url-template: http://git.openstack.org/cgit/{project}/commit/?id={commit}
     silent: true
     env:
       GERRIT_PROJECT: change.project
@@ -17,7 +17,7 @@
     ssh:
       hostname: review.openstack.org
       username: CHANGEME
-      keys: ["/etc/rally-ci/rally"]
+      keys: ["path_to_private_key"]
 
 - service:
     name: status
@@ -37,7 +37,7 @@
         build-scripts: ["install-py35-dev"]
 
 - runner:
-    name: lxc
+    name: main_lxc
     provider: my_lxc
     module: rallyci.runners.ssh
     logs: /tmp/ci
@@ -47,7 +47,7 @@
     env:
       PYTEST_PATH: tests/unit
     runner:
-      name: lxc
+      name: main_lxc
       vms:
         - name: ubuntu-1510-dev
           scripts:
@@ -109,7 +109,7 @@
 - job:
     name: tox
     runner:
-      name: main
+      name: main_lxc
       vms:
         - name: ubuntu-1510-dev
           scripts:
@@ -137,8 +137,10 @@
 - matrix:
     name: tox-jobs
     projects:
+      - openstack-dev/ci-sandbox
       - openstack/designate
       - openstack/murano
+      - openstack/rally
     jobs:
       - tox-pep8
       - tox-py27

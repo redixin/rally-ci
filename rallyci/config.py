@@ -18,7 +18,7 @@ import logging
 import logging.config
 import yaml
 
-LOG = logging.getLogger(__name__)
+from rallyci import utils
 
 
 class Config:
@@ -28,6 +28,7 @@ class Config:
         self.data = {}
         self.filename = filename
         self.verbose = verbose
+        self._configured_projects = set()
 
         with open(self.filename, "rb") as cf:
             self.raw_data = yaml.safe_load(cf)
@@ -46,6 +47,13 @@ class Config:
             else:
                 self.data.setdefault(key, [])
                 self.data[key].append(value)
+        utils.expand_jobs(self.data)
+        for matrix in self.data.get("matrix", {}).values():
+            for project in matrix["projects"]:
+                self._configured_projects.add(project)
+
+    def is_project_configured(self, project):
+        return project in self._configured_projects
 
     @asyncio.coroutine
     def validate(self):
@@ -55,11 +63,11 @@ class Config:
         module = self._get_module(cfg["module"])
         return getattr(module, class_name)(cfg, *args, **kwargs)
 
-    def iter_instances(self, section):
+    def iter_instances(self, section, class_name):
         section = self.data.get(section, {})
         for config in section.values():
-            cls = self._get_module(config["module"]).Class
-            yield cls(self.root, **config)
+            module = self._get_module(config["module"])
+            yield getattr(module, class_name)(self.root, **config)
 
     def iter_providers(self):
         for cfg in self.data.get("provider", {}).values():

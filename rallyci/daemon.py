@@ -29,6 +29,6 @@ def run():
     args = parser.parse_args()
     loop = asyncio.get_event_loop()
     r = root.Root(loop, args.filename, args.verbose)
-    loop.add_signal_handler(signal.SIGINT, r.stop_event.set)
+    loop.add_signal_handler(signal.SIGINT, r.stop)
     loop.add_signal_handler(signal.SIGHUP, r.reload_event.set)
     loop.run_until_complete(r.run())

@@ -29,7 +29,7 @@ from  rallyci.common import periodictask
 LOG = logging.getLogger(__name__)
 
 
-class Class:
+class Service:
     def __init__(self, root, **config):
         self.root = root
         self.loop = root.loop

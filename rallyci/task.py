@@ -18,12 +18,17 @@ import copy
 import cgi
 import time
 
+import aiohttp
+
 from rallyci.common import asyncssh
 from rallyci.job import Job
 from rallyci import utils
 
 
 class Task:
+    finished_at = None
+    jobs = {}
+    _job_futures = {}
     def __init__(self, root, event):
         """
         :param Root root:
@@ -32,10 +37,8 @@ class Task:
         self.root = root
         self.event = event
 
-        self.jobs = {}
         self.id = utils.get_rnd_name("task_", length=10)
         self._finished = asyncio.Event(loop=root.loop)
-        self._job_futures = {}
 
     def __repr__(self):
         return "<Task %s %s>" % (self.event.project, self.id)
@@ -85,7 +88,7 @@ class Task:
 
     @asyncio.coroutine
     def run(self):
-        if self.self.event.cfg_url:
+        if self.event.cfg_url:
             local_cfg = yield from self._get_local_cfg(self.event.cfg_url)
         self._start_jobs(local_cfg)
         while not self._finished.is_set():
@@ -104,5 +107,5 @@ class Task:
             "finished_at": self.finished_at,
             "subject": cgi.escape(self.event.subject),
             "project": cgi.escape(self.event.project),
-            "url": self.url,
+            "url": self.event.url,
         }

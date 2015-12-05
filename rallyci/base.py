@@ -41,7 +41,11 @@ class BaseProvider(metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    def get_vms(self, cfg):
+    def start(self):
+        pass
+
+    @abc.abstractmethod
+    def get_vm(self, cfg):
         """Return list of VM instances.
 
         :param cfg: job.runner part of job config

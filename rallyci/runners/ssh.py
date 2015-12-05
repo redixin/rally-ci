@@ -43,6 +43,11 @@ class Class:
         self.logfile.flush()
 
     @asyncio.coroutine
+    def _get_vms(self):
+        for vm in self.local_cfg["vms"]:
+            pass
+
+    @asyncio.coroutine
     def run(self):
         self.prov = self.job.root.providers[self.cfg["provider"]]
         scripts = [vm.get("scripts", []) for vm in self.local_cfg["vms"]]

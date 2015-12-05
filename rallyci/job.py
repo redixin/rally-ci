@@ -30,20 +30,20 @@ class Job:
         self.voting = True
         self.error = 254 # FIXME
         self.queued_at = time.time()
-        self.event = event
-        self.name = name
-        self.root = event.root
+        self.task = task
+        self.root = task.root
         self.config = config
         self.timeout = self.config.get("timeout", 90) * 60
         self.id = utils.get_rnd_name("job_", length=10)
-        self.env = self.config.get("env", {}).copy()
+        self.env = config.get("env", {}).copy()
         self.status = "__init__"
         self.finished_at = 0
-        self.log_path = os.path.join(self.event.id, self.name)
+        self.log_path = os.path.join(self.task.id, config["name"])
         LOG.debug("Job %s initialized." % self.id)
 
     def __str__(self):
-        return "<Job %s(%s) [%s]>" % (self.name, self.status, self.id)
+        return "<Job %s(%s) [%s]>" % (self.config["name"],
+                                      self.status, self.id)
 
     def __repr__(self):
         return self.__str__()
@@ -77,13 +77,16 @@ class Job:
 
     @asyncio.coroutine
     def cleanup(self):
-        yield from self.runner.cleanup()
+        if hasattr(self, "runner"):
+            yield from self.runner.cleanup()
+        else:
+            yield from asyncio.sleep(0)
 
     def to_dict(self):
         return {"id": self.id,
-                "name": self.name,
+                "name": self.config["name"],
                 "status": self.status,
-                "task": self.event.id,
+                "task": self.task.id,
                 "finished_at": self.finished_at,
                 "seconds": int(time.time()) - self.queued_at,
                 }

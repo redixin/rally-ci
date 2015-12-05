@@ -15,9 +15,12 @@
 import asyncio
 from concurrent import futures
 import logging
+import signal
 import resource
-from rallyci.config import Config
 import time
+
+from rallyci.config import Config
+
 
 class Root:
     def __init__(self, loop, filename, verbose):
@@ -34,8 +37,13 @@ class Root:
         self.task_start_handlers = []
         self.task_end_handlers = []
         self.job_update_handlers = []
-        self.stop_event = asyncio.Event()
-        self.reload_event = asyncio.Event()
+        self.stop_event = asyncio.Event(loop=loop)
+        self.reload_event = asyncio.Event(loop=loop)
+
+    def stop(self):
+        self.loop.remove_signal_handler(signal.SIGINT)
+        self.loop.remove_signal_handler(signal.SIGHUP)
+        self.stop_event.set()
 
     @asyncio.coroutine
     def run_obj(self, obj):
@@ -46,15 +54,15 @@ class Root:
         try:
             yield from coro
         except asyncio.CancelledError:
-            self.log.info("Cancelled %s" % obj)
+            self.log.info("Cancelled %s" % coro)
         except Exception:
-            self.log.exception("Exception running %s" % obj)
+            self.log.exception("Exception running %s" % coro)
 
     def start_task(self, task):
-        if task.key in self.task_set:
-            self.log.warning("Task '%s' is already running" % task.key)
+        if task.event.key in self.task_set:
+            self.log.warning("Task '%s' is already running" % task.event.key)
             return
-        self.task_set.add(task_key)
+        self.task_set.add(task.event.key)
         for cb in self.task_start_handlers:
             cb(task)
         fut = self.start_obj(task)
@@ -64,6 +72,7 @@ class Root:
     def task_done_cb(self, fut):
         self.tasks_set.remove(fut)
         task = self.tasks.pop(fut)
+        self.tasks_set.remove(task.event.key)
         for handler in self.task_start_handlers:
             try:
                 handler(task)
@@ -77,9 +86,11 @@ class Root:
 
     def start_obj(self, obj):
         fut = asyncio.async(self.run_obj(obj), loop=self.loop)
+        self._running_objects[fut] = obj
         if hasattr(obj, "cleanup"):
             fut.add_done_callback(self.schedule_cleanup)
-            self._running_objects[fut] = obj
+        else:
+            fut.add_done_callback(self._running_objects.pop)
         return fut
 
     @asyncio.coroutine
@@ -95,7 +106,7 @@ class Root:
         self._running_cleanups.append(fut)
 
     def start_services(self):
-        for service in self.config.iter_instances("service"):
+        for service in self.config.iter_instances("service", "Service"):
             self.start_obj(service)
 
     def _load_config(self):

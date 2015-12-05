@@ -17,18 +17,21 @@ import collections
 import functools
 
 from rallyci import utils
+from rallyci import base
 
 COMMON_OPTS = (("-B", "backingstore"), )
 CREATE_OPTS = (("--zfsroot", "zfsroot"), )
 
 
-class Provider(BaseProvider):
+class Provider(base.BaseProvider):
+
     def __init__(self, root, cfg):
         """
         :param dict cfg: provider config
         """
         self.root = root
         self.cfg = cfg
+        self.name = cfg["name"]
         self._building_images = collections.defaultdict(
                 functools.partial(asyncio.Event, loop=root.loop))
 
@@ -62,6 +65,10 @@ class Provider(BaseProvider):
         cmd = ["lxc-clone", "-s", image, "-n", name, *self._opts]
         yield from host.ssh.run(cmd)
         yield from host.ssh.run(["lxc-start", "-d", "-n", name])
+
+    @asyncio.coroutine
+    def start(self):
+        yield from asyncio.sleep(0)
 
     @asyncio.coroutine
     def boot(self, name):
