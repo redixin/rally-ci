@@ -3,7 +3,9 @@
 - service:
     name: gerrit
     module: rallyci.services.gerrit
-    fetch-url: https://review.openstack.org/gitweb?p={project}.git;a=blob_plain;f=.rally-ci.yaml;hb={commit}
+    cfg-url-template: https://review.openstack.org/gitweb?p={project}.git;a=blob_plain;f=.rally-ci.yaml;hb={commit}
+    cr-url-template: https://review.openstack.org/#q,{id},n,z
+    commit-url-template: http://git.openstack.org/cgit/{project}/commit/?id={id}
     env:
       GERRIT_PROJECT: change.project
       GERRIT_REF: patchSet.ref
@@ -25,9 +27,8 @@
     name: my_lxc
     module: rallyci.providers.lxc
     hosts:
-      - hostname: 10.1.1.1
-        port: 16622
-    backingstore: zfs
+      - hostname: 192.168.1.14
+    backingstore: btrfs
     images:
       ubuntu-1510-py35-dev:
         template: ubuntu
@@ -62,12 +63,6 @@
       cd $PROJECT
       pip install .
       pytest -n auto --html=/tmp/report.html $PYTEST_PATH
-
-- runner:
-    name: main
-    provider: my_virsh
-    module: rallyci.runners.ssh
-    logs: /tmp/ci
 
 - script:
     name: init_ubuntu_dev
@@ -147,8 +142,3 @@
       - tox-pep8
       - tox-py27
       - tox-py34
-
-- project:
-    name: openstack-dev/ci-sandbox
-    jobs:
-      - test

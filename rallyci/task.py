@@ -24,42 +24,32 @@ from rallyci import utils
 
 
 class Task:
-    def __init__(self, root, project, cfg, env, commit):
+    def __init__(self, root, event):
         """
         :param Root root:
-        :param str key:
-        :param str project:
-        :param dict cfg: whole 'service' section
-        :param dict env:
-        :param str commit:
+        :param Event event:
         """
         self.root = root
-        self.project = project
-        self.cfg = cfg
-        self.env = env
-        self.commit = commit
+        self.event = event
 
-        self.key = project + commit
         self.jobs = {}
         self.id = utils.get_rnd_name("task_", length=10)
         self._finished = asyncio.Event(loop=root.loop)
         self._job_futures = {}
 
     def __repr__(self):
-        return "<Task %s %s>" % (self.project, self.id)
+        return "<Task %s %s>" % (self.event.project, self.id)
 
     @asyncio.coroutine
-    def _get_local_cfg(self, fetch_url):
-        local_cfg = None
-        if fetch_url:
-            url = fetch_url.format(project=self.project, commit=self.commit)
-            r = yield from aiohttp.get(url)
-            if r.status == 200:
-                local_cfg = yield from r.text()
-                local_cfg = yaml.safe_load(local_cfg)
-            else:
-                self.root.log.debug("No local cfg for %s" % self.project)
-            r.close()
+    def _get_local_cfg(self, url):
+        r = yield from aiohttp.get(url)
+        if r.status == 200:
+            local_cfg = yield from r.text()
+            local_cfg = yaml.safe_load(local_cfg)
+        else:
+            self.root.log.debug("No local cfg for %s" % self)
+            local_cfg = []
+        r.close()
         return local_cfg
 
     def _job_done_cb(self, fut):
@@ -89,13 +79,14 @@ class Task:
                     self.config[key][value["name"]] = value
 
         for matrix in self.config.get("matrix", []).values():
-            if self.project in matrix["projects"]:
+            if self.event.project in matrix["projects"]:
                 for job in matrix["jobs"]:
                     self._start_job(job)
 
     @asyncio.coroutine
     def run(self):
-        local_cfg = yield from self._get_local_cfg(self.cfg.get("fetch-url"))
+        if self.self.event.cfg_url:
+            local_cfg = yield from self._get_local_cfg(self.event.cfg_url)
         self._start_jobs(local_cfg)
         while not self._finished.is_set():
             try:
@@ -107,16 +98,11 @@ class Task:
                     fut.cancel()
 
     def to_dict(self):
-        data = {"id": self.id, "jobs": [j.to_dict() for j in self.jobs_list]}
-        subject = self.event.get("change", {}).get("subject", "[view on github]")
-        data["finished_at"] = self.finished_at
-        data["subject"] = cgi.escape(subject)
-        data["project"] = cgi.escape(self.project)
-        # TODO: remove hardcode
-        if "patchSet" in self.event:
-            uri = self.event["patchSet"]["ref"].split("/", 3)[-1]
-            data["url"] = "https://review.openstack.org/#/c/%s" % uri
-        else:
-            data["url"] = "https://github.com/%s/commit/%s" % (
-                    self.project, self.event["refUpdate"]["newRev"])
-        return data
+        return {
+            "id": self.id,
+            "jobs": [j.to_dict() for j in self.jobs],
+            "finished_at": self.finished_at,
+            "subject": cgi.escape(self.event.subject),
+            "project": cgi.escape(self.event.project),
+            "url": self.url,
+        }

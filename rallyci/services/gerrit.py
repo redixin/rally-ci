@@ -18,7 +18,30 @@ import re
 import json
 
 from rallyci.common.ssh import Client
+from rallyci import base
 from rallyci import utils
+
+
+class Event(base.BaseEvent):
+    def __init__(self, cfg, raw_event):
+        """
+        :param cfg: service config section
+        """
+        self.env = _get_env(raw_event, cfg.get("env", {}))
+        self.project = _get_project_name(raw_event)
+        if "patchSet" in raw_event:
+            template = cfg.get("cr-url-template", "")
+            self.cr = raw_event["change"]["id"]
+            self.commit = raw_event["patchSet"]["revision"]
+        else:
+            template = cfg.get("merged-url-template", "")
+            self.commit = raw_event["refUpdate"]["newRev"]
+            self.cr = ""
+        self.url = template.format(commit=self.commit, project=self.project)
+        cfg_url = cfg.get("cfg-url-template", "")
+        self.cfg_url = cfg_url.format(commit=self.commit, project=self.project)
+        self.key = self.project + self.commit
+        self.subject = raw_event.get("change", {}).get("subject", "*****")
 
 
 class Service:
@@ -37,9 +60,7 @@ class Service:
         }
 
     def _start_task(self, event, project):
-        env = _get_env(event, self.cfg.get("env", {}))
-        commit = event["patchSet"]["revision"]
-        self.root.start_task(Task(self.root, project, self.cfg, env, commit))
+        self.root.start_task(Task(self.root, project, self.cfg, env, commit, url))
 
     def _handle_comment_added(self, event):
         r = self.cfg.get("recheck-regexp", "^rally-ci recheck$")

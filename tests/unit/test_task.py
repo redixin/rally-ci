@@ -54,8 +54,9 @@ class TaskTestCase(unittest.TestCase):
         mixed_cfg["job"]["j4"] = local_cfg[1]["job"]
         mixed_cfg["matrix"]["m1"] = local_cfg[2]["matrix"]
         mock_root = mock.Mock()
+        mock_event = mock.Mock(project="p3")
         mock_root.config.data = global_cfg
-        task = Task(mock_root, "p3", {}, {}, "")
+        task = Task(mock_root, mock_event)
         task._start_job = mock.Mock()
         task._start_jobs(local_cfg)
         expected = [
