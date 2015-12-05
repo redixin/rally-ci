@@ -59,7 +59,7 @@ class Job:
         self.started_at = time.time()
         runner_local_cfg = self.config["runner"]
         runner_cfg = self.root.config.data["runner"][runner_local_cfg["name"]]
-        self.runner = self.root.config.get_instance(runner_cfg, "Class", self,
+        self.runner = self.root.config.get_instance(runner_cfg, "Runner", self,
                                                     runner_local_cfg)
         fut = asyncio.async(self.runner.run(), loop=self.root.loop)
         try:

@@ -102,6 +102,15 @@ class Service:
 
     @asyncio.coroutine
     def run(self):
+        fake_stream = self.cfg.get("fake-stream")
+        if fake_stream:
+            while True:
+                with open(fake_stream) as fs:
+                    for line in fs:
+                        self._handle_stdout(line)
+                        yield from asyncio.sleep(3)
+                self.log.info("Stream ended. Starting from beginning.")
+            return
         if "port" not in self.cfg["ssh"]:
             self.cfg["ssh"]["port"] = 29418
         self.ssh = Client(self.loop, **self.cfg["ssh"])
@@ -113,7 +122,7 @@ class Service:
                                                  stdout=self._handle_stdout,
                                                  stderr=self._handle_stderr)
                 self.log.info("Gerrit stream was closed with status %s" % status)
-            except (asyncio.CancelledError, GeneratorExit):
+            except asyncio.CancelledError:
                 self.log.info("Stopping gerrit")
                 self.root.task_end_handlers.remove(self._handle_task_end)
                 del self.ssh

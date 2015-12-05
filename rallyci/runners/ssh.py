@@ -21,7 +21,7 @@ from rallyci.common import asyncssh
 LOG = logging.getLogger(__name__)
 
 
-class Class:
+class Runner:
 
     def __init__(self, cfg, job, local_cfg):
         """Represent SSH runner.
@@ -37,6 +37,7 @@ class Class:
         self.log_path = os.path.join(cfg["logs"], job.log_path)
         os.makedirs(self.log_path, exist_ok=True)
         self.logfile = open(os.path.join(self.log_path, "console.txt"), "wb")
+        self.provider = job.root.providers[self.cfg["provider"]]
 
     def cb(self, line):
         self.logfile.write(line)
@@ -44,12 +45,19 @@ class Class:
 
     @asyncio.coroutine
     def _get_vms(self):
+        vms = []
         for vm in self.local_cfg["vms"]:
-            pass
+            vm = yield from self.provider.get_vm(vm["name"], self)
+            vms.append(vm)
+        return vms
 
     @asyncio.coroutine
     def run(self):
-        self.prov = self.job.root.providers[self.cfg["provider"]]
+        for vm in (yield from self._get_vms()):
+            print(vm)
+
+    @asyncio.coroutine
+    def _run(self):
         scripts = [vm.get("scripts", []) for vm in self.local_cfg["vms"]]
         self.vms = yield from self.prov.get_vms(self.local_cfg["vms"])
         for vm, scripts in zip(self.vms, scripts):
@@ -70,4 +78,4 @@ class Class:
                 dst = os.path.join(self.log_path, dst)
                 ssh = yield from vm.get_ssh()
                 yield from ssh.scp_get(src, dst)
-        yield from self.prov.cleanup(self.vms)
+        yield from self.provider.cleanup(self.vms)

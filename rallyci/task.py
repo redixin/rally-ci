@@ -96,7 +96,7 @@ class Task:
                 yield from self._finished.wait()
                 self.finished_at = time.time()
             except asyncio.CancelledError:
-                self.log.info("Cancelled %s" % self)
+                self.root.log.info("Cancelled %s" % self)
                 for fut in self._job_futures:
                     fut.cancel()
 

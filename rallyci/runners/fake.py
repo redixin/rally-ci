@@ -20,7 +20,7 @@ import logging
 LOG = logging.getLogger(__name__)
 
 
-class Class:
+class Runner:
 
     def __init__(self, cfg, job, local_cfg):
         self.cfg = cfg

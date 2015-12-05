@@ -16,8 +16,9 @@ import asyncio
 import collections
 import functools
 
-from rallyci import utils
 from rallyci import base
+from rallyci.common import ssh
+from rallyci import utils
 
 COMMON_OPTS = (("-B", "backingstore"), )
 CREATE_OPTS = (("--zfsroot", "zfsroot"), )
@@ -33,11 +34,18 @@ class Provider(base.BaseProvider):
         self.cfg = cfg
         self.name = cfg["name"]
         self._building_images = collections.defaultdict(
-                functools.partial(asyncio.Event, loop=root.loop))
+                functools.partial(asyncio.Lock, loop=root.loop))
 
-        self._opts = list(self._get_opts(COMMON_OPTS))
-        self._create_opts = list(self._get_opts(CREATE_OPTS))
-        self._create_opts.extend(self._opts)
+        self._opts = sum(self._get_opts(COMMON_OPTS), [])
+        self._create_opts = sum(self._get_opts(CREATE_OPTS), [])
+        self._create_opts += self._opts
+        self._hosts = [ssh.Client(loop=self.root.loop, **cfg) for cfg in cfg.get("hosts")]
+        self._public_key = root.config.data["ssh-key"]["default"]["public"]
+
+    @asyncio.coroutine
+    def _get_host(self):
+        import random
+        return random.choice(self._hosts)
 
     def _get_opts(self, opts):
         for opt, name in opts:
@@ -46,25 +54,48 @@ class Provider(base.BaseProvider):
                 yield [opt, opt_value]
 
     @asyncio.coroutine
+    def _upload_ssh_key(self, host, image):
+        dst = "/var/lib/lxc/%s/rootfs/root/.ssh" % image
+        yield from host.run(["mkdir", "-p", dst])
+        dst += "/authorized_keys"
+        cmd = "cat >> %s" % dst
+        with open(self._public_key) as pk:
+            yield from host.run(cmd, stdin=pk, stdout=print)
+        cmd = ["sed", "-i",
+               "s|PermitRootLogin.*|PermitRootLogin yes|",
+               "/var/lib/lxc/%s/rootfs/etc/ssh/sshd_config" % image]
+        yield from host.run(cmd, stderr=print)
+
+    @asyncio.coroutine
     def _build_image(self, host, image):
         image_cfg = self.cfg["images"][image]
-        cmd = ["lxc-create", "--name", image, *self._create_opts]
-        cmd.extend(["-t", image_cfg["template"],
-                    "--", image_cfg.get("args", "")])
-        with self._build_images[image]:
-            yield from host.ssh.run(cmd)
+        cmd = ["lxc-create", "--name", image] + self._create_opts
+        cmd += ["-t", image_cfg["template"],
+                "--", image_cfg.get("args", "")]
+        with (yield from self._building_images[image]):
+            check_cmd = ["lxc-info", "--name", image]
+            not_exist = yield from host.run(check_cmd, check=False)
+            if not not_exist:
+                return
+            yield from host.run(cmd, stderr=print)
+            yield from self._upload_ssh_key(host, image)
 
     @asyncio.coroutine
     def get_vm(self, image, job):
         host = yield from self._get_host()
-        cmd = ["lxc-info", "--name", image]
-        no_image = yield from host.run(cmd, check=False)
-        if no_image:
-            yield from self._build_image(host, image)
-        name = utils.get_rnd_name("vm_")
-        cmd = ["lxc-clone", "-s", image, "-n", name, *self._opts]
-        yield from host.ssh.run(cmd)
-        yield from host.ssh.run(["lxc-start", "-d", "-n", name])
+        yield from self._build_image(host, image)
+        cmd = ["lxc-start-ephemeral", "-o", image, "-d",
+               "--storage-type", self.cfg.get("ephemeral-storage-type", "tmpfs"),
+               "--union-type", self.cfg.get("ephemeral-union-type", "aufs"),
+        ]
+        chunks = []
+        yield from host.run(cmd, stdout=chunks.append)
+        for line in "\n".join(chunks).splitlines():
+            for word in line.split(" "):
+                if word.startswith(image):
+                    vm_name = word.strip()
+        print(repr(vm_name))
+        yield from host.run(["lxc-stop", "-n", vm_name], stderr=print)
 
     @asyncio.coroutine
     def start(self):
@@ -75,5 +106,6 @@ class Provider(base.BaseProvider):
         pass
 
     @asyncio.coroutine
-    def cleanup(self):
-        pass
+    def cleanup(self, vms):
+        for vm in vms:
+            pass

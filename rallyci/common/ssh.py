@@ -97,6 +97,8 @@ class Client:
         :param stderr: executable (e.g. sys.stderr.write)
         :param boolean check: Raise an exception in case of non-zero exit status.
         """
+        if isinstance(cmd, list):
+            cmd = _escape_cmd(cmd)
         yield from self._ensure_connected()
         session_factory = functools.partial(SSHClientSession, (stdout, stderr))
         chan, session = yield from self.conn.create_session(session_factory, cmd)
@@ -107,7 +109,7 @@ class Client:
                     if not chunk:
                         break
                     chan.write(chunk)
-                    yield from chan.drain()
+                    # TODO: drain
             else:
                 chan.write(stdin)
             chan.write_eof()
@@ -120,17 +122,5 @@ class Client:
         return status
 
 
-if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    ssh = Client(loop, "localhost", keys=["/home/eye/.ssh/test"])
-    futs = []
-    for i in range(10):
-        futs.append(ssh.run("/bin/bash -xe",
-                    stdout=sys.stdout.write,
-                    stderr=sys.stderr.write,
-                    stdin="env\nsleep 20"))
-    for f in asyncio.as_completed(futs, loop=loop):
-        try:
-            print(loop.run_until_complete(f))
-        except Exception as e:
-            print(repr(e), type(e), e)
+def _escape_cmd(cmd):
+    return " ".join(["'%s'" % arg.replace(r"'", r"'\''") for arg in cmd])
