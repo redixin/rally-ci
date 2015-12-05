@@ -18,19 +18,13 @@
     #
     # vote: true/false # either add +1/-1 or not
     # silent: true/false # silent mode (no gerrit coments at all)
-
-- env:
-    name: event
-    module: rallyci.environments.event
-    export-event:
+    env:
       GERRIT_PROJECT: change.project
       GERRIT_REF: patchSet.ref
-    # this env will export some data from gerrit event to our bash scripts (see below)
-
-- env:
-    name: dummy
-    module: rallyci.environments.dummy
-    # just dummy env which exports env variable (see below)
+      GERRIT_REFUPD_NEW: refUpdate.newRev
+      GERRIT_REFUPD_OLD: refUpdate.oldRev
+      GERRIT_REFUPD_NAME: refUpdate.refName
+      GERRIT_REFUPD_PROJECT: refUpdate.project
 
 - logger:
     name: main

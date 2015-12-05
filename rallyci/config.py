@@ -51,8 +51,9 @@ class Config:
     def validate(self):
         yield from asyncio.sleep(0)
 
-    def get_instance(self, cfg, *args, **kwargs):
-        return self._get_module(cfg["module"]).Class(cfg, *args, **kwargs)
+    def get_instance(self, cfg, class_name, *args, **kwargs):
+        module = self._get_module(cfg["module"])
+        return getattr(module, class_name)(cfg, *args, **kwargs)
 
     def iter_instances(self, section):
         section = self.data.get(section, {})

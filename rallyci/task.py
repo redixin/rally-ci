@@ -14,6 +14,7 @@
 
 import asyncio
 from concurrent import futures
+import copy
 import cgi
 import time
 
@@ -22,139 +23,88 @@ from rallyci.job import Job
 from rallyci import utils
 
 
-INTERVALS = [1, 60, 3600, 86400]
-NAMES = [('s', 's'),
-         ('m', 'm'),
-         ('h', 'h'),
-         ('day', 'days')]
-
-
-def human_time(seconds):
-    seconds = int(seconds)
-    result = []
-    for i in range(len(NAMES) - 1, -1, -1):
-        a = seconds // INTERVALS[i]
-        if a > 0:
-            result.append((a, NAMES[i][1 % a]))
-            seconds -= a * INTERVALS[i]
-    return ' '.join(''.join(str(x) for x in r) for r in result)
-
-
-def get_key(event):
-    try:
-        return event["change"]["project"] + event["patchSet"]["ref"]
-    except:
-        return ""
-
-
 class Task:
-    def __init__(self, stream, project, event):
-        self.id = utils.get_rnd_name("EVNT", length=10)
-        self.stream = stream
-        self.root = stream.root
-        self.log = stream.root.log
-        self.event = event
+    def __init__(self, root, project, cfg, env, commit):
+        """
+        :param Root root:
+        :param str key:
+        :param str project:
+        :param dict cfg: whole 'service' section
+        :param dict env:
+        :param str commit:
+        """
+        self.root = root
         self.project = project
+        self.cfg = cfg
+        self.env = env
+        self.commit = commit
+
+        self.key = project + commit
         self.jobs = {}
-        self.jobs_list = []
-        self.finished_at = 0
-        self.cfg = self.root.config.data["project"][self.project]
-        env = self._get_env()
-        if event["type"] == "ref-updated":
-            for job_name in self.cfg.get("on-ref-updated", []):
-                job = Job(self, job_name)
-                job.env.update(env)
-                self.jobs_list.append(job)
-            return
-        for job_name in self.cfg.get("jobs", []):
-            job = Job(self, job_name)
-            job.env.update(env)
-            self.jobs_list.append(job)
-        for job_name in self.cfg.get("non-voting-jobs", []):
-            job = Job(self, job_name)
-            job.env.update(env)
-            job.voting = False
-            self.jobs_list.append(job)
+        self.id = utils.get_rnd_name("task_", length=10)
+        self._finished = asyncio.Event(loop=root.loop)
+        self._job_futures = {}
 
     def __repr__(self):
         return "<Task %s %s>" % (self.project, self.id)
 
-    def _get_env(self):
-        env = self.stream.cfg.get("env")
-        r = {}
-        if not env:
-            return {}
-        for k, v in env.items():
-            value = dict(self.event)
-            try:
-                for key in v.split("."):
-                    value = value[key]
-                r[k] = value
-            except KeyError:
-                pass
-        return r
+    @asyncio.coroutine
+    def _get_local_cfg(self, fetch_url):
+        local_cfg = None
+        if fetch_url:
+            url = fetch_url.format(project=self.project, commit=self.commit)
+            r = yield from aiohttp.get(url)
+            if r.status == 200:
+                local_cfg = yield from r.text()
+                local_cfg = yaml.safe_load(local_cfg)
+            else:
+                self.root.log.debug("No local cfg for %s" % self.project)
+            r.close()
+        return local_cfg
+
+    def _job_done_cb(self, fut):
+        job = self._job_futures.pop(fut)
+        job.finished_at = time.time()
+        self.root.log.info("Finished job %s" % job)
+        if not self._job_futures:
+            self._finished.set()
+
+    def _start_job(self, name):
+        config = self.config["job"][name]
+        job = Job(self, config)
+        fut = self.root.start_obj(job)
+        self._job_futures[fut] = job
+        fut.add_done_callback(self._job_done_cb)
+
+    def _start_jobs(self, local_cfg):
+        """
+        :param list local_cfg: config loaded from project
+        """
+        self.config = copy.deepcopy(self.root.config.data)
+
+        if local_cfg:
+            for item in local_cfg:
+                key, value = list(item.items())[0]
+                if key in ("script", "job", "matrix"):
+                    self.config[key][value["name"]] = value
+
+        for matrix in self.config.get("matrix", []).values():
+            if self.project in matrix["projects"]:
+                for job in matrix["jobs"]:
+                    self._start_job(job)
 
     @asyncio.coroutine
     def run(self):
-        fs = {}
-        for job in self.jobs_list:
-            self.log.debug("Scheduling job %s" % job)
-            fs[self.root.start_obj(job)] = job
-        try:
-            yield from self.root.wait_fs(fs)
-        except asyncio.CancelledError:
-            self.log.debug("Cancelled %s" % self)
-            if fs:
-                for fut in fs:
+        local_cfg = yield from self._get_local_cfg(self.cfg.get("fetch-url"))
+        self._start_jobs(local_cfg)
+        while not self._finished.is_set():
+            try:
+                yield from self._finished.wait()
+                self.finished_at = time.time()
+            except asyncio.CancelledError:
+                self.log.info("Cancelled %s" % self)
+                for fut in self._job_futures:
                     fut.cancel()
-        if fs:
-            yield from self.root.wait_fs(fs)
-
-    @asyncio.coroutine
-    def cleanup(self):
-        self.finished_at = int(time.time())
-        key = get_key(self.event) # TODO: move it to gerrit
-        try:
-            self.stream.tasks.remove(key)
-        except KeyError:
-            pass
-        if not self.stream.cfg.get("silent"):
-            try:
-                yield from self.publish_results()
-            except:
-                self.log.exception("Failed to publish results for task %s" % self)
-        else:
-            yield from asyncio.sleep(0)
-        for cb in self.root.task_end_handlers:
-            try:
-                cb(self)
-            except Exception:
-                self.log.exception("Exception in task callback %s %s" % (self, cb))
-
-    @asyncio.coroutine
-    def publish_results(self):
-        self.log.debug("Publishing results for task %s" % self)
-        comment_header = self.stream.cfg.get("comment-header")
-        if not comment_header:
-            self.log.warning("No comment-header configured. Can't publish.")
-            return
-        cmd = ["gerrit", "review"]
-        fail = any([j.error for j in self.jobs_list if j.voting])
-        if self.stream.cfg.get("vote"):
-            cmd.append("--verified=-1" if fail else "--verified=+1")
-        succeeded = "failed" if fail else "succeeded"
-        summary = comment_header.format(succeeded=succeeded)
-        tpl = self.stream.cfg["comment-job-template"]
-        for job in self.jobs_list:
-            success = job.status + ("" if job.voting else " (non-voting)")
-            time = human_time(job.finished_at - job.started_at)
-            summary += tpl.format(success=success,
-                                  name=job.config["name"],
-                                  time=time,
-                                  log_path=job.log_path)
-            summary += "\n"
-        cmd += ["-m", "'%s'" % summary, self.event["patchSet"]["revision"]]
-        yield from asyncssh.AsyncSSH(**self.stream.cfg["ssh"]).run(cmd)
 
     def to_dict(self):
         data = {"id": self.id, "jobs": [j.to_dict() for j in self.jobs_list]}

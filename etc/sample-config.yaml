@@ -2,8 +2,15 @@
 
 - service:
     name: gerrit
-    module: rallyci.services.gerrit2
-    fetch: https://review.openstack.org/gitweb?p={project}.git;a=blob_plain;f={path};hb={commit}
+    module: rallyci.services.gerrit
+    fetch-url: https://review.openstack.org/gitweb?p={project}.git;a=blob_plain;f=.rally-ci.yaml;hb={commit}
+    env:
+      GERRIT_PROJECT: change.project
+      GERRIT_REF: patchSet.ref
+      GERRIT_REFUPD_NEW: refUpdate.newRev
+      GERRIT_REFUPD_OLD: refUpdate.oldRev
+      GERRIT_REFUPD_NAME: refUpdate.refName
+      GERRIT_REFUPD_PROJECT: refUpdate.project
     ssh:
       hostname: review.openstack.org
       username: CHANGEME
@@ -40,7 +47,7 @@
     runner:
       name: lxc
       vms:
-        - name: ubuntu-1510-py35-dev
+        - name: ubuntu-1510-dev
           scripts:
             - git_checkout
             - run_pytest
@@ -101,22 +108,45 @@
       env && ls
       cd $GERRIT_PROJECT
       git status
-      echo "All ok"
+      echo "tox -e${TOX_ENV}"
 
 - job:
-    name: test
-    env:
-      RCI_TOX_ENV: py27
+    name: tox
     runner:
       name: main
       vms:
-        - name: noop
-        - name: dev
-          scripts: ["git_checkout", "run_tests"]
-          scp:
-            - ["/var/log/", "varlog"]
-        - name: dev
-          scripts: ["git_checkout", "run_tests"]
+        - name: ubuntu-1510-dev
+          scripts:
+            - git_checkout
+            - run_tests
+
+- job:
+    parent: tox
+    name: tox-pep8
+    env:
+      TOX_ENV: pep8
+
+- job:
+    parent: tox
+    name: tox-py27
+    env:
+      TOX_ENV: py27
+
+- job:
+    parent: tox
+    name: tox-py34
+    env:
+      TOX_ENV: py34
+
+- matrix:
+    name: tox-jobs
+    projects:
+      - openstack/designate
+      - openstack/murano
+    jobs:
+      - tox-pep8
+      - tox-py27
+      - tox-py34
 
 - project:
     name: openstack-dev/ci-sandbox

@@ -28,6 +28,7 @@ class Root:
         self.verbose = verbose
 
         self.tasks = {}
+        self.task_set = set()
         self.loop = loop
         self.providers = {}
         self.task_start_handlers = []
@@ -38,25 +39,47 @@ class Root:
 
     @asyncio.coroutine
     def run_obj(self, obj):
+        yield from self.run_coro(obj.run())
+
+    @asyncio.coroutine
+    def run_coro(self, coro):
         try:
-            self.log.debug("Running obj %s" % obj)
-            yield from obj.run()
+            yield from coro
         except asyncio.CancelledError:
             self.log.info("Cancelled %s" % obj)
         except Exception:
             self.log.exception("Exception running %s" % obj)
 
     def start_task(self, task):
+        if task.key in self.task_set:
+            self.log.warning("Task '%s' is already running" % task.key)
+            return
+        self.task_set.add(task_key)
         for cb in self.task_start_handlers:
             cb(task)
         fut = self.start_obj(task)
         self.tasks[fut] = task
-        fut.add_done_callback(self.tasks.pop)
+        fut.add_done_callback(self.task_done_cb)
+
+    def task_done_cb(self, fut):
+        self.tasks_set.remove(fut)
+        task = self.tasks.pop(fut)
+        for handler in self.task_start_handlers:
+            try:
+                handler(task)
+            except Exception:
+                self.log.exception(
+                    "Exception in task end handler %s %s" % (task, cb))
+
+    def start_coro(self, coro):
+        fut = asyncio.async(self.run_coro(obj), loop=self.loop)
+        return fut
 
     def start_obj(self, obj):
         fut = asyncio.async(self.run_obj(obj), loop=self.loop)
-        fut.add_done_callback(self.schedule_cleanup)
-        self._running_objects[fut] = obj
+        if hasattr(obj, "cleanup"):
+            fut.add_done_callback(self.schedule_cleanup)
+            self._running_objects[fut] = obj
         return fut
 
     @asyncio.coroutine

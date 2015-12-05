@@ -10,6 +10,6 @@ setup(
     ],
     packages=find_packages(),
     include_package_data=True,
-    install_requires=["pyyaml", "aiohttp"],
+    install_requires=["pyyaml", "aiohttp", "asyncssh"],
     entry_points={"console_scripts": ["rally-ci = rallyci.daemon:run"]}
 )

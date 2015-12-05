@@ -12,16 +12,15 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
-from rallyci import config
-
-import os
-import unittest
-import json
+import asyncio
 
 
-class ConfigTestCase(unittest.TestCase):
+class Factory:
 
-    def test___init__(self):
-        dirname = os.path.dirname(os.path.realpath(__file__))
-        filename = os.path.join(dirname, "../../etc/sample-config.yaml")
-        c = config.Config({}, filename, False)
+    def __init__(self, **kwargs):
+        self.cfg = kwargs
+
+
+
+class Task:
+    pass

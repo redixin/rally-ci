@@ -21,6 +21,48 @@ import logging
 
 LOG = logging.getLogger(__name__)
 
+SAFE_CHARS = string.ascii_letters + string.digits + "_"
+
+INTERVALS = [1, 60, 3600, 86400]
+NAMES = [("s", "s"),
+         ("m", "m"),
+         ("h", "h"),
+         ("day", "days")]
+
+
+def _merge(child, parent):
+    for key in parent:
+        if key not in child:
+            child[key] = parent[key]
+
+
+def _check_parent(config, job):
+    parent = job.pop("parent", None)
+    if parent:
+        _check_parent(config, config["job"][parent])
+        _merge(job, config["job"][parent])
+
+
+def expand_jobs(config):
+    for job in config["job"]:
+        _check_parent(config, config["job"][job])
+
+
+def human_time(seconds):
+    seconds = int(seconds)
+    result = []
+    for i in range(len(NAMES) - 1, -1, -1):
+        a = seconds // INTERVALS[i]
+        if a > 0:
+            result.append((a, NAMES[i][1 % a]))
+            seconds -= a * INTERVALS[i]
+    return " ".join("".join(str(x) for x in r) for r in result)
+
+
+def get_safe_filename(name):
+    name = name.replace(" ", "_")
+    return "".join([c for c in name if c in SAFE_CHARS])
+
 
 def get_rnd_name(prefix, length=12):
     prefix = "_rci_" + prefix

@@ -12,101 +12,135 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
-
 import asyncio
-import json
+import functools
 import re
-import time
-import subprocess
-import logging
+import json
 
-from rallyci.common import asyncssh
-from rallyci.job import Job
-from rallyci import task
+from rallyci.common.ssh import Client
 from rallyci import utils
 
-LOG = logging.getLogger(__name__)
 
-
-class Class:
+class Service:
+    data = ""
+    tasks = {}
 
     def __init__(self, root, **kwargs):
         self.root = root
+        self.log = root.log
+        self.loop = root.loop
         self.cfg = kwargs
-        self.name = kwargs["name"]
-        self.tasks = set()
+        self.handler_map = {
+            "comment-added": self._handle_comment_added,
+            "patchset-created": self._start_task,
+            "ref-updated": self._start_task,
+        }
 
-    def _get_task(self, event):
-        project = event.get("change", {}).get("project")
-        if not project:
-            project= event.get("refUpdate", {}).get("project")
-            if not project:
-                LOG.debug("No project name %s" % event)
-                return
-        LOG.debug("Project: %s" % project)
+    def _start_task(self, event, project):
+        env = _get_env(event, self.cfg.get("env", {}))
+        commit = event["patchSet"]["revision"]
+        self.root.start_task(Task(self.root, project, self.cfg, env, commit))
 
-        if project not in self.root.config.data["project"]:
-            return
-        event_type = event["type"]
+    def _handle_comment_added(self, event):
+        r = self.cfg.get("recheck-regexp", "^rally-ci recheck$")
+        m = re.search(r, event["comment"], re.MULTILINE)
+        if m:
+            self.log.info("Recheck for %s" % project)
+            self._start_task(event)
 
-        if event_type == "patchset-created":
-            LOG.debug("Patchset for %s" % project)
-            key = task.get_key(event)
-            if key in self.tasks:
-                LOG.warning("Duplicate change %s" % key)
+    def _handle_event(self, event):
+        event = json.loads(event)
+        project = _get_project_name(event)
+        if project:
+            handler = self.handler_map.get(event["type"])
+            if handler:
+                handler(event)
             else:
-                LOG.debug("Key %s not found in %s" % (key, self.tasks))
-                self.tasks.add(key)
-                return task.Task(self, project, event)
+                self.log.warning("Unknown event type %s" % event["type"])
+        else:
+            self.log.warning("No project name")
 
-        if event_type == "comment-added":
-            r = self.cfg.get("recheck-regexp", "^rally-ci recheck$")
-            m = re.search(r, event["comment"], re.MULTILINE)
-            if m:
-                LOG.debug("Recheck for %s" % project)
-                key = task.get_key(event)
-                if key in self.tasks:
-                    LOG.debug("Task is running already %s" % key)
-                else:
-                    LOG.debug("Key %s not found in %s" % (key, self.tasks))
-                    self.tasks.add(key)
-                    return task.Task(self, project, event)
+    def _handle_stderr(self, data):
+        self.log.warning("Error message from gerrit: %s" % data)
 
-        if event_type == "ref-updated":
-            return task.Task(self, project, event)
-
-    def _handle_line(self, line):
-        LOG.debug("Handling line %s..." % line[:64])
-        if not (line and isinstance(line, bytes)):
-            LOG.warning("Bad line type %s" % type(line))
-            return
-        line = line.decode()
-        event = json.loads(line)
-        try:
-            task = self._get_task(event)
-            if task:
-                self.root.start_task(task)
-        except Exception:
-            LOG.exception("Event processing error")
-
-    @asyncio.coroutine
-    def cleanup(self):
-        yield from asyncio.sleep(0)
+    def _handle_stdout(self, data):
+        self.data += data
+        while "\n" in self.data:
+            line, self.data = self.data.split("\n", 1)
+            try:
+                self._handle_event(line)
+            except:
+                self.log.exception("Error handling data %s" % self.data)
 
     @asyncio.coroutine
     def run(self):
-        LOG.debug("Connectng to gerrit...")
-        fake_stream = self.cfg.get("fake-stream")
-        if fake_stream:
-            LOG.info("Entering fake_stream loop")
-            while 1:
-                with open(fake_stream, 'rb') as fs:
-                    for line in fs:
-                        yield from asyncio.sleep(2)
-                        self._handle_line(line)
-        else:
-            LOG.debug("Starting ssh client")
-            if "port" not in self.cfg["ssh"]:
-                self.cfg["ssh"]["port"] = 29418
-            self.ssh = asyncssh.AsyncSSH(cb=self._handle_line, **self.cfg["ssh"])
-            yield from self.ssh.run("gerrit stream-events")
+        if "port" not in self.cfg["ssh"]:
+            self.cfg["ssh"]["port"] = 29418
+        self.ssh = Client(self.loop, **self.cfg["ssh"])
+        self.root.task_end_handlers.append(self._handle_task_end)
+        reconnect_delay = self.cfg.get("reconnect_delay", 5)
+        while True:
+            try:
+                status = yield from self.ssh.run("gerrit stream-events",
+                                                 stdout=self._handle_stdout,
+                                                 stderr=self._handle_stderr)
+                self.log.info("Gerrit stream was closed with status %s" % status)
+            except asyncio.CancelledError:
+                self.log.info("Stopping gerrit")
+                self.root.task_end_handlers.remove(self._handle_task_end)
+                del self.ssh
+                return
+            except:
+                self.log.exception("Error listening gerrit events")
+            self.log.info("Reconnect in %s seconds" % reconnect_delay)
+            yield from asyncio.sleep(reconnect_delay)
+
+    def _handle_task_end(self, task):
+        self.root.start_coro(self.publish_results(task))
+
+    @asyncio.coroutine
+    def publish_results(self, task):
+        self.log.debug("Publishing results for task %s" % self)
+        comment_header = self.cfg.get("comment-header")
+        if not comment_header:
+            self.log.warning("No comment-header configured. Can't publish.")
+            return
+        cmd = ["gerrit", "review"]
+        fail = any([j.error for j in task.jobs if j.voting])
+        if self.cfg.get("vote"):
+            cmd.append("--verified=-1" if fail else "--verified=+1")
+        succeeded = "failed" if fail else "succeeded"
+        summary = comment_header.format(succeeded=succeeded)
+        tpl = self.cfg["comment-job-template"]
+        for job in self.jobs_list:
+            success = job.status + ("" if job.voting else " (non-voting)")
+            time = utils.human_time(job.finished_at - job.started_at)
+            summary += tpl.format(success=success,
+                                  name=job.config["name"],
+                                  time=time,
+                                  log_path=job.log_path)
+            summary += "\n"
+        cmd += ["-m", '"%s"' % summary, self.event["patchSet"]["revision"]]
+        yield from self.ssh.run(cmd)
+
+
+def _get_project_name(e):
+    return e.get("change", {}).get("project",
+                                   e.get("refUpdate", {}).get("project"))
+
+def _get_env(event, cfg):
+    """Get event environment.
+
+    :param dict cfg: service.env section
+    :param dict event:
+    """
+    env = {}
+    for k, v in cfg.items():
+        value = dict(event)
+        try:
+            for key in v.split("."):
+                value = value[key]
+            env[k] = value
+        except KeyError:
+            pass
+    return env

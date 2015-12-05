@@ -23,31 +23,19 @@ from rallyci import utils
 import logging
 LOG = logging.getLogger(__name__)
 
-SAFE_CHARS = string.ascii_letters + string.digits + "_"
-INTERVALS = [1, 60, 3600, 86400]
-NAMES = [('s', 's'),
-         ('m', 'm'),
-         ('h', 'h'),
-         ('day', 'days')]
-
-
-def _get_valid_filename(name):
-    name = name.replace(" ", "_")
-    return "".join([c for c in name if c in SAFE_CHARS])
-
 
 class Job:
 
-    def __init__(self, event, name):
+    def __init__(self, task, config):
         self.voting = True
         self.error = 254 # FIXME
         self.queued_at = time.time()
         self.event = event
         self.name = name
         self.root = event.root
-        self.config = event.root.config.data["job"][name]
+        self.config = config
         self.timeout = self.config.get("timeout", 90) * 60
-        self.id = utils.get_rnd_name("JOB", length=10)
+        self.id = utils.get_rnd_name("job_", length=10)
         self.env = self.config.get("env", {}).copy()
         self.status = "__init__"
         self.finished_at = 0
@@ -71,7 +59,7 @@ class Job:
         self.started_at = time.time()
         runner_local_cfg = self.config["runner"]
         runner_cfg = self.root.config.data["runner"][runner_local_cfg["name"]]
-        self.runner = self.root.config.get_instance(runner_cfg, self,
+        self.runner = self.root.config.get_instance(runner_cfg, "Class", self,
                                                     runner_local_cfg)
         fut = asyncio.async(self.runner.run(), loop=self.root.loop)
         try:
@@ -86,9 +74,6 @@ class Job:
         except Exception:
             self.set_status("ERROR")
             LOG.exception("Error running %s" % self)
-        finally:
-            self.finished_at = time.time()
-        LOG.info("Finished %s" % self)
 
     @asyncio.coroutine
     def cleanup(self):
