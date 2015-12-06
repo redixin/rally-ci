@@ -20,60 +20,70 @@ import string
 
 from rallyci import utils
 
-import logging
-LOG = logging.getLogger(__name__)
-
 
 class Job:
 
+    voting = False
+    finished_at = None
+    _vms = []
+
     def __init__(self, task, config):
-        self.voting = True
-        self.error = 254 # FIXME
-        self.queued_at = time.time()
-        self.task = task
-        self.root = task.root
+        """
+        :param Task task:
+        :param dict config: job config
+        """
         self.config = config
+        self.task = task
+
+        self.root = task.root
+        self.log = root.log
         self.timeout = self.config.get("timeout", 90) * 60
         self.id = utils.get_rnd_name("job_", length=10)
         self.env = config.get("env", {}).copy()
         self.status = "__init__"
-        self.finished_at = 0
         self.log_path = os.path.join(self.task.id, config["name"])
-        LOG.debug("Job %s initialized." % self.id)
-
-    def __str__(self):
-        return "<Job %s(%s) [%s]>" % (self.config["name"],
-                                      self.status, self.id)
+        self.log.debug("Job %s initialized." % self.id)
 
     def __repr__(self):
-        return self.__str__()
+        return "<Job %s(%s) [%s]>" % (self.config["name"],
+                                      self.status, self.id)
 
     def set_status(self, status):
         self.status = status
         self.root.job_updated(self)
 
     @asyncio.coroutine
+    def _boot_vm(self, conf):
+        """
+        :param dict conf: vm item from job config
+        """
+        provider = self.root.config.get_provider(conf["name"])
+        vm = yield from provider.get_vm(conf["name"], self)
+        self._vms.append(vm)
+        return vm
+
+    @asyncio.coroutine
+    def _run_scripts(self, vm, conf):
+        pass
+
+    @asyncio.coroutine
     def run(self):
-        LOG.info("Starting %s (timeout: %s)" % (self, self.timeout))
+        self.log.info("Starting %s (timeout: %s)" % (self, self.timeout))
         self.set_status("queued")
         self.started_at = time.time()
-        runner_local_cfg = self.config["runner"]
-        runner_cfg = self.root.config.data["runner"][runner_local_cfg["name"]]
-        self.runner = self.root.config.get_instance(runner_cfg, "Runner", self,
-                                                    runner_local_cfg)
         fut = asyncio.async(self.runner.run(), loop=self.root.loop)
         try:
             self.error = yield from asyncio.wait_for(fut, timeout=self.timeout)
             self.set_status("FAILURE" if self.error else "SUCCESS")
         except asyncio.TimeoutError:
             self.set_status("TIMEOUT")
-            LOG.info("Timed out %s" % self)
+            self.log.info("Timed out %s" % self)
         except asyncio.CancelledError:
             self.set_status("CANCELLED")
-            LOG.debug("Cancelled %s" % self)
+            self.log.info("Cancelled %s" % self)
         except Exception:
             self.set_status("ERROR")
-            LOG.exception("Error running %s" % self)
+            self.log.exception("Error running %s" % self)
 
     @asyncio.coroutine
     def cleanup(self):
@@ -88,5 +98,5 @@ class Job:
                 "status": self.status,
                 "task": self.task.id,
                 "finished_at": self.finished_at,
-                "seconds": int(time.time()) - self.queued_at,
+                "seconds": int(time.time()) - self.task.started_at,
                 }

@@ -83,6 +83,7 @@ class Provider(base.BaseProvider):
     @asyncio.coroutine
     def get_vm(self, image, job):
         host = yield from self._get_host()
+
         yield from self._build_image(host, image)
         cmd = ["lxc-start-ephemeral", "-o", image, "-d",
                "--storage-type", self.cfg.get("ephemeral-storage-type", "tmpfs"),
@@ -90,6 +91,7 @@ class Provider(base.BaseProvider):
         ]
         chunks = []
         yield from host.run(cmd, stdout=chunks.append)
+        print(chunks)
         for line in "\n".join(chunks).splitlines():
             for word in line.split(" "):
                 if word.startswith(image):

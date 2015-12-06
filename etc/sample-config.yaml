@@ -39,31 +39,25 @@
         keys: ["/home/eye/.ssh/test"]
     backingstore: zfs
     zfsroot: tank/lxc
-    images:
+    vms:
       ubuntu-1510-dev:
         template: ubuntu
         args: -r wily
         build-scripts: ["install-py35-dev"]
 
-- runner:
-    name: main_lxc
-    provider: my_lxc
-    module: rallyci.runners.ssh
-    logs: /tmp/ci
-
 - job:
     name: pytest
     env:
       PYTEST_PATH: tests/unit
-    runner:
-      name: main_lxc
-      vms:
-        - name: ubuntu-1510-dev
-          scripts:
-            - git_checkout
-            - run_pytest
-          publish:
-            - ["/tmp/report.html", ""]
+    vms:
+      - name: ubuntu-1510-dev
+        scripts:
+          - git_checkout
+          - run_pytest
+        post:
+          - gzip_logs
+        publish:
+          - ["/tmp/report.html.gz", ""]
 
 - script:
     name: run_pytest
@@ -117,13 +111,11 @@
 
 - job:
     name: tox
-    runner:
-      name: main_lxc
-      vms:
-        - name: ubuntu-1510-dev
-          scripts:
-            - git_checkout
-            - run_tests
+    vms:
+      - name: ubuntu-1510-dev
+        scripts:
+          - git_checkout
+          - run_tests
 
 - job:
     parent: tox

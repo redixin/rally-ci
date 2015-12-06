@@ -29,6 +29,7 @@ class Task:
     finished_at = None
     jobs = {}
     _job_futures = {}
+
     def __init__(self, root, event):
         """
         :param Root root:
@@ -37,6 +38,7 @@ class Task:
         self.root = root
         self.event = event
 
+        self.started_at = time.time()
         self.id = utils.get_rnd_name("task_", length=10)
         self._finished = asyncio.Event(loop=root.loop)
 

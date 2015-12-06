@@ -22,13 +22,16 @@ from rallyci import utils
 
 
 class Config:
+
+    data = {}
+    _modules = {}
+    _configured_projects = set()
+    _vm_provider_map = {}
+
     def __init__(self, root, filename, verbose):
         self.root = root
-        self._modules = {}
-        self.data = {}
         self.filename = filename
         self.verbose = verbose
-        self._configured_projects = set()
 
         with open(self.filename, "rb") as cf:
             self.raw_data = yaml.safe_load(cf)
@@ -52,8 +55,17 @@ class Config:
             for project in matrix["projects"]:
                 self._configured_projects.add(project)
 
+        for provider, config in self.data["provider"].items():
+            for vm in config["vms"]:
+                if vm in self._vm_provider_map:
+                    raise ValueError("Duplicate vm %s" % vm)
+                self._vm_provider_map[vm] = provider
+
     def is_project_configured(self, project):
         return project in self._configured_projects
+
+    def get_provider(self, vm):
+        return self.root.providers[self._vm_provider_map[vm]]
 
     @asyncio.coroutine
     def validate(self):
