@@ -25,3 +25,10 @@ class ConfigTestCase(unittest.TestCase):
         dirname = os.path.dirname(os.path.realpath(__file__))
         filename = os.path.join(dirname, "../../etc/sample-config.yaml")
         c = config.Config({}, filename, False)
+
+    def test_ssh_keys(self):
+        dirname = os.path.dirname(os.path.realpath(__file__))
+        filename = os.path.join(dirname, "../../etc/sample-config.yaml")
+        c = config.Config({}, filename, False)
+        self.assertEqual("/home/eye/.ssh/test.pub", c.get_ssh_key())
+        self.assertEqual(["/home/eye/.ssh/test.pub"], c.get_ssh_keys())

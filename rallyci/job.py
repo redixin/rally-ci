@@ -13,7 +13,7 @@
 #    limitations under the License.
 
 import asyncio
-from concurrent import futures
+from concurrent.futures import ALL_COMPLETED
 import time
 import os
 import string
@@ -36,13 +36,14 @@ class Job:
         self.task = task
 
         self.root = task.root
-        self.log = root.log
+        self.log = task.root.log
         self.timeout = self.config.get("timeout", 90) * 60
         self.id = utils.get_rnd_name("job_", length=10)
         self.env = config.get("env", {}).copy()
         self.status = "__init__"
         self.log_path = os.path.join(self.task.id, config["name"])
         self.log.debug("Job %s initialized." % self.id)
+        Job.BOOT_LOCK = asyncio.Lock(loop=task.root.loop)
 
     def __repr__(self):
         return "<Job %s(%s) [%s]>" % (self.config["name"],
@@ -53,25 +54,30 @@ class Job:
         self.root.job_updated(self)
 
     @asyncio.coroutine
-    def _boot_vm(self, conf):
+    def _run(self):
         """
         :param dict conf: vm item from job config
         """
-        provider = self.root.config.get_provider(conf["name"])
-        vm = yield from provider.get_vm(conf["name"], self)
-        self._vms.append(vm)
-        return vm
+        provider = self.root.providers[self.config["provider"]]
+        vms = {}
+        for vm in self.config["vms"]:
+            fut = asyncio.async(provider.get_vm(vm["name"], self),
+                                loop=self.root.loop)
+            vms[fut] = vm
+        with (yield from Job.BOOT_LOCK):
+            done, pending = yield from asyncio.wait(list(vms.keys()),
+                                                    return_when=ALL_COMPLETED)
+        for fut in done:
+            fut.result()
 
-    @asyncio.coroutine
-    def _run_scripts(self, vm, conf):
-        pass
+        #TODO
 
     @asyncio.coroutine
     def run(self):
         self.log.info("Starting %s (timeout: %s)" % (self, self.timeout))
         self.set_status("queued")
         self.started_at = time.time()
-        fut = asyncio.async(self.runner.run(), loop=self.root.loop)
+        fut = asyncio.async(self._run(), loop=self.root.loop)
         try:
             self.error = yield from asyncio.wait_for(fut, timeout=self.timeout)
             self.set_status("FAILURE" if self.error else "SUCCESS")

@@ -86,6 +86,7 @@ class Root:
 
     def start_obj(self, obj):
         fut = asyncio.async(self.run_obj(obj), loop=self.loop)
+        obj.fut = fut
         self._running_objects[fut] = obj
         if hasattr(obj, "cleanup"):
             fut.add_done_callback(self.schedule_cleanup)
@@ -159,15 +160,17 @@ class Root:
             prov.start()
         reload_fut = asyncio.async(self.reload(), loop=self.loop)
         yield from self.stop_event.wait()
+        self.log.info("Interrupted.")
         reload_fut.cancel()
         yield from reload_fut
-        self.log.info("Interrupted.")
         for obj in self._running_objects:
             obj.cancel()
         yield from self.wait_fs(self._running_objects)
         if self._running_cleanups:
             yield from asyncio.wait(self._running_cleanups,
                                     return_when=futures.ALL_COMPLETED)
+        for provider in self.providers.values():
+            yield from prov.stop()
 
     def job_updated(self, job):
         for cb in self.job_update_handlers:

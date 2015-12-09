@@ -17,7 +17,7 @@ import functools
 import re
 import json
 
-from rallyci.common.ssh import Client
+from rallyci.common.ssh import SSH
 from rallyci import base
 from rallyci import utils
 from rallyci import task
@@ -113,7 +113,7 @@ class Service:
             return
         if "port" not in self.cfg["ssh"]:
             self.cfg["ssh"]["port"] = 29418
-        self.ssh = Client(self.loop, **self.cfg["ssh"])
+        self.ssh = SSH(self.loop, **self.cfg["ssh"])
         self.root.task_end_handlers.append(self._handle_task_end)
         reconnect_delay = self.cfg.get("reconnect_delay", 5)
         while True:

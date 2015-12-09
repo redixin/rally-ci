@@ -27,9 +27,11 @@ from xml.etree import ElementTree as et
 
 import aiohttp
 from aiohttp import web
+from clis import clis
 
 from rallyci import utils
-from rallyci.common import asyncssh
+from rallyci.common.ssh import SSH
+
 
 LOG = logging.getLogger(__name__)
 
@@ -50,14 +52,13 @@ class ZFS:
 
     @asyncio.coroutine
     def create(self, name):
-        cmd = "zfs create {dataset}/{name}".format(dataset=self.dataset,
-                                                   name=name)
+        cmd = ["zfs", "create", "/".join((self.dataset, name))]
         yield from self.ssh.run(cmd)
 
     @asyncio.coroutine
     def list_files(self, name):
         cmd = "ls /{path}/{name}".format(path=self.path, name=name)
-        ls = yield from self.ssh.run(cmd, return_output=True)
+        err, ls, err = yield from self.ssh.out(cmd)
         return [os.path.join("/", self.dataset, name, f) for f in ls.splitlines()]
 
     @asyncio.coroutine
@@ -70,7 +71,7 @@ class ZFS:
     def exist(self, name):
         LOG.debug("Checking if image %s exist" % name)
         cmd = "zfs list"
-        data = yield from self.ssh.run(cmd, return_output=True)
+        err, data, err = yield from self.ssh.out(cmd)
         r = re.search("^%s/%s " % (self.dataset, name), data, re.MULTILINE)
         return bool(r)
 
@@ -113,7 +114,7 @@ class BTRFS:
     @asyncio.coroutine
     def list_files(self, name):
         cmd = "ls {path}/{name}".format(path=self.path, name=name)
-        ls = yield from self.ssh.run(cmd, return_output=True)
+        err, ls, err = yield from self.ssh.out(cmd)
         return [os.path.join("/", self.path, name, f) for f in ls.splitlines()]
 
     @asyncio.coroutine
@@ -129,7 +130,7 @@ class BTRFS:
     def exist(self, name):
         LOG.debug("Checking if image %s exist" % name)
         cmd = "btrfs subvolume list %s" % self.path
-        data = yield from self.ssh.run(cmd, return_output=True)
+        err, data, err = yield from self.ssh.out(cmd)
         r = re.search(" %s$" % name, data, re.MULTILINE)
         return bool(r)
 
@@ -161,18 +162,18 @@ BACKENDS = {"btrfs": BTRFS, "zfs": ZFS}
 
 class Host:
 
-    def __init__(self, ssh_conf, config, root, vm_key):
+    def __init__(self, ssh_conf, config, root):
         """
-        ssh_config: item from hosts from provider
-        config: full "provider" item
+        ssh_conf: item from hosts from provider
+        :param dict config: full "provider" item
         """
         self.image_locks = {}
         self.config = config
         self.root = root
         self.vms = []
         self.br_vm = {}
-        self.ssh = asyncssh.AsyncSSH(**ssh_conf)
-        self.vm_key = vm_key
+        self.ssh = SSH(root.loop, **ssh_conf,
+                       keys=root.config.get_ssh_keys(keytype="private"))
         self.la = 0.0
         self.free = 0
         storage_cf = config["storage"]
@@ -185,7 +186,7 @@ class Host:
     @asyncio.coroutine
     def update_stats(self):
         cmd = "uptime && free -m"
-        data = yield from self.ssh.run(cmd, return_output=True)
+        err, data, err = yield from self.ssh.out(cmd)
         self.la = float(RE_LA.search(data, re.MULTILINE).group(1))
         free = RE_MEM.search(data, re.MULTILINE).groups()
         self.free = sum(map(int, free))
@@ -193,7 +194,7 @@ class Host:
     @asyncio.coroutine
     def boot_image(self, name):
         conf = self.config["images"][name]
-        vm = VM(self, conf, {"name": name})
+        vm = VM(self, name, conf)
         vm.disks.append(name)
         for f in (yield from self.storage.list_files(name)):
             vm.add_disk(f)
@@ -239,13 +240,11 @@ class Host:
             yield from self.storage.snapshot(name)
 
     @asyncio.coroutine
-    def _get_vm(self, local_cfg, conf):
+    def _get_vm(self, name, conf):
         """
-        :param local_cfg: config.job.runner.vms item
         :param conf: config.provider.vms item
         """
-        LOG.debug("Creating VM with conf %s" % conf)
-        name = local_cfg["name"]
+        LOG.debug("Creating VM %s" % name)
         image = conf.get("image")
         if image:
             yield from self.build_image(image)
@@ -253,7 +252,7 @@ class Host:
             image = name
         rnd_name = utils.get_rnd_name(name)
         yield from self.storage.clone(image, rnd_name)
-        vm = VM(self, conf, local_cfg)
+        vm = VM(self, name, conf)
         files = yield from self.storage.list_files(rnd_name)
         vm.disks.append(rnd_name)
         for f in files:
@@ -269,34 +268,25 @@ class Host:
         return vm
 
     @asyncio.coroutine
-    def get_vms(self, vm_confs):
-        """Return VMs for runner.
-
-        :param vm_confs: config.job.runner.vms items
+    def get_vm_for_job(self, name, job):
         """
-        vms = []
-        ifs = {}
-        LOG.debug("Getting VMS %s" % vm_confs)
-        for vm_conf in vm_confs:
-            conf = copy.deepcopy(self.config["vms"][vm_conf["name"]])
-            br = None
-            net_conf = []
-            for net in conf["net"]:
-                ifname = net.split(" ")
-                if ifname[0].endswith("%"):
-                    if ifname[0] in ifs:
-                        br = ifname[0] = ifs[ifname[0]]
-                    else:
-                        br = yield from self._get_bridge(ifname[0][:-1])
-                        ifs[ifname[0]] = br
-                        ifname[0] = br
-                net_conf.append(" ".join(ifname))
-            conf["net"] = net_conf
-            vm = yield from self._get_vm(vm_conf, conf)
-            self.br_vm.setdefault(br, [])
-            self.br_vm[br].append(vm)
-            vms.append(vm)
-        return vms
+        :param str name: vm name
+        :param Job job:
+        """
+        conf = copy.deepcopy(self.config["vms"][name])
+        if "net" not in conf:
+            conf["net"] = ["virbr0"]
+        for net in conf["net"]:
+            ifname = net.split(" ")
+            if ifname[0].endswith("%"):
+                number = self._job_bridge_numbers.get(job, {}).get(ifname[0])
+                if not number:
+                    number = yield from self._get_bridge(ifname[0][:-1])
+                    self._job_bridge_numbers.setdefault(job, {})
+                    self._job_bridge_numbers[job][ifname[0]] = number
+                conf["net"][net].replace(ifname[0],
+                                         ifname[0][:-1] + str(number))
+        return (yield from self._get_vm(name, conf))
 
     @asyncio.coroutine
     def cleanup_net(self):
@@ -312,7 +302,7 @@ class Host:
     @asyncio.coroutine
     def _get_bridge(self, prefix):
         with (yield from DYNAMIC_BRIDGE_LOCK):
-            data = yield from self.ssh.run("ip link list", return_output=True)
+            err, data, err = yield from self.ssh.out(["ip", "link", "list"])
             nums = set()
             for line in data.splitlines():
                 m = IFACE_RE.match(line)
@@ -337,8 +327,8 @@ class Provider:
         self.root = root
         self.config = config
         self.name = config["name"]
-        self.key = config.get("key")
-        self.ifs = {}
+        self.key = root.config.get_ssh_key()
+        self._job_host_map = {}
         self.last = time.time()
         self.get_vms_lock = asyncio.Lock()
 
@@ -346,11 +336,11 @@ class Provider:
         pass
 
     def start(self):
-        self.hosts = [Host(c, self.config, self.root, self.key)
+        self.hosts = [Host(c, self.config, self.root)
                       for c in self.config["hosts"]]
-        self.mds = MetadataServer(self.root.loop,
-                                  self.config.get("metadata_server", {}))
-        self.mds_future = asyncio.async(self.mds.start(), loop=self.root.loop)
+        self.mds = clis.Server(self.root.loop,
+                               ssh_keys=self.root.config.get_ssh_keys())
+        self.mds_future = asyncio.async(self.mds.run(), loop=self.root.loop)
 
     @asyncio.coroutine
     def cleanup(self, vms):
@@ -362,55 +352,62 @@ class Provider:
 
     @asyncio.coroutine
     def stop(self):
-        yield from self.mds_future.cancel()
+        self.mds_future.cancel()
+        yield from self.mds_future
 
     @asyncio.coroutine
-    def get_vms(self, vm_confs):
+    def get_vm(self, name, job):
         """
-        :param vm_confs: job.runner.vms
+        :param str name: vm name
+        :param Job job:
         """
-        memory_required = self.config.get("freemb", 1024)
-        for cfg in vm_confs:
-            memory_required += self.config["vms"][cfg["name"]]["memory"]
+        host = yield from self._get_host_for_job(job)
+        return (yield from host.get_vm_for_job(name, job))
 
+    @asyncio.coroutine
+    def _get_host_for_job(self, job):
+        host = self._job_host_map.get(job)
+        if not host:
+            host = yield from self._get_host()
+            self._job_host_map[job] = host
+        return host
+
+    @asyncio.coroutine
+    def _get_host(self):
+        memory_required = self.config.get("freemb", 1024)
         best = None
-        with (yield from self.get_vms_lock):
-            sleep = self.last + 30 - time.time()
-            if sleep > 1:
-                yield from asyncio.sleep(sleep)
-            while True:
-                random.shuffle(self.hosts)
-                LOG.debug("Chosing from %s" % self.hosts)
-                for host in self.hosts:
-                    yield from host.update_stats()
-                    if host.free >= memory_required and host.la < self.config.get("maxla", 4):
-                        LOG.debug("Chosen host: %s" % host)
-                        best = host
-                        break
-                if best:
-                    break
-                LOG.info("All systems are overloaded. Waiting 30 seconds.")
-                yield from asyncio.sleep(30)
-            self.last = time.time()
-        return (yield from host.get_vms(vm_confs))
+
+        sleep = self.last + 1 - time.time()
+        if sleep > 1:
+            yield from asyncio.sleep(sleep)
+        while best is None:
+            random.shuffle(self.hosts)
+            LOG.debug("Chosing from %s" % self.hosts)
+            for host in self.hosts:
+                yield from host.update_stats()
+                if host.free >= memory_required and host.la < self.config.get("maxla", 4):
+                    LOG.debug("Chosen host: %s" % host)
+                    self.last = time.time()
+                    return host
+            LOG.info("All servers are overloaded. Waiting 30 seconds.")
+            yield from asyncio.sleep(30)
 
 class VM:
-    def __init__(self, host, cfg=None, local_cfg=None):
+    def __init__(self, host, name, cfg=None):
         """Represent a VM.
 
-        :param host: Host instance
-        :param cfg: config.provider.vms item
-        :param local_cfg: job.runner.vms item
+        :param Host host:
+        :param str name:
+        :param dict cfg: config.provider.vms item
 
         """
         self.host = host
         self.cfg = cfg or {}
-        self.local_cfg = local_cfg
         self._ssh = host.ssh
         self.macs = []
         self.disks = []
         self.bridges = []
-        self.name = utils.get_rnd_name(local_cfg["name"])
+        self.name = utils.get_rnd_name(name)
         x = XMLElement(None, "domain", type="kvm")
         self.x = x
         x.se("name").x.text = self.name
@@ -433,11 +430,8 @@ class VM:
         mb.se("address", type="pci", domain="0x0000", bus="0x00",
               slot="0x09", function="0x0")
 
-    def __str__(self):
-        return self.__repr__()
-
     def __repr__(self):
-        return "<VM %s %s>" % (self.name, self.local_cfg)
+        return "<VM %s>" % (self.name)
 
     @asyncio.coroutine
     def run_script(self, script, env=None, raise_on_error=True, cb=None):
@@ -472,7 +466,7 @@ class VM:
 
     @asyncio.coroutine
     def destroy(self, storage=True):
-        cmd = "virsh destroy {}".format(self.name)
+        cmd = ["virsh", "destroy", self.name]
         yield from self._ssh.run(cmd, raise_on_error=False)
         if storage:
             for disk in self.disks:
@@ -494,13 +488,13 @@ class VM:
             yield from asyncio.sleep(0)
             return self.ip
         deadline = time.time() + timeout
-        cmd = "egrep -i '%s' /proc/net/arp" % "|".join(self.macs)
+        cmd = ["egrep", "-i", "|".join(self.macs), "/proc/net/arp"]
         while True:
             if time.time() > deadline:
                 raise Exception("Unable to find ip of VM %s" % self.cfg)
             yield from asyncio.sleep(4)
             LOG.debug("Checking for ip for vm %s (%s)" % (self.name, repr(self.macs)))
-            data = yield from self._ssh.run(cmd, return_output=True, raise_on_error=False)
+            err, data, err = yield from self._ssh.run(cmd, check=False)
             for line in data.splitlines():
                 m = IP_RE.match(line)
                 if m:
@@ -514,7 +508,7 @@ class VM:
         conf = "/tmp/.conf.%s.xml" % self.name
         with self.fd() as fd:
             yield from self._ssh.run("cat > %s" % conf, stdin=fd)
-        yield from self._ssh.run("virsh create {c}".format(c=conf))
+        yield from self._ssh.run(["virsh", "create", conf])
 
     @contextlib.contextmanager
     def fd(self):
@@ -562,72 +556,3 @@ class XMLElement:
 
     def tostring(self):
         return et.tostring(self.x)
-
-
-class MetadataServer:
-    """Metadata server for cloud-init.
-
-    Supported versions:
-    * 2012-08-10
-    """
-
-    def __init__(self, loop, config):
-        self.loop = loop
-        self.config = config
-
-    def get_metadata(self):
-        keys = {}
-        with open(self.config["authorized_keys"]) as kf:
-            for i, line in enumerate(kf.readlines()):
-                if line:
-                    keys["key-" + str(i)] = line
-        return json.dumps({
-                "uuid": str(uuid.uuid4()),
-                "availability_zone": "nova",
-                "hostname": "rally-ci-vm",
-                "launch_index": 0,
-                "meta": {
-                    "priority": "low",
-                    "role": "rally-ci-test-vm",
-                },
-                "public_keys": keys,
-                "name": "test"
-        }).encode("utf8")
-
-    @asyncio.coroutine
-    def user_data(self, request):
-        version = request.match_info["version"]
-        if version in ("2012-08-10", "latest"):
-            return web.Response(body=self.config["user_data"].encode("utf-8"))
-        return web.Response(status=404)
-
-    @asyncio.coroutine
-    def meta_data(self, request):
-        LOG.debug("Metadata request: %s" % request)
-        version = request.match_info["version"]
-        if version in ("2012-08-10", "latest"):
-            md = self.get_metadata()
-            LOG.debug(md)
-            return web.Response(body=md, content_type="application/json")
-        return web.Response(status=404)
-
-    @asyncio.coroutine
-    def start(self):
-        self.app = web.Application(loop=self.loop)
-        for route in (
-                ("/openstack/{version:.*}/meta_data.json", self.meta_data),
-                ("/openstack/{version:.*}/user_data", self.user_data),
-        ):
-            self.app.router.add_route("GET", *route)
-        self.handler = self.app.make_handler()
-        addr = self.config.get("listen_addr", "169.254.169.254")
-        port = self.config.get("listen_port", 8080)
-        self.srv = yield from self.loop.create_server(self.handler, addr, port)
-        LOG.debug("Metadata server started at %s:%s" % (addr, port))
-
-    @asyncio.coroutine
-    def stop(self, timeout=1.0):
-        yield from self.handler.finish_connections(timeout)
-        self.srv.close()
-        yield from self.srv.wait_closed()
-        yield from self.app.finish()

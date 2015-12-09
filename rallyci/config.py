@@ -22,16 +22,15 @@ from rallyci import utils
 
 
 class Config:
-
-    data = {}
-    _modules = {}
-    _configured_projects = set()
-    _vm_provider_map = {}
-
     def __init__(self, root, filename, verbose):
         self.root = root
         self.filename = filename
         self.verbose = verbose
+
+        self.data = {}
+        self._modules = {}
+        self._configured_projects = set()
+        self._vm_provider_map = {}
 
         with open(self.filename, "rb") as cf:
             self.raw_data = yaml.safe_load(cf)
@@ -45,7 +44,7 @@ class Config:
             if name:
                 self.data.setdefault(key, {})
                 if name in self.data[key]:
-                    raise ValueError("Duplicate name %s" % name)
+                    raise ValueError("Duplicate name %s (%s)" % (name, self.data[key]))
                 self.data[key][name] = value
             else:
                 self.data.setdefault(key, [])
@@ -60,6 +59,12 @@ class Config:
                 if vm in self._vm_provider_map:
                     raise ValueError("Duplicate vm %s" % vm)
                 self._vm_provider_map[vm] = provider
+
+    def get_ssh_key(self, keytype="public", name="default"):
+        return self.data["ssh-key"][name][keytype]
+
+    def get_ssh_keys(self, keytype="public"):
+        return [k[keytype] for k in self.data["ssh-key"].values()]
 
     def is_project_configured(self, project):
         return project in self._configured_projects

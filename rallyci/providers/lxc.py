@@ -15,14 +15,17 @@
 import asyncio
 import collections
 import functools
+import re
+import time
 
 from rallyci import base
-from rallyci.common import ssh
+from rallyci.common.ssh import SSH
 from rallyci import utils
 
 COMMON_OPTS = (("-B", "backingstore"), )
 CREATE_OPTS = (("--zfsroot", "zfsroot"), )
 
+RE_LXC_IP = re.compile(r"IP:.+([\d\.]+)$")
 
 class Provider(base.BaseProvider):
 
@@ -39,7 +42,7 @@ class Provider(base.BaseProvider):
         self._opts = sum(self._get_opts(COMMON_OPTS), [])
         self._create_opts = sum(self._get_opts(CREATE_OPTS), [])
         self._create_opts += self._opts
-        self._hosts = [ssh.Client(loop=self.root.loop, **cfg) for cfg in cfg.get("hosts")]
+        self._hosts = [SSH(loop=self.root.loop, **cfg) for cfg in cfg.get("hosts")]
         self._public_key = root.config.data["ssh-key"]["default"]["public"]
 
     @asyncio.coroutine
@@ -68,7 +71,7 @@ class Provider(base.BaseProvider):
 
     @asyncio.coroutine
     def _build_image(self, host, image):
-        image_cfg = self.cfg["images"][image]
+        image_cfg = self.cfg["vms"][image]
         cmd = ["lxc-create", "--name", image] + self._create_opts
         cmd += ["-t", image_cfg["template"],
                 "--", image_cfg.get("args", "")]
@@ -81,23 +84,29 @@ class Provider(base.BaseProvider):
             yield from self._upload_ssh_key(host, image)
 
     @asyncio.coroutine
+    def _get_ip(self, host, name, timeout=60):
+        _start = time.time()
+        cmd = ["lxc-info", "-n", name]
+        data = []
+        while True:
+            yield from host.run(cmd, stdout=data.append)
+            for line in "".join(data).splitlines():
+                m = RE_LXC_IP.match(line)
+                if m:
+                    return m.group(1)
+            if time.time() > (_start + timeout):
+                raise Exception("Timeout waiting for %s" % name)
+
+    @asyncio.coroutine
     def get_vm(self, image, job):
         host = yield from self._get_host()
-
         yield from self._build_image(host, image)
-        cmd = ["lxc-start-ephemeral", "-o", image, "-d",
-               "--storage-type", self.cfg.get("ephemeral-storage-type", "tmpfs"),
-               "--union-type", self.cfg.get("ephemeral-union-type", "aufs"),
-        ]
-        chunks = []
-        yield from host.run(cmd, stdout=chunks.append)
-        print(chunks)
-        for line in "\n".join(chunks).splitlines():
-            for word in line.split(" "):
-                if word.startswith(image):
-                    vm_name = word.strip()
-        print(repr(vm_name))
-        yield from host.run(["lxc-stop", "-n", vm_name], stderr=print)
+        name = utils.get_rnd_name("rci_")
+        cmd = ["lxc-clone", "-o", image, "-n", name] + self._opts
+        yield from host.run(cmd, stderr=print)
+        cmd = ["lxc-start", "-d", "-n", name]
+        yield from host.run(cmd, stderr=print)
+        ip = yield from self._get_ip(host, name)
 
     @asyncio.coroutine
     def start(self):

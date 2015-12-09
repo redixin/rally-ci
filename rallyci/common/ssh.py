@@ -15,11 +15,14 @@
 
 import asyncio
 import functools
+import logging
 import os
 import pwd
 import sys
 
 import asyncssh
+
+LOG = logging.getLogger(__name__)
 
 
 class SSHError(Exception):
@@ -60,7 +63,7 @@ class SSHClientSession(asyncssh.SSHClientSession):
             self._stderr_cb(data)
 
 
-class Client:
+class SSH:
 
     def __init__(self, loop, hostname, username=None, keys=None, port=22,
                  cb=None):
@@ -99,13 +102,14 @@ class Client:
         """
         if isinstance(cmd, list):
             cmd = _escape_cmd(cmd)
+        LOG.debug("Running %s" % cmd)
         yield from self._ensure_connected()
         session_factory = functools.partial(SSHClientSession, (stdout, stderr))
         chan, session = yield from self.conn.create_session(session_factory, cmd)
         if stdin:
             if hasattr(stdin, "read"):
                 while True:
-                    chunk = stdin.read(4096)
+                    chunk = stdin.read(4096).decode("ascii")
                     if not chunk:
                         break
                     chan.write(chunk)
@@ -121,6 +125,30 @@ class Client:
             raise SSHProcessFailed(status)
         return status
 
+    @asyncio.coroutine
+    def out(self, cmd, stdin=None, check=True):
+        stdout = []
+        stderr = []
+        status = yield from self.run(cmd, stdout=stdout.append,
+                                     stderr=stderr.append,
+                                     stdin=stdin, check=check)
+        stdout = "".join(stdout)
+        stderr = "".join(stderr)
+        return (status, stdout, stderr)
+
+    @asyncio.coroutine
+    def wait(self, timeout=60, delay=2):
+        _start = time.time()
+        while True:
+            try:
+                self.run(["uname"])
+                return
+            except Exception:
+                pass
+            if time.time() > (_start + timeout):
+                raise SSHError("timeout %s:%s" % (self.hostname, self.port))
+            yield from asyncio.sleep(delay)
+    
 
 def _escape_cmd(cmd):
     return " ".join(["'%s'" % arg.replace(r"'", r"'\''") for arg in cmd])
