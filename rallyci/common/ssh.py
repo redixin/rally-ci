@@ -88,8 +88,9 @@ class SSH:
             LOG.debug("Connecting %s@%s with keys %s" % (self.username, self.hostname, self.keys))
             self.conn, self.client = yield from asyncssh.create_connection(
                 functools.partial(SSHClient, self), self.hostname,
-                username=self.username,
+                username=self.username, known_hosts=None,
                 client_keys=self.keys, port=self.port)
+            LOG.debug("Connected %s@%s" % (self.username, self.hostname))
             self._connected.set()
 
     @asyncio.coroutine

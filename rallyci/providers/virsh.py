@@ -446,7 +446,7 @@ class VM:
         yield from self.get_ip()
         cmd = script.get("interpreter", "/bin/bash -xe -s")
         ssh = yield from self.get_ssh(script.get("user", "root"))
-        status = yield from ssh.run(cmd, stdin=script["data"], check=check)
+        status = yield from ssh.run(cmd, stdin=script["data"], stdout=print, stderr=print, check=check)
         return status
 
     @asyncio.coroutine

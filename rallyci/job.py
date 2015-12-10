@@ -70,8 +70,13 @@ class Job:
                                                     return_when=ALL_COMPLETED)
         for fut in done:
             self.vms.append((fut.result(), vms[fut]))
-        for vm in self.vms:
-            print(vm)
+
+        for vm, conf in self.vms:
+            for script in conf.get("scripts", []):
+                script = self.root.config.data["script"][script]
+                error = yield from vm.run_script(script, check=False)
+                if error:
+                    return error
 
     @asyncio.coroutine
     def run(self):
