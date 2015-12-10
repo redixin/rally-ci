@@ -15,6 +15,7 @@
 import asyncio
 import copy
 import contextlib
+import functools
 import time
 import os
 import random
@@ -71,7 +72,7 @@ class ZFS:
     def exist(self, name):
         LOG.debug("Checking if image %s exist" % name)
         cmd = "zfs list"
-        err, data, err = yield from self.ssh.out(cmd)
+        err, data, err = yield from self.ssh.out(cmd, check=False)
         r = re.search("^%s/%s " % (self.dataset, name), data, re.MULTILINE)
         return bool(r)
 
@@ -121,7 +122,7 @@ class BTRFS:
     def clone(self, src, dst):
         cmd = "btrfs subvolume delete {path}/{dst}"
         cmd = cmd.format(path=self.path, src=src, dst=dst)
-        yield from self.ssh.run(cmd, raise_on_error=False)
+        yield from self.ssh.run(cmd, check=False)
         cmd = "btrfs subvolume snapshot {path}/{src} {path}/{dst}"
         cmd = cmd.format(path=self.path, src=src, dst=dst)
         yield from self.ssh.run(cmd)
@@ -130,7 +131,7 @@ class BTRFS:
     def exist(self, name):
         LOG.debug("Checking if image %s exist" % name)
         cmd = "btrfs subvolume list %s" % self.path
-        err, data, err = yield from self.ssh.out(cmd)
+        err, data, err = yield from self.ssh.out(cmd, check=False)
         r = re.search(" %s$" % name, data, re.MULTILINE)
         return bool(r)
 
@@ -170,8 +171,8 @@ class Host:
         self.image_locks = {}
         self.config = config
         self.root = root
-        self.vms = []
         self.br_vm = {}
+        self.vms = []
         self.ssh = SSH(root.loop, **ssh_conf,
                        keys=root.config.get_ssh_keys(keytype="private"))
         self.la = 0.0
@@ -267,6 +268,9 @@ class Host:
         self.vms.append(vm)
         return vm
 
+    def _cleanup_vm(self, vm):
+        print(vm)
+
     @asyncio.coroutine
     def get_vm_for_job(self, name, job):
         """
@@ -286,7 +290,8 @@ class Host:
                     self._job_bridge_numbers[job][ifname[0]] = number
                 conf["net"][net].replace(ifname[0],
                                          ifname[0][:-1] + str(number))
-        return (yield from self._get_vm(name, conf))
+        vm = yield from self._get_vm(name, conf)
+        return vm
 
     @asyncio.coroutine
     def cleanup_net(self):
@@ -294,7 +299,7 @@ class Host:
         with (yield from DYNAMIC_BRIDGE_LOCK):
             for br, vms in self.br_vm.items():
                 if not vms:
-                    yield from self.ssh.run("ip link del %s" % br)
+                    yield from self.ssh.run(["ip", "link", "del", br])
                     clean.append(br)
             for br in clean:
                 del self.br_vm[br]
@@ -313,8 +318,9 @@ class Host:
                 if i not in nums:
                     br = "%s%d" % (prefix, i)
                     break
-            yield from self.ssh.run("ip link add %s type bridge" % br)
-            yield from self.ssh.run("ip link set %s up" % br)
+            yield from self.ssh.run(["ip", "link", "add", br,
+                                     "type", "bridge"])
+            yield from self.ssh.run(["ip", "link", "set", bt, "up"])
         return br
 
 
@@ -326,11 +332,12 @@ class Provider:
         """
         self.root = root
         self.config = config
+
         self.name = config["name"]
         self.key = root.config.get_ssh_key()
-        self._job_host_map = {}
         self.last = time.time()
-        self.get_vms_lock = asyncio.Lock()
+        self.get_vms_lock = asyncio.Lock(loop=root.loop)
+        self._job_host_map = {}
 
     def get_stats(self):
         pass
@@ -434,16 +441,12 @@ class VM:
         return "<VM %s>" % (self.name)
 
     @asyncio.coroutine
-    def run_script(self, script, env=None, raise_on_error=True, cb=None):
+    def run_script(self, script, env=None, check=True, cb=None):
         LOG.debug("Running script: %s on vm %s with env %s" % (script, self, env))
         yield from self.get_ip()
-        cmd = "".join(["%s='%s' " % tuple(e) for e in env.items()]) if env else ""
-        cmd += script["interpreter"]
-        ssh = asyncssh.AsyncSSH(script.get("user", "root"), self.ip,
-                                key=self.host.vm_key, cb=cb)
-        status = yield from ssh.run(cmd, stdin=script["data"],
-                                    raise_on_error=raise_on_error,
-                                    user=script.get("user", "root"))
+        cmd = script.get("interpreter", "/bin/bash -xe -s")
+        ssh = yield from self.get_ssh(script.get("user", "root"))
+        status = yield from ssh.run(cmd, stdin=script["data"], check=check)
         return status
 
     @asyncio.coroutine
@@ -457,7 +460,7 @@ class VM:
         cmd = "virsh list | grep -q {}".format(self.name)
         while True:
             yield from asyncio.sleep(4)
-            error = yield from self._ssh.run(cmd, raise_on_error=False)
+            error = yield from self._ssh.run(cmd, check=False)
             if error:
                 return
             elif time.time() > timeout:
@@ -467,7 +470,7 @@ class VM:
     @asyncio.coroutine
     def destroy(self, storage=True):
         cmd = ["virsh", "destroy", self.name]
-        yield from self._ssh.run(cmd, raise_on_error=False)
+        yield from self._ssh.run(cmd, check=False)
         if storage:
             for disk in self.disks:
                 yield from self.host.storage.destroy(disk)
@@ -476,11 +479,15 @@ class VM:
             if lst and self in lst:
                 lst.remove(self)
         yield from self.host.cleanup_net()
+        self.host.vms.remove(self)
 
     @asyncio.coroutine
-    def get_ssh(self):
+    def get_ssh(self, user="root"):
         yield from self.get_ip()
-        return asyncssh.AsyncSSH("root", self.ip, key=self.host.vm_key)
+        ssh = SSH(self.host.root.loop, self.ip, username=user,
+                  keys=self.host.root.config.get_ssh_keys("private"))
+        yield from ssh.wait()
+        return ssh
 
     @asyncio.coroutine
     def get_ip(self, timeout=300):
@@ -494,20 +501,18 @@ class VM:
                 raise Exception("Unable to find ip of VM %s" % self.cfg)
             yield from asyncio.sleep(4)
             LOG.debug("Checking for ip for vm %s (%s)" % (self.name, repr(self.macs)))
-            err, data, err = yield from self._ssh.run(cmd, check=False)
+            err, data, err = yield from self._ssh.out(cmd, check=False)
             for line in data.splitlines():
                 m = IP_RE.match(line)
                 if m:
                     self.ip = m.group(1)
-                    # TODO: wait_for_ssh
-                    yield from asyncio.sleep(8)
                     return
 
     @asyncio.coroutine
     def boot(self):
-        conf = "/tmp/.conf.%s.xml" % self.name
+        conf = "/tmp/.rci-%s.xml" % id(self)
         with self.fd() as fd:
-            yield from self._ssh.run("cat > %s" % conf, stdin=fd)
+            yield from self._ssh.run("cat > '%s'" % conf, stdin=fd)
         yield from self._ssh.run(["virsh", "create", conf])
 
     @contextlib.contextmanager

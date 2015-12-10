@@ -19,6 +19,7 @@ import logging
 import os
 import pwd
 import sys
+import time
 
 import asyncssh
 
@@ -84,6 +85,7 @@ class SSH:
         with (yield from self._connecting):
             if self._connected.is_set():
                 return
+            LOG.debug("Connecting %s@%s with keys %s" % (self.username, self.hostname, self.keys))
             self.conn, self.client = yield from asyncssh.create_connection(
                 functools.partial(SSHClient, self), self.hostname,
                 username=self.username,
@@ -91,7 +93,8 @@ class SSH:
             self._connected.set()
 
     @asyncio.coroutine
-    def run(self, cmd, stdin=None, stdout=None, stderr=None, check=True):
+    def run(self, cmd, stdin=None, stdout=None, stderr=None, check=True,
+            env=None):
         """Run command on remote server.
 
         :param string cmd: command to be executed
@@ -105,7 +108,8 @@ class SSH:
         LOG.debug("Running %s" % cmd)
         yield from self._ensure_connected()
         session_factory = functools.partial(SSHClientSession, (stdout, stderr))
-        chan, session = yield from self.conn.create_session(session_factory, cmd)
+        chan, session = yield from self.conn.create_session(session_factory,
+                                                            cmd, env=env or {})
         if stdin:
             if hasattr(stdin, "read"):
                 while True:
@@ -126,12 +130,12 @@ class SSH:
         return status
 
     @asyncio.coroutine
-    def out(self, cmd, stdin=None, check=True):
+    def out(self, cmd, stdin=None, check=True, env=None):
         stdout = []
         stderr = []
         status = yield from self.run(cmd, stdout=stdout.append,
                                      stderr=stderr.append,
-                                     stdin=stdin, check=check)
+                                     stdin=stdin, check=check, env=env)
         stdout = "".join(stdout)
         stderr = "".join(stderr)
         return (status, stdout, stderr)
@@ -141,7 +145,7 @@ class SSH:
         _start = time.time()
         while True:
             try:
-                self.run(["uname"])
+                yield from self._ensure_connected()
                 return
             except Exception:
                 pass

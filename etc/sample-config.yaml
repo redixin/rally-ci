@@ -49,12 +49,14 @@
     images:
       bare_u1510:
         url: https://cloud-images.ubuntu.com/wily/current/wily-server-cloudimg-amd64-disk1.img
+      bare_u1404:
+        url: http://cloud-images.ubuntu.com/trusty/current/trusty-server-cloudimg-amd64-disk1.img
+      u1404:
+        parent: bare_u1404
+        build-scripts: ["init_ubuntu_dev"]
     vms:
-      ubuntu-1510-dev:
-        image: bare_u1510
-        template: ubuntu
-        args: -r wily
-        build-scripts: ["install-py35-dev"]
+      ubuntu-1404-dev:
+        image: u1404
 
 - script:
     name: run_pytest
@@ -110,7 +112,7 @@
     name: tox
     provider: my_virsh
     vms:
-      - name: ubuntu-1510-dev
+      - name: ubuntu-1404-dev
         scripts:
           - git_checkout
           - run_tests

@@ -86,7 +86,6 @@ class Root:
 
     def start_obj(self, obj):
         fut = asyncio.async(self.run_obj(obj), loop=self.loop)
-        obj.fut = fut
         self._running_objects[fut] = obj
         if hasattr(obj, "cleanup"):
             fut.add_done_callback(self.schedule_cleanup)

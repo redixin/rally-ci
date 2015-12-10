@@ -43,6 +43,7 @@ class Job:
         self.status = "__init__"
         self.log_path = os.path.join(self.task.id, config["name"])
         self.log.debug("Job %s initialized." % self.id)
+        self.vms = []
         Job.BOOT_LOCK = asyncio.Lock(loop=task.root.loop)
 
     def __repr__(self):
@@ -58,19 +59,19 @@ class Job:
         """
         :param dict conf: vm item from job config
         """
-        provider = self.root.providers[self.config["provider"]]
+        self.provider = self.root.providers[self.config["provider"]]
         vms = {}
         for vm in self.config["vms"]:
-            fut = asyncio.async(provider.get_vm(vm["name"], self),
+            fut = asyncio.async(self.provider.get_vm(vm["name"], self),
                                 loop=self.root.loop)
             vms[fut] = vm
         with (yield from Job.BOOT_LOCK):
             done, pending = yield from asyncio.wait(list(vms.keys()),
                                                     return_when=ALL_COMPLETED)
         for fut in done:
-            fut.result()
-
-        #TODO
+            self.vms.append((fut.result(), vms[fut]))
+        for vm in self.vms:
+            print(vm)
 
     @asyncio.coroutine
     def run(self):
@@ -90,13 +91,12 @@ class Job:
         except Exception:
             self.set_status("ERROR")
             self.log.exception("Error running %s" % self)
+        finally:
+            self.finished_at = time.time()
 
     @asyncio.coroutine
     def cleanup(self):
-        if hasattr(self, "runner"):
-            yield from self.runner.cleanup()
-        else:
-            yield from asyncio.sleep(0)
+        yield from self.provider.cleanup([v[0] for v in self.vms])
 
     def to_dict(self):
         return {"id": self.id,
