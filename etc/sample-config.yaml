@@ -7,12 +7,12 @@
 
 - service:
     name: gerrit
+    silent: true
     fake-stream: resources/gerrit-sample-stream.json
     module: rallyci.services.gerrit
     cfg-url-template: https://review.openstack.org/gitweb?p={project}.git;a=blob_plain;f=.rally-ci.yaml;hb={commit}
     cr-url-template: https://review.openstack.org/#q,{commit},n,z
     commit-url-template: http://git.openstack.org/cgit/{project}/commit/?id={commit}
-    silent: true
     env:
       GERRIT_PROJECT: change.project
       GERRIT_REF: patchSet.ref
@@ -40,9 +40,6 @@
       backend: zfs
       path: /tank/ci
       dataset: tank/ci
-    network:
-      private-interface: eth0
-      vlan-ranges: "100-900"
     images:
       bare_u1510:
         url: https://cloud-images.ubuntu.com/wily/current/wily-server-cloudimg-amd64-disk1.img
@@ -139,5 +136,8 @@
       - openstack/designate
       - openstack/murano
       - openstack/rally
+      - openstack/nova
+      - openstack/glance
+      - openstack/neutron
     jobs:
       - tox-pep8

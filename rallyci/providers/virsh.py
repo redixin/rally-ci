@@ -173,6 +173,7 @@ class Host:
         self.root = root
         self.br_vm = {}
         self.vms = []
+        ssh_conf.setdefault("username", "root")
         self.ssh = SSH(root.loop, **ssh_conf,
                        keys=root.config.get_ssh_keys(keytype="private"))
         self.la = 0.0

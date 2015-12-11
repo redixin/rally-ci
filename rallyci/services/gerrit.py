@@ -133,10 +133,14 @@ class Service:
             yield from asyncio.sleep(reconnect_delay)
 
     def _handle_task_end(self, task):
+        return
         self.root.start_coro(self.publish_results(task))
 
     @asyncio.coroutine
     def publish_results(self, task):
+        if self.cfg.get("silent"):
+            yield from asyncio.sleep(0)
+            return
         self.log.debug("Publishing results for task %s" % self)
         comment_header = self.cfg.get("comment-header")
         if not comment_header:
