@@ -43,9 +43,6 @@
     network:
       private-interface: eth0
       vlan-ranges: "100-900"
-    metadata_server:
-      listen_addr: 0.0.0.0
-      listen_port: 8089
     images:
       bare_u1510:
         url: https://cloud-images.ubuntu.com/wily/current/wily-server-cloudimg-amd64-disk1.img

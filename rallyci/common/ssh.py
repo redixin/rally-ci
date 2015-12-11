@@ -142,7 +142,7 @@ class SSH:
         return (status, stdout, stderr)
 
     @asyncio.coroutine
-    def wait(self, timeout=60, delay=2):
+    def wait(self, timeout=180, delay=2):
         _start = time.time()
         while True:
             try:

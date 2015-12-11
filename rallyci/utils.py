@@ -15,6 +15,7 @@
 import errno
 import os
 import random
+import socket
 import string
 import time
 import logging
@@ -43,9 +44,23 @@ def _check_parent(config, job):
         _merge(job, config["job"][parent])
 
 
+def get_local_address(remote_address):
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.connect((remote_address, 0))
+    return s.getsockname()[0]
+
+
 def expand_jobs(config):
     for job in config["job"]:
         _check_parent(config, config["job"][job])
+
+
+def get_free_port():
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.bind(("localhost", 0))
+    port = s.getsockname()[1]
+    s.close()
+    return port
 
 
 def human_time(seconds):

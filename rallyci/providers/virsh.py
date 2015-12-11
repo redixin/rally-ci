@@ -342,12 +342,28 @@ class Provider:
     def get_stats(self):
         pass
 
+    @asyncio.coroutine
     def start(self):
         self.hosts = [Host(c, self.config, self.root)
                       for c in self.config["hosts"]]
+        mds_cfg = self.config.get("metadata_server", {})
+        mds_addr = mds_cfg.get("listen_addr", "0.0.0.0")
+        mds_port = mds_cfg.get("listen_port", 8088)
         self.mds = clis.Server(self.root.loop,
+                               listen_addr=mds_addr,
+                               listen_port=mds_port,
                                ssh_keys=self.root.config.get_ssh_keys())
         self.mds_future = asyncio.async(self.mds.run(), loop=self.root.loop)
+        command = ("PREROUTING -d 169.254.169.254 -p tcp --dport 80 "
+                   "-j DNAT --to-destination %s:%s")
+        for host in self.hosts:
+            if mds_addr == "0.0.0.0":
+                my_addr = utils.get_local_address(host.ssh.hostname)
+            else:
+                my_addr = mds_addr
+            cmd = command % (my_addr, mds_port)
+            yield from host.ssh.run(("iptables -t nat -C %s ||"
+                                     "iptables -t nat -I %s") % (cmd, cmd))
 
     @asyncio.coroutine
     def cleanup(self, vms):

@@ -18,16 +18,9 @@ import unittest
 import mock
 
 from rallyci.services import status
+from rallyci.utils import get_free_port
 
 import aiohttp
-
-
-def get_free_port():
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.bind(("localhost", 0))
-    port = s.getsockname()[1]
-    s.close()
-    return port
 
 
 class HttpTestCase(unittest.TestCase):

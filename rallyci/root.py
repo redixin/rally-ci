@@ -70,15 +70,19 @@ class Root:
         fut.add_done_callback(self.task_done_cb)
 
     def task_done_cb(self, fut):
-        self.tasks_set.remove(fut)
-        task = self.tasks.pop(fut)
-        self.tasks_set.remove(task.event.key)
-        for handler in self.task_start_handlers:
-            try:
-                handler(task)
-            except Exception:
-                self.log.exception(
-                    "Exception in task end handler %s %s" % (task, cb))
+        try:
+
+            task = self.tasks.pop(fut)
+            self.log.info("Finished task %s" % task)
+            self.task_set.remove(task.event.key)
+            for handler in self.task_start_handlers:
+                try:
+                    handler(task)
+                except Exception:
+                    self.log.exception(
+                        "Exception in task end handler %s %s" % (task, cb))
+        except Exception:
+            self.log.exception("Error in task_done_cb")
 
     def start_coro(self, coro):
         fut = asyncio.async(self.run_coro(obj), loop=self.loop)
@@ -156,7 +160,7 @@ class Root:
         self.start_services()
         for prov in self.config.iter_providers():
             self.providers[prov.name] = prov
-            prov.start()
+            yield from prov.start()
         reload_fut = asyncio.async(self.reload(), loop=self.loop)
         yield from self.stop_event.wait()
         self.log.info("Interrupted.")
