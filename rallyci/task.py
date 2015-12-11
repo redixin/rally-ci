@@ -20,7 +20,6 @@ import time
 
 import aiohttp
 
-from rallyci.common import asyncssh
 from rallyci.job import Job
 from rallyci import utils
 

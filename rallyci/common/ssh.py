@@ -106,7 +106,8 @@ class SSH:
         """
         if isinstance(cmd, list):
             cmd = _escape_cmd(cmd)
-        LOG.debug("Running %s with env %s" % (cmd, env))
+        cmd = _escape_env(env) + cmd
+        LOG.debug("Running %s" % cmd)
         yield from self._ensure_connected()
         session_factory = functools.partial(SSHClientSession, (stdout, stderr))
         chan, session = yield from self.conn.create_session(session_factory,
@@ -153,7 +154,20 @@ class SSH:
             if time.time() > (_start + timeout):
                 raise SSHError("timeout %s:%s" % (self.hostname, self.port))
             yield from asyncio.sleep(delay)
-    
+
+
+def _escape(string):
+    return string.replace(r"'", r"'\''")
+
+
+def _escape_env(env):
+    cmd = ""
+    if env:
+        for key, val in env.items():
+            # TODO: safe variable name
+            cmd += "%s='%s' " % (key, _escape(val))
+    return cmd
+
 
 def _escape_cmd(cmd):
-    return " ".join(["'%s'" % arg.replace(r"'", r"'\''") for arg in cmd])
+   return " ".join(["'%s'" % _escape(arg) for arg in cmd])
