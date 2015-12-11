@@ -54,7 +54,7 @@ class ZFS:
     @asyncio.coroutine
     def create(self, name):
         cmd = ["zfs", "create", "/".join((self.dataset, name))]
-        yield from self.ssh.run(cmd)
+        yield from self.ssh.run(cmd, stderr=print)
 
     @asyncio.coroutine
     def list_files(self, name):
@@ -71,10 +71,8 @@ class ZFS:
     @asyncio.coroutine
     def exist(self, name):
         LOG.debug("Checking if image %s exist" % name)
-        cmd = "zfs list"
-        err, data, err = yield from self.ssh.out(cmd, check=False)
-        r = re.search("^%s/%s " % (self.dataset, name), data, re.MULTILINE)
-        return bool(r)
+        cmd = ["zfs", "list", "%s/%s@1" % (self.dataset, name)]
+        return not (yield from self.ssh.run(cmd, check=False, stderr=print))
 
     @asyncio.coroutine
     def snapshot(self, name, snapshot="1"):
