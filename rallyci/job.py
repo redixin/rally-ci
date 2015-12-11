@@ -15,6 +15,7 @@
 import asyncio
 import copy
 from concurrent.futures import ALL_COMPLETED
+import gzip
 import time
 import os
 import string
@@ -74,13 +75,26 @@ class Job:
         for fut in done:
             self.vms.append((fut.result(), vms[fut]))
 
+        pub_dir = "/store/rally-ci/logs"
+        path = os.path.join(pub_dir, self.task.id, self.config["name"])
+        os.makedirs(path)
+        path += "/console.log.gz"
+        console_log = gzip.open(path, "wb")
+        def logger(data):
+            console_log.write(data.encode("utf-8"))
+        logger("started")
+
         for vm, conf in self.vms:
             for script in conf.get("scripts", []):
                 self.set_status(script)
                 script = self.root.config.data["script"][script]
-                error = yield from vm.run_script(script, env=self.env, check=False)
+                error = yield from vm.run_script(script, env=self.env,
+                                                 check=False,
+                                                 cb=logger)
                 if error:
+                    console_log.close()
                     return error
+        console_log.close()
 
     @asyncio.coroutine
     def run(self):
