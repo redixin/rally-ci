@@ -170,7 +170,7 @@ class Host:
         self.config = config
         self.root = root
         self.br_vm = {}
-        self.vms = []
+        self._job_vms = {}
         ssh_conf.setdefault("username", "root")
         self.ssh = SSH(root.loop, **ssh_conf,
                        keys=root.config.get_ssh_keys(keytype="private"))
@@ -264,7 +264,6 @@ class Host:
             else:
                 vm.add_net(net[0], mac=net[1])
         yield from vm.boot()
-        self.vms.append(vm)
         return vm
 
     def _cleanup_vm(self, vm):
@@ -290,7 +289,15 @@ class Host:
                 conf["net"][net].replace(ifname[0],
                                          ifname[0][:-1] + str(number))
         vm = yield from self._get_vm(name, conf)
+        if job not in self._job_vms:
+            self._job_vms[job] = []
+        self._job_vms[job].append(vm)
         return vm
+
+    @asyncio.coroutine
+    def cleanup(self, job):
+        for vm in self._job_vms.pop(job, []):
+            yield from vm.destroy()
 
     @asyncio.coroutine
     def cleanup_net(self):
@@ -365,12 +372,8 @@ class Provider:
                                      "iptables -t nat -I %s") % (cmd, cmd))
 
     @asyncio.coroutine
-    def cleanup(self, vms):
-        LOG.debug("Starting cleanup %s" % vms)
-        for vm in vms:
-            LOG.debug("Cleaning %s" % vm)
-            yield from vm.destroy()
-        LOG.debug("Cleanup completed")
+    def cleanup(self, job):
+        yield from self._job_host_map.pop(job).cleanup(job)
 
     @asyncio.coroutine
     def stop(self):
@@ -456,12 +459,13 @@ class VM:
         return "<VM %s>" % (self.name)
 
     @asyncio.coroutine
-    def run_script(self, script, env=None, check=True, cb=None):
+    def run_script(self, script, env=None, check=True, cb_out=None, cb_err=None):
         LOG.debug("Running script: %s on vm %s with env %s" % (script, self, env))
         yield from self.get_ip()
         cmd = script.get("interpreter", "/bin/bash -xe -s")
         ssh = yield from self.get_ssh(script.get("user", "root"))
-        status = yield from ssh.run(cmd, stdin=script["data"], stdout=cb, stderr=cb,
+        status = yield from ssh.run(cmd, stdin=script["data"],
+                                    stdout=cb_out, stderr=cb_err,
                                     check=check, env=env)
         return status
 
@@ -495,7 +499,6 @@ class VM:
             if lst and self in lst:
                 lst.remove(self)
         yield from self.host.cleanup_net()
-        self.host.vms.remove(self)
 
     @asyncio.coroutine
     def get_ssh(self, user="root"):
@@ -529,7 +532,7 @@ class VM:
         conf = "/tmp/.rci-%s.xml" % id(self)
         with self.fd() as fd:
             yield from self._ssh.run("cat > '%s'" % conf, stdin=fd)
-        yield from self._ssh.run(["virsh", "create", conf])
+        yield from self._ssh.run(["virsh", "create", conf], stderr=print)
 
     @contextlib.contextmanager
     def fd(self):

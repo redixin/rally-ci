@@ -25,7 +25,7 @@ from rallyci.config import Config
 class Root:
     def __init__(self, loop, filename, verbose):
         self._running_objects = {}
-        self._running_cleanups = []
+        self._running_cleanups = set()
 
         self.filename = filename
         self.verbose = verbose
@@ -72,7 +72,6 @@ class Root:
 
     def task_done_cb(self, fut):
         try:
-
             task = self.tasks.pop(fut)
             self.log.info("Finished task %s" % task)
             self.task_set.remove(task.event.key)
@@ -108,7 +107,8 @@ class Root:
     def schedule_cleanup(self, fut):
         obj = self._running_objects.pop(fut)
         fut = asyncio.async(self.run_cleanup(obj), loop=self.loop)
-        self._running_cleanups.append(fut)
+        self._running_cleanups.add(fut)
+        fut.add_done_callback(self._running_cleanups.remove)
 
     def start_services(self):
         for service in self.config.iter_instances("service", "Service"):

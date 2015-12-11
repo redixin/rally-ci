@@ -15,6 +15,7 @@
 import asyncio
 import copy
 from concurrent.futures import ALL_COMPLETED
+from functools import partial
 import gzip
 import time
 import os
@@ -47,6 +48,7 @@ class Job:
         self.log_path = os.path.join(self.task.id, config["name"])
         self.log.debug("Job %s initialized." % self.id)
         self.vms = []
+        self.console_listeners = []
         Job.BOOT_LOCK = asyncio.Lock(loop=task.root.loop)
 
     def __repr__(self):
@@ -80,9 +82,14 @@ class Job:
         os.makedirs(path)
         path += "/console.log.gz"
         console_log = gzip.open(path, "wb")
-        def logger(data):
+
+        def _data(fd, data):
+            for cb in self.console_listeners:
+                try:
+                    cb((fd, data))
+                except Exception:
+                    self.root.log.exception("")
             console_log.write(data.encode("utf-8"))
-        logger("started")
 
         for vm, conf in self.vms:
             for script in conf.get("scripts", []):
@@ -90,7 +97,8 @@ class Job:
                 script = self.root.config.data["script"][script]
                 error = yield from vm.run_script(script, env=self.env,
                                                  check=False,
-                                                 cb=logger)
+                                                 cb_out=partial(_data, 1),
+                                                 cb_err=partial(_data, 2))
                 if error:
                     console_log.close()
                     return error
@@ -116,10 +124,11 @@ class Job:
             self.log.exception("Error running %s" % self)
         finally:
             self.finished_at = time.time()
+        self.set_status(self.status) # TODO: fix cleanup in http status
 
     @asyncio.coroutine
     def cleanup(self):
-        yield from self.provider.cleanup([v[0] for v in self.vms])
+        yield from self.provider.cleanup(self)
 
     def to_dict(self):
         return {"id": self.id,

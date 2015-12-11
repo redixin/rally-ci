@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<head>
+<title>Rally-CI</title>
+<script src="//ajax.googleapis.com/ajax/libs/jquery/1.11.2/jquery.min.js"></script>
+
+<script type="text/javascript">
+
+$(document).ready(function(){
+    var path = window.location.pathname.split("/");
+    var job_id = path[path.length-2];
+    var scheme = location.protocol == 'https:' ? 'wss://' : 'ws://';
+    var ws = new WebSocket(scheme + window.location.host + "/console/"+job_id+"/");
+
+    function append_lines(data) {
+        var con = $("#console");
+        var lines = data[1].split("\n");
+        for(var i=0; i<lines.length; i++) {
+            con.append("<p class=fd_"+data[0]+">"+lines[i]+"</p>");
+        }
+        con.scrollTop(con[0].scrollHeight);
+    }
+    ws.onmessage = function(msg) {
+        var data = JSON.parse(msg.data);
+        if(data.length==2) {
+            append_lines(data);
+        } else {
+            console.log(msg);
+        }
+    }
+});
+</script>
+<style type=text/css>
+#console { overflow: auto; background-color: black;
+           color: white; font-family: monospace; font-weight: bold;
+           height: 5in; width: 10in; }
+#console p { margin: 0; padding: 0; }
+#console p.fd_2 { color: red; }
+</style>
+</head>
+
+<div id=console>
+</div>
+
+</body>
+</html>

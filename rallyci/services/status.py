@@ -14,6 +14,7 @@
 
 import asyncio
 import collections
+import functools
 import pkgutil
 import logging
 import os.path
@@ -34,13 +35,48 @@ class Service:
         self.root = root
         self.loop = root.loop
         self.config = config
+
+        self.console_listeners = {}
         self.clients = []
+        self._jobs = {}
         self._finished = collections.deque(maxlen=10)
 
     @asyncio.coroutine
     def index(self, request):
         LOG.debug("Index requested: %s" % request)
         text = pkgutil.get_data(__name__, "status.html").decode("utf-8")
+        return web.Response(text=text, content_type="text/html")
+
+    def _con_cb(self, job_id, data):
+        for cl in self.console_listeners.get(job_id, []):
+            cl.send_str(json.dumps(data))
+
+    @asyncio.coroutine
+    def console(self, request):
+        job = self._jobs.get(request.match_info["job_id"])
+        if not job:
+            return web.HTTPNotFound()
+        ws = web.WebSocketResponse()
+        ws.start(request)
+        if job.id not in self.console_listeners:
+            self.console_listeners[job.id] = []
+        self.console_listeners[job.id].append(ws)
+        job.console_listeners.append(functools.partial(self._con_cb, job.id))
+        try:
+            yield from ws.receive()
+        except CancelledError:
+            pass
+        except Exception:
+            LOG.exception("Error listening websocket %s" % ws)
+        self.console_listeners[job.id].remove(ws)
+        if not self.console_listeners[job.id]:
+            del self.console_listeners[job.id]
+        return ws
+
+    @asyncio.coroutine
+    def job(self, request):
+        LOG.debug("Index requested: %s" % request)
+        text = pkgutil.get_data(__name__, "status_job.html").decode("utf-8")
         return web.Response(text=text, content_type="text/html")
 
     @asyncio.coroutine
@@ -75,15 +111,20 @@ class Service:
         for c in self.clients:
             c.send_str(json.dumps(data))
 
-    def _task_started_cb(self, event):
-        self._send_all({"type": "task-started", "task": event.to_dict()})
+    def _task_started_cb(self, task):
+        self._send_all({"type": "task-started", "task": task.to_dict()})
 
     def _job_status_cb(self, job):
+        if job.finished_at is None:
+            if job.id not in self._jobs:
+                self._jobs[job.id] = job
+        else:
+            self._jobs.pop(job.id)
         self._send_all({"type": "job-status-update", "job": job.to_dict()})
 
-    def _task_finished_cb(self, event):
-        self._finished.append(event.to_dict())
-        self._send_all({"type": "task-finished", "id": event.id})
+    def _task_finished_cb(self, task):
+        self._finished.append(task.to_dict())
+        self._send_all({"type": "task-finished", "id": task.id})
 
     def _send_daemon_statistic(self):
         stat = self.root.get_daemon_statistics()
@@ -103,6 +144,8 @@ class Service:
         self.app = web.Application(loop=self.loop)
         self.app.router.add_route("GET", "/", self.index)
         self.app.router.add_route("GET", "/ws/", self.ws)
+        self.app.router.add_route("GET", "/jobs/{job_id}/", self.job)
+        self.app.router.add_route("GET", "/console/{job_id}/", self.console)
         addr, port = self.config.get("listen", ("localhost", 8080))
         self.handler = self.app.make_handler()
         self.srv = yield from self.loop.create_server(self.handler, addr, port)

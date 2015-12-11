@@ -8,12 +8,13 @@ function Task(task) {
         var html = "<div id='"+this.t.id+"'>";
         html += "<table>";
         html += "<tr><td colspan=2><h4>"+this.t.project+"</h4><tr>";
-        html += "<tr><td colspan=2><h4><a href='"+this.t.url+"'>"+this.t.subject+"</a></h4></td></tr>";
+        html += "<tr><td colspan=2><h4><a href='"+this.t.url+"'>"+this.t.subject;
+        html += "</a></h4></td><td></td></tr>";
         for (job_id in this.jobs) {
             var job = this.jobs[job_id];
             html += "<tr><td class=job><a href='/logs/"+this.t.id+"/"+job.name+"/'>"
             html += job.name+"</a></td><td class='result "+job.status+"' id='"+job_id+"'>"
-            html += job.status+"</td></tr>";
+            html += job.status+"</td><td><a href='/jobs/"+job.id+"/' target=_blank>+</a></tr></tr>";
         }
         html += "<tr></tr>";
         html += "</table>";
