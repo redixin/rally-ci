@@ -75,7 +75,7 @@ class Root:
             task = self.tasks.pop(fut)
             self.log.info("Finished task %s" % task)
             self.task_set.remove(task.event.key)
-            for handler in self.task_start_handlers:
+            for handler in self.task_end_handlers:
                 try:
                     handler(task)
                 except Exception:

@@ -28,7 +28,7 @@
 - service:
     name: status
     module: rallyci.services.status
-    listen: ["localhost", "8080"]
+    listen: ["0.0.0.0", "8080"]
 
 - provider:
     name: my_virsh

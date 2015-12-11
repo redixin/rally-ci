@@ -457,7 +457,7 @@ class VM:
         return "<VM %s>" % (self.name)
 
     @asyncio.coroutine
-    def run_script(self, script, env=None, check=True, cb=None):
+    def run_script(self, script, env=None, check=True):
         LOG.debug("Running script: %s on vm %s with env %s" % (script, self, env))
         yield from self.get_ip()
         cmd = script.get("interpreter", "/bin/bash -xe -s")
