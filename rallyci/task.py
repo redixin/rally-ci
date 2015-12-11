@@ -101,6 +101,7 @@ class Task:
                 self.root.log.info("Cancelled %s" % self)
                 for fut in self._job_futures:
                     fut.cancel()
+                return
 
     def to_dict(self):
         return {

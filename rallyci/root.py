@@ -131,6 +131,7 @@ class Root:
             for fut in done:
                 if fut in fs:
                     del(fs[fut])
+            self.log.debug("Pending %s" % pending)
 
     @asyncio.coroutine
     def reload(self):
@@ -168,12 +169,14 @@ class Root:
         yield from reload_fut
         for obj in self._running_objects:
             obj.cancel()
-        yield from self.wait_fs(self._running_objects)
+        yield from asyncio.wait(self._running_objects,
+                                return_when=futures.ALL_COMPLETED)
         if self._running_cleanups:
             yield from asyncio.wait(self._running_cleanups,
                                     return_when=futures.ALL_COMPLETED)
         for provider in self.providers.values():
             yield from prov.stop()
+        self.log.info("Exit.")
 
     def job_updated(self, job):
         for cb in self.job_update_handlers:
