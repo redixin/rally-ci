@@ -456,12 +456,13 @@ class VM:
         return "<VM %s>" % (self.name)
 
     @asyncio.coroutine
-    def run_script(self, script, env=None, check=True):
+    def run_script(self, script, env=None, check=True, cb=None):
         LOG.debug("Running script: %s on vm %s with env %s" % (script, self, env))
         yield from self.get_ip()
         cmd = script.get("interpreter", "/bin/bash -xe -s")
         ssh = yield from self.get_ssh(script.get("user", "root"))
-        status = yield from ssh.run(cmd, stdin=script["data"], stdout=print, stderr=print, check=check)
+        status = yield from ssh.run(cmd, stdin=script["data"], stdout=print, stderr=print,
+                                    check=check, env=env)
         return status
 
     @asyncio.coroutine

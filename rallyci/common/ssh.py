@@ -106,7 +106,7 @@ class SSH:
         """
         if isinstance(cmd, list):
             cmd = _escape_cmd(cmd)
-        LOG.debug("Running %s" % cmd)
+        LOG.debug("Running %s with env %s" % (cmd, env))
         yield from self._ensure_connected()
         session_factory = functools.partial(SSHClientSession, (stdout, stderr))
         chan, session = yield from self.conn.create_session(session_factory,

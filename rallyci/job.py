@@ -13,6 +13,7 @@
 #    limitations under the License.
 
 import asyncio
+import copy
 from concurrent.futures import ALL_COMPLETED
 import time
 import os
@@ -39,7 +40,8 @@ class Job:
         self.log = task.root.log
         self.timeout = self.config.get("timeout", 90) * 60
         self.id = utils.get_rnd_name("job_", length=10)
-        self.env = config.get("env", {}).copy()
+        self.env = copy.deepcopy(self.task.event.env)
+        self.env.update(config.get("env", {}))
         self.status = "__init__"
         self.log_path = os.path.join(self.task.id, config["name"])
         self.log.debug("Job %s initialized." % self.id)
@@ -74,7 +76,7 @@ class Job:
         for vm, conf in self.vms:
             for script in conf.get("scripts", []):
                 script = self.root.config.data["script"][script]
-                error = yield from vm.run_script(script, check=False)
+                error = yield from vm.run_script(script, env=self.env, check=False)
                 if error:
                     return error
 
