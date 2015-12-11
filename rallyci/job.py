@@ -68,6 +68,7 @@ class Job:
                                 loop=self.root.loop)
             vms[fut] = vm
         with (yield from Job.BOOT_LOCK):
+            self.set_status("boot")
             done, pending = yield from asyncio.wait(list(vms.keys()),
                                                     return_when=ALL_COMPLETED)
         for fut in done:
@@ -75,6 +76,7 @@ class Job:
 
         for vm, conf in self.vms:
             for script in conf.get("scripts", []):
+                self.set_status(script)
                 script = self.root.config.data["script"][script]
                 error = yield from vm.run_script(script, env=self.env, check=False)
                 if error:

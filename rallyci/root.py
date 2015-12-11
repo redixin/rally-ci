@@ -59,12 +59,13 @@ class Root:
             self.log.exception("Exception running %s" % coro)
 
     def start_task(self, task):
+        """
+        :param Task task:
+        """
         if task.event.key in self.task_set:
             self.log.warning("Task '%s' is already running" % task.event.key)
             return
         self.task_set.add(task.event.key)
-        for cb in self.task_start_handlers:
-            cb(task)
         fut = self.start_obj(task)
         self.tasks[fut] = task
         fut.add_done_callback(self.task_done_cb)

@@ -82,6 +82,7 @@ function connect_ws() {
         var e = JSON.parse(e.data);
         switch(e["type"]) {
             case "task-started":
+                console.log(e.task);
                 tasks.add(e.task);
                 break;
             case "task-finished":

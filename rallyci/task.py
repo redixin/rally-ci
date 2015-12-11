@@ -25,9 +25,6 @@ from rallyci import utils
 
 
 class Task:
-    finished_at = None
-    jobs = {}
-    _job_futures = {}
 
     def __init__(self, root, event):
         """
@@ -37,9 +34,11 @@ class Task:
         self.root = root
         self.event = event
 
+        self.finished_at = None
         self.started_at = time.time()
         self.id = utils.get_rnd_name("task_", length=10)
         self._finished = asyncio.Event(loop=root.loop)
+        self._job_futures = {}
 
     def __repr__(self):
         return "<Task %s %s>" % (self.event.project, self.id)
@@ -92,6 +91,8 @@ class Task:
         if self.event.cfg_url:
             local_cfg = yield from self._get_local_cfg(self.event.cfg_url)
         self._start_jobs(local_cfg)
+        for cb in self.root.task_start_handlers:
+            cb(self)
         while not self._finished.is_set():
             try:
                 yield from self._finished.wait()
@@ -105,7 +106,7 @@ class Task:
     def to_dict(self):
         return {
             "id": self.id,
-            "jobs": [j.to_dict() for j in self.jobs],
+            "jobs": [j.to_dict() for j in self._job_futures.values()],
             "finished_at": self.finished_at,
             "subject": cgi.escape(self.event.subject),
             "project": cgi.escape(self.event.project),

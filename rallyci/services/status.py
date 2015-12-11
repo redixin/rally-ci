@@ -40,7 +40,7 @@ class Service:
     @asyncio.coroutine
     def index(self, request):
         LOG.debug("Index requested: %s" % request)
-        text = pkgutil.get_data(__name__, "index.html").decode("utf-8")
+        text = pkgutil.get_data(__name__, "status.html").decode("utf-8")
         return web.Response(text=text, content_type="text/html")
 
     @asyncio.coroutine
