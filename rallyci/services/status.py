@@ -67,11 +67,22 @@ class Service:
         except CancelledError:
             pass
         except Exception:
-            LOG.exception("Error listening websocket %s" % ws)
-        self.console_listeners[job.id].remove(ws)
-        if not self.console_listeners[job.id]:
-            del self.console_listeners[job.id]
+            LOG.exception("Websocket error %s" % ws)
+        wss = self.console_listeners.get(job.id)
+        if wss and ws in wss:
+            wss.remove(ws)
+        if wss is not None:
+            if not wss:
+                self.console_listeners.pop(job.id)
         return ws
+
+    @asyncio.coroutine
+    def close_console_listeners(self, job):
+        wss = self.console_listeners.pop(job.id)
+        for ws in wss:
+            ws.send_str(json.dumps({"status": job.status}))
+        for ws in wss:
+            yield from ws.close()
 
     @asyncio.coroutine
     def job(self, request):
@@ -120,6 +131,8 @@ class Service:
                 self._jobs[job.id] = job
         else:
             self._jobs.pop(job.id)
+            if job.id in self.console_listeners:
+                self.root.start_coro(self.close_console_listeners(job))
         self._send_all({"type": "job-status-update", "job": job.to_dict()})
 
     def _task_finished_cb(self, task):

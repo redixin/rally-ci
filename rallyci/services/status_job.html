@@ -24,9 +24,12 @@ $(document).ready(function(){
         if(data.length==2) {
             append_lines(data);
         } else {
-            console.log(msg);
+            document.title = document.title + " :: " + data.status;
         }
     }
+    ws.onclose = function(e) {
+        //TODO
+    };
 });
 </script>
 <style type=text/css>

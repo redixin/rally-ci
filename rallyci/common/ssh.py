@@ -66,7 +66,7 @@ class SSHClientSession(asyncssh.SSHClientSession):
         elif self._stderr_cb and (datatype == asyncssh.EXTENDED_DATA_STDERR):
             self._stderr_cb(data)
 
-    def connection_lost(self):
+    def connection_lost(self, ex):
         self._stdout_cb = None
         self._stderr_cb = None
 
@@ -166,6 +166,7 @@ class SSH:
             if time.time() > (_start + timeout):
                 raise SSHError("timeout %s:%s" % (self.hostname, self.port))
             yield from asyncio.sleep(delay)
+
 
 def _escape(string):
     return string.replace(r"'", r"'\''")

@@ -25,6 +25,7 @@ from rallyci.config import Config
 class Root:
     def __init__(self, loop, filename, verbose):
         self._running_objects = {}
+        self._running_coros = set()
         self._running_cleanups = set()
 
         self.filename = filename
@@ -85,7 +86,9 @@ class Root:
             self.log.exception("Error in task_done_cb")
 
     def start_coro(self, coro):
-        fut = asyncio.async(self.run_coro(obj), loop=self.loop)
+        fut = asyncio.async(self.run_coro(coro), loop=self.loop)
+        self._running_coros.add(fut)
+        fut.add_done_callback(self._running_coros.remove)
         return fut
 
     def start_obj(self, obj):
