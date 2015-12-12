@@ -57,7 +57,6 @@ class Task:
 
     def _job_done_cb(self, fut):
         job = self._job_futures.pop(fut)
-        job.finished_at = time.time()
         self.root.log.info("Finished job %s" % job)
         if not self._job_futures:
             self._finished.set()

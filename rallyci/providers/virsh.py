@@ -266,9 +266,6 @@ class Host:
         yield from vm.boot()
         return vm
 
-    def _cleanup_vm(self, vm):
-        print(vm)
-
     @asyncio.coroutine
     def get_vm_for_job(self, name, job):
         """
@@ -429,6 +426,7 @@ class VM:
         self.host = host
         self.cfg = cfg or {}
         self._ssh = host.ssh
+        self._ssh_cache = {}
         self.macs = []
         self.disks = []
         self.bridges = []
@@ -499,13 +497,21 @@ class VM:
             if lst and self in lst:
                 lst.remove(self)
         yield from self.host.cleanup_net()
+        for ssh in self._ssh_cache.values():
+            ssh.close()
+        self._ssh_cache = {}
+
 
     @asyncio.coroutine
     def get_ssh(self, user="root"):
         yield from self.get_ip()
+        ssh = self._ssh_cache.get(user)
+        if ssh:
+            return ssh
         ssh = SSH(self.host.root.loop, self.ip, username=user,
                   keys=self.host.root.config.get_ssh_keys("private"))
         yield from ssh.wait()
+        self._ssh_cache[user] = ssh
         return ssh
 
     @asyncio.coroutine

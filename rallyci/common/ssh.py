@@ -40,15 +40,18 @@ class SSHProcessKilled(SSHProcessFailed):
 
 class SSHClient(asyncssh.SSHClient):
 
-    def __init__(self, client, *args, **kwargs):
+    def __init__(self, ssh, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._client = client
+        self._ssh = ssh
 
     def connection_made(self, conn):
         pass
 
     def connection_lost(self, ex):
-        self._client._connected.clear()
+        self._ssh._connected.clear()
+        self._ssh.client = None
+        self._ssh.conn = None
+        self._ssh = None
 
 
 class SSHClientSession(asyncssh.SSHClientSession):
@@ -62,6 +65,10 @@ class SSHClientSession(asyncssh.SSHClientSession):
             self._stdout_cb(data)
         elif self._stderr_cb and (datatype == asyncssh.EXTENDED_DATA_STDERR):
             self._stderr_cb(data)
+
+    def connection_lost(self):
+        self._stdout_cb = None
+        self._stderr_cb = None
 
 
 class SSH:
@@ -79,6 +86,11 @@ class SSH:
 
     def client_factory(self, *args, **kwargs):
         return SSHClient(self, *args, **kwargs)
+
+    def close(self):
+        if hasattr(self, "conn"):
+            if self._connected.is_set():
+                self.conn.close()
 
     @asyncio.coroutine
     def _ensure_connected(self):
@@ -154,7 +166,6 @@ class SSH:
             if time.time() > (_start + timeout):
                 raise SSHError("timeout %s:%s" % (self.hostname, self.port))
             yield from asyncio.sleep(delay)
-
 
 def _escape(string):
     return string.replace(r"'", r"'\''")

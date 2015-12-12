@@ -24,6 +24,7 @@ from rallyci import task
 
 
 class Event(base.BaseEvent):
+
     def __init__(self, cfg, raw_event):
         """
         :param cfg: service config section
