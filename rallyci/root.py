@@ -48,7 +48,10 @@ class Root:
 
     @asyncio.coroutine
     def run_obj(self, obj):
-        yield from self.run_coro(obj.run())
+        try:
+            yield from self.run_coro(obj.run())
+        except Exception:
+            self.log.exception("Error running %s" % obj)
 
     @asyncio.coroutine
     def run_coro(self, coro):
