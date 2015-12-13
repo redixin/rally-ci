@@ -77,7 +77,7 @@ class Job:
         for fut in done:
             self.vms.append((fut.result(), vms[fut]))
 
-        pub_dir = "/store/rally-ci/logs"
+        pub_dir = self.root.config.get_value("pub-dir", "/tmp/rally-pub")
         path = os.path.join(pub_dir, self.task.id, self.config["name"])
         os.makedirs(path)
         path += "/console.log.gz"

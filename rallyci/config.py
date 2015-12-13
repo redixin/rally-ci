@@ -60,6 +60,9 @@ class Config:
                     raise ValueError("Duplicate vm %s" % vm)
                 self._vm_provider_map[vm] = provider
 
+    def get_value(self, value):
+        return self.data["rally-ci"][0].get(value)
+
     def get_ssh_key(self, keytype="public", name="default"):
         return self.data["ssh-key"][name][keytype]
 
