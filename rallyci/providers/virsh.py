@@ -172,8 +172,8 @@ class Host:
         self.br_vm = {}
         self._job_vms = {}
         ssh_conf.setdefault("username", "root")
-        self.ssh = SSH(root.loop, **ssh_conf,
-                       keys=root.config.get_ssh_keys(keytype="private"))
+        ssh_conf["keys"] = root.config.get_ssh_keys(keytype="private")
+        self.ssh = SSH(root.loop, **ssh_conf)
         self.la = 0.0
         self.free = 0
         storage_cf = config["storage"]

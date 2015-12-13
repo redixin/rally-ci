@@ -114,6 +114,8 @@ class Service:
             return
         if "port" not in self.cfg["ssh"]:
             self.cfg["ssh"]["port"] = 29418
+
+        self.cfg["ssh"]["keys"] = self.root.config.get_ssh_keys(keytype="private")
         self.ssh = SSH(self.loop, **self.cfg["ssh"])
         self.root.task_end_handlers.append(self._handle_task_end)
         reconnect_delay = self.cfg.get("reconnect_delay", 5)
