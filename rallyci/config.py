@@ -60,8 +60,8 @@ class Config:
                     raise ValueError("Duplicate vm %s" % vm)
                 self._vm_provider_map[vm] = provider
 
-    def get_value(self, value):
-        return self.data["rally-ci"][0].get(value)
+    def get_value(self, value, default):
+        return self.data["rally-ci"][0].get(value, default)
 
     def get_ssh_key(self, keytype="public", name="default"):
         return self.data["ssh-key"][name][keytype]
@@ -71,6 +71,26 @@ class Config:
 
     def is_project_configured(self, project):
         return project in self._configured_projects
+
+    def get_jobs(self, project, jobs_type="jobs", local_config=None):
+        """
+        :param str project: project name
+        :param str jobs_type: one of jobs, non-voting-jobs, merge-jobs
+        :param list local_config: project config file decoded from yaml
+        """
+        if project not in self._configured_projects:
+            raise StopIteration
+
+        for matrix in self.data.get("matrix", []).values():
+            if project in matrix["projects"]:
+                for job in matrix[jobs_type]:
+                    yield self.data["job"][job]
+
+        if local_config:
+            for item in local_cfg:
+                key, value = list(item.items())[0]
+                if key == "job":
+                    yield value
 
     def get_provider(self, vm):
         return self.root.providers[self._vm_provider_map[vm]]

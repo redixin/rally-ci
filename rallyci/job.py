@@ -25,12 +25,9 @@ from rallyci import utils
 
 
 class Job:
-
-    voting = False
     finished_at = None
-    _vms = []
 
-    def __init__(self, task, config):
+    def __init__(self, task, config, voting=False):
         """
         :param Task task:
         :param dict config: job config
@@ -38,6 +35,7 @@ class Job:
         self.config = config
         self.task = task
 
+        self.voting = voting
         self.root = task.root
         self.log = task.root.log
         self.timeout = self.config.get("timeout", 90) * 60
@@ -102,6 +100,16 @@ class Job:
                 if error:
                     console_log.close()
                     return error
+
+        for vm, conf in self.vms:
+            for script in conf.get("post", []):
+                self.set_status(script)
+                script = self.root.config.data["script"][script]
+                error = yield from vm.run_script(script, env=self.env,
+                                                 check=False,
+                                                 cb_out=partial(_data, 1),
+                                                 cb_err=partial(_data, 2))
+
         console_log.close()
 
     @asyncio.coroutine

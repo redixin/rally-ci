@@ -61,9 +61,8 @@ class Task:
         if not self._job_futures:
             self._finished.set()
 
-    def _start_job(self, name):
-        config = self.config["job"][name]
-        job = Job(self, config)
+    def _start_job(self, config, voting=False):
+        job = Job(self, config, voting)
         fut = self.root.start_obj(job)
         self._job_futures[fut] = job
         fut.add_done_callback(self._job_done_cb)
@@ -72,18 +71,17 @@ class Task:
         """
         :param list local_cfg: config loaded from project
         """
-        self.config = copy.deepcopy(self.root.config.data)
+        cfg_gen = self.root.config.get_jobs
 
-        if local_cfg:
-            for item in local_cfg:
-                key, value = list(item.items())[0]
-                if key in ("script", "job", "matrix"):
-                    self.config[key][value["name"]] = value
+        if self.event.event_type == "change-merged":
+            for cfg in cfg_gen(self.event.project, "merged-jobs", local_cfg):
+                self._start_job(cfg)
 
-        for matrix in self.config.get("matrix", []).values():
-            if self.event.project in matrix["projects"]:
-                for job in matrix["jobs"]:
-                    self._start_job(job)
+        for cfg in cfg_gen(self.event.project, "jobs", local_cfg):
+            self._start_job(cfg, voting=True)
+
+        for cfg in cfg_gen(self.event.project, "non-voting-jobs", local_cfg):
+            self._start_job(cfg)
 
     @asyncio.coroutine
     def run(self):

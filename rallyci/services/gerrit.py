@@ -23,6 +23,11 @@ from rallyci import utils
 from rallyci import task
 
 
+EVENT_TYPES = {
+    "patchset-created": "patchset-created",
+    "ref-updated": "change-merged",
+}
+
 class Event(base.BaseEvent):
 
     def __init__(self, cfg, raw_event):
@@ -32,6 +37,7 @@ class Event(base.BaseEvent):
         self.raw_event = raw_event
         self.env = _get_env(raw_event, cfg.get("env", {}))
         self.project = _get_project_name(raw_event)
+        self.event_type = EVENT_TYPES.get(raw_event["type"], "unknown")
         if "patchSet" in raw_event:
             template = cfg.get("cr-url-template", "")
             self.cr = raw_event["change"]["id"]
@@ -66,12 +72,12 @@ class Service:
         event = Event(self.cfg, raw_event)
         self.root.start_task(task.Task(self.root, event))
 
-    def _handle_comment_added(self, event):
+    def _handle_comment_added(self, raw_event):
         r = self.cfg.get("recheck-regexp", "^rally-ci recheck$")
-        m = re.search(r, event["comment"], re.MULTILINE)
+        m = re.search(r, raw_event["comment"], re.MULTILINE)
         if m:
-            self.log.info("Recheck for %s" % project)
-            self._start_task(event)
+            self.log.info("Recheck for %s" % _get_project_name(raw_event))
+            self._start_task(raw_event)
 
     def _handle_event(self, event):
         event = json.loads(event)
