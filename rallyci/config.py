@@ -87,7 +87,7 @@ class Config:
                     yield self.data["job"][job]
 
         if local_config:
-            for item in local_cfg:
+            for item in local_config:
                 key, value = list(item.items())[0]
                 if key == "job":
                     yield value

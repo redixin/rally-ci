@@ -19,6 +19,7 @@ import cgi
 import time
 
 import aiohttp
+import yaml
 
 from rallyci.job import Job
 from rallyci import utils
@@ -45,6 +46,7 @@ class Task:
 
     @asyncio.coroutine
     def _get_local_cfg(self, url):
+        self.root.log.debug("Trying to get config %s" % url)
         r = yield from aiohttp.get(url)
         if r.status == 200:
             local_cfg = yield from r.text()
@@ -76,15 +78,17 @@ class Task:
         if self.event.event_type == "change-merged":
             for cfg in cfg_gen(self.event.project, "merged-jobs", local_cfg):
                 self._start_job(cfg)
+                return
 
         for cfg in cfg_gen(self.event.project, "jobs", local_cfg):
             self._start_job(cfg, voting=True)
 
-        for cfg in cfg_gen(self.event.project, "non-voting-jobs", local_cfg):
+        for cfg in cfg_gen(self.event.project, "non-voting-jobs", None):
             self._start_job(cfg)
 
     @asyncio.coroutine
     def run(self):
+        local_cfg = None
         if self.event.cfg_url:
             local_cfg = yield from self._get_local_cfg(self.event.cfg_url)
         self._start_jobs(local_cfg)

@@ -16,19 +16,28 @@ from rallyci import config
 
 import os
 import unittest
+from unittest import mock
 import json
 
 
 class ConfigTestCase(unittest.TestCase):
 
-    def test___init__(self):
+    def setUp(self):
+        self.root = mock.Mock()
         dirname = os.path.dirname(os.path.realpath(__file__))
-        filename = os.path.join(dirname, "../../etc/sample-config.yaml")
-        c = config.Config({}, filename, False)
+        cf = os.path.join(dirname, "test_config.yaml")
+        with mock.patch("rallyci.config.Config.configure_logging"):
+            self.config = config.Config(self.root, cf, False)
 
     def test_ssh_keys(self):
-        dirname = os.path.dirname(os.path.realpath(__file__))
-        filename = os.path.join(dirname, "../../etc/sample-config.yaml")
-        c = config.Config({}, filename, False)
-        self.assertEqual("/home/eye/.ssh/test.pub", c.get_ssh_key())
-        self.assertEqual(["/home/eye/.ssh/test.pub"], c.get_ssh_keys())
+        self.assertEqual("/keys/test.pub", self.config.get_ssh_key())
+        self.assertEqual("/keys/test", self.config.get_ssh_key("private"))
+
+    def test_get_jobs(self):
+        jobs = list(self.config.get_jobs("openstack/rally"))
+        expected = [{'env': {'TOX_ENV': 'pep8'},
+            'name': 'tox-pep8',
+            'provider': 'my_virsh',
+            'vms': [{'name': 'ubuntu-1404-dev',
+            'scripts': ['git_checkout', 'run_tests']}]}]
+        self.assertEqual(expected, jobs)
