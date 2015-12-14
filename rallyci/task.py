@@ -35,6 +35,7 @@ class Task:
         self.root = root
         self.event = event
 
+        self.jobs = []
         self.finished_at = None
         self.started_at = time.time()
         self.id = utils.get_rnd_name("task_", length=10)
@@ -65,6 +66,7 @@ class Task:
 
     def _start_job(self, config, voting=False):
         job = Job(self, config, voting)
+        self.jobs.append(job)
         fut = self.root.start_obj(job)
         self._job_futures[fut] = job
         fut.add_done_callback(self._job_done_cb)
@@ -107,7 +109,7 @@ class Task:
     def to_dict(self):
         return {
             "id": self.id,
-            "jobs": [j.to_dict() for j in self._job_futures.values()],
+            "jobs": [j.to_dict() for j in self.jobs],
             "finished_at": self.finished_at,
             "subject": cgi.escape(self.event.subject),
             "project": cgi.escape(self.event.project),

@@ -142,7 +142,6 @@ class Service:
             yield from asyncio.sleep(reconnect_delay)
 
     def _handle_task_end(self, task):
-        return
         self.root.start_coro(self.publish_results(task))
 
     @asyncio.coroutine
@@ -162,7 +161,7 @@ class Service:
         succeeded = "failed" if fail else "succeeded"
         summary = comment_header.format(succeeded=succeeded)
         tpl = self.cfg["comment-job-template"]
-        for job in self.jobs_list:
+        for job in task.jobs:
             success = job.status + ("" if job.voting else " (non-voting)")
             time = utils.human_time(job.finished_at - job.started_at)
             summary += tpl.format(success=success,
@@ -170,7 +169,7 @@ class Service:
                                   time=time,
                                   log_path=job.log_path)
             summary += "\n"
-        cmd += ["-m", '"%s"' % summary, self.event["patchSet"]["revision"]]
+        cmd += ["-m", summary, task.event.raw_event["patchSet"]["revision"]]
         yield from self.ssh.run(cmd)
 
 

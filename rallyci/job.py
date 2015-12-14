@@ -35,7 +35,7 @@ class Job:
         self.config = config
         self.task = task
 
-        self.voting = voting
+        self.voting = config.get("voting", voting)
         self.root = task.root
         self.log = task.root.log
         self.timeout = self.config.get("timeout", 90) * 60
