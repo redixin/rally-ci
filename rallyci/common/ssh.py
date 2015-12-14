@@ -177,7 +177,7 @@ def _escape_env(env):
     if env:
         for key, val in env.items():
             # TODO: safe variable name
-            cmd += "%s='%s' " % (key, _escape(val))
+            cmd += "%s='%s' " % (key, _escape(str(val)))
     return cmd
 
 

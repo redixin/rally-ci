@@ -147,8 +147,10 @@ class Service:
     @asyncio.coroutine
     def publish_results(self, task):
         if self.cfg.get("silent"):
-            yield from asyncio.sleep(0)
-            return
+            return (yield from asyncio.sleep(0))
+        revision = task.event.raw_event.get("patchSet", {}).get("revision")
+        if not revision:
+            return (yield from asyncio.sleep(0))
         self.log.debug("Publishing results for task %s" % self)
         comment_header = self.cfg.get("comment-header")
         if not comment_header:
@@ -169,7 +171,7 @@ class Service:
                                   time=time,
                                   log_path=job.log_path)
             summary += "\n"
-        cmd += ["-m", summary, task.event.raw_event["patchSet"]["revision"]]
+        cmd += ["-m", summary, revision]
         yield from self.ssh.run(cmd)
 
 

@@ -83,7 +83,7 @@ class Config:
 
         for matrix in self.data.get("matrix", []).values():
             if project in matrix["projects"]:
-                for job in matrix[jobs_type]:
+                for job in matrix.get(jobs_type, []):
                     yield self.data["job"][job]
 
         if local_config:

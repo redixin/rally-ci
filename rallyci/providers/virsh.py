@@ -171,6 +171,7 @@ class Host:
         self.root = root
         self.br_vm = {}
         self._job_vms = {}
+        self._job_bridge_numbers = {}
         ssh_conf.setdefault("username", "root")
         ssh_conf["keys"] = root.config.get_ssh_keys(keytype="private")
         self.ssh = SSH(root.loop, **ssh_conf)
@@ -275,16 +276,20 @@ class Host:
         conf = copy.deepcopy(self.config["vms"][name])
         if "net" not in conf:
             conf["net"] = ["virbr0"]
-        for net in conf["net"]:
+        for i, net in enumerate(conf["net"]):
             ifname = net.split(" ")
             if ifname[0].endswith("%"):
-                number = self._job_bridge_numbers.get(job, {}).get(ifname[0])
-                if not number:
-                    number = yield from self._get_bridge(ifname[0][:-1])
+                _br = self._job_bridge_numbers.get(job, {})
+                brname = _br.get(ifname[0])
+                LOG.debug("Got %s for %s (%s)" % (brname, job, self))
+                if not brname:
+                    brname = yield from self._get_bridge(ifname[0][:-1])
                     self._job_bridge_numbers.setdefault(job, {})
-                    self._job_bridge_numbers[job][ifname[0]] = number
-                conf["net"][net].replace(ifname[0],
-                                         ifname[0][:-1] + str(number))
+                    self._job_bridge_numbers[job][ifname[0]] = brname
+                    LOG.debug("Created %s for %s (%s)" % (brname, job, self))
+                new = conf["net"][i].replace(ifname[0], brname)
+                conf["net"][i] = new
+
         vm = yield from self._get_vm(name, conf)
         if job not in self._job_vms:
             self._job_vms[job] = []
@@ -323,7 +328,7 @@ class Host:
                     break
             yield from self.ssh.run(["ip", "link", "add", br,
                                      "type", "bridge"])
-            yield from self.ssh.run(["ip", "link", "set", bt, "up"])
+            yield from self.ssh.run(["ip", "link", "set", br, "up"])
         return br
 
 
@@ -339,7 +344,7 @@ class Provider:
         self.name = config["name"]
         self.key = root.config.get_ssh_key()
         self.last = time.time()
-        self.get_vms_lock = asyncio.Lock(loop=root.loop)
+        self.GET_VM_LOCK = asyncio.Lock(loop=root.loop)
         self._job_host_map = {}
 
     def get_stats(self):
@@ -383,8 +388,10 @@ class Provider:
         :param str name: vm name
         :param Job job:
         """
-        host = yield from self._get_host_for_job(job)
-        return (yield from host.get_vm_for_job(name, job))
+        with (yield from self.GET_VM_LOCK):
+            host = yield from self._get_host_for_job(job)
+            vm = yield from host.get_vm_for_job(name, job)
+        return vm
 
     @asyncio.coroutine
     def _get_host_for_job(self, job):
@@ -399,7 +406,7 @@ class Provider:
         memory_required = self.config.get("freemb", 1024)
         best = None
 
-        sleep = self.last + 1 - time.time()
+        sleep = self.last + 15 - time.time()
         if sleep > 1:
             yield from asyncio.sleep(sleep)
         while best is None:
