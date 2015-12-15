@@ -18,6 +18,7 @@ import functools
 import logging
 import os
 import pwd
+import subprocess
 import time
 
 import asyncssh
@@ -178,6 +179,31 @@ class SSH:
         with (yield from self.conn.start_sftp_client()) as sftp:
             yield from sftp.get(*args, **kwargs)
         LOG.debug("DONE SCP %s %s %s" % (args, kwargs, self))
+
+    @asyncio.coroutine
+    def scp_get(self, src, dst):
+        LOG.debug("SCP %s %s %s" % (src, dst, self))
+        cmd = ["scp", "-r", "-B", "-o", "StrictHostKeyChecking no",
+               "-o", "UserKnownHostsFile /dev/null"]
+        for key in (self.keys or []):
+            cmd += ["-i", key]
+        cmd += ["-P", str(self.port)]
+        cmd += ["-r", "%s@%s:%s" % (self.username, self.hostname, src), dst]
+        LOG.debug("Runnung %s" % " ".join(cmd))
+        process = asyncio.create_subprocess_exec(*cmd,
+                                                 stdout=subprocess.PIPE,
+                                                 stderr=subprocess.STDOUT)
+        process = yield from process
+        try:
+            while not process.stdout.at_eof():
+                line = yield from process.stdout.read()
+                LOG.debug("scp: %s" % line)
+        except asyncio.CancelledError:
+            process.terminate()
+            asyncio.async(process.wait(), loop=asyncio.get_event_loop())
+            raise
+        LOG.debug("DONE SCP %s %s %s" % (src, dst, self))
+        return process.returncode
 
 
 def _escape(string):

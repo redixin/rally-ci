@@ -360,7 +360,9 @@ class Provider:
 
     @asyncio.coroutine
     def cleanup(self, job):
-        yield from self._job_host_map.pop(job).cleanup(job)
+        host = self._job_host_map.pop(job, None)
+        if host:
+            yield from host.cleanup(job)
 
     @asyncio.coroutine
     def stop(self):

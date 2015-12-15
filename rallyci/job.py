@@ -62,6 +62,7 @@ class Job:
             except Exception:
                 self.root.log.exception("")
         self.console_log.write(data.encode("utf-8"))
+        self.console_log.flush()
 
     @asyncio.coroutine
     def _run(self):
@@ -86,35 +87,38 @@ class Job:
         os.makedirs(self.path)
         path = self.path + "/console.log"
         self.console_log = open(path, "wb")
-        return (yield from self._run_scripts("scripts"))
+        error = yield from self._run_scripts("scripts")
+        return error
 
     @asyncio.coroutine
-    def _run_scripts(self, key):
+    def _run_scripts(self, key, update_status=True):
         for vm, conf in self.vms:
             for script in conf.get(key, []):
-                self.set_status(script)
+                if update_status:
+                    self.set_status(script)
                 script = self.root.config.data["script"][script]
                 ssh = yield from vm.get_ssh(script.get("user", "root"))
                 cmd = script.get("interpreter", "/bin/bash -xe -s")
+                self.root.log.debug("Running cmd %s" % cmd)
                 e = yield from ssh.run(cmd, stdin=script["data"], env=self.env,
                                        stdout=partial(self._data_cb, 1),
                                        stderr=partial(self._data_cb, 2),
                                        check=False)
+                self.root.log.debug("DONE")
                 if e:
                     return e
 
     @asyncio.coroutine
     def cleanup(self):
         try:
-            error = yield from self._run_scripts("post")
+            yield from self._run_scripts("post", update_status=False)
         except Exception:
             self.log.exception("Error while running post scripts")
         try:
             for vm, conf in self.vms:
-                for src, dst in conf.get("publish_", []):
+                for src, dst in conf.get("publish", []):
                     ssh = yield from vm.get_ssh()
-                    yield from ssh.get(src, os.path.join(self.path, dst),
-                                       recurse=True, follow_symlinks=True)
+                    yield from ssh.scp_get(src, os.path.join(self.path, dst))
                     ssh.close()
         except Exception:
             self.log.exception("Error while publishing %s" % self)

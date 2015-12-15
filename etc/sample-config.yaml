@@ -5,9 +5,13 @@
     public: "/home/eye/.ssh/test.pub"
     private: "/home/eye/.ssh/test"
 
+- rally-ci:
+    pub-dir: /store/rally-ci/logs
+
 - service:
     name: gerrit
     silent: true
+    vote: false
     fake-stream: resources/gerrit-sample-stream.json
     module: rallyci.services.gerrit
     cfg-url-template: https://review.openstack.org/gitweb?p={project}.git;a=blob_plain;f=.rally-ci.yaml;hb={commit}
@@ -54,7 +58,6 @@
 
 - script:
     name: run_pytest
-    interpreter: /bin/bash -xe -s
     user: rally
     data: |
       cd $PROJECT
@@ -63,7 +66,6 @@
 
 - script:
     name: init_ubuntu_dev
-    interpreter: /bin/bash -xe -s
     data: |
       apt-get -y update && apt-get -y upgrade && apt-get -y install git
       apt-get -y remove cloud-init
@@ -74,7 +76,6 @@
 
 - script:
     name: clone_projects
-    interpreter: /bin/bash -xe -s
     user: rally
     data: |
       mkdir openstack-dev
@@ -83,7 +84,6 @@
 
 - script:
     name: git_checkout
-    interpreter: /bin/bash -xe -s
     user: rally
     data: |
       cd $GERRIT_PROJECT && git checkout master && git pull
@@ -94,13 +94,17 @@
 
 - script:
     name: run_tests
-    interpreter: /bin/bash -xe -s
     user: rally
     data: |
       env && ls
       cd $GERRIT_PROJECT
       git status
       echo "tox -e${TOX_ENV}"
+
+- script:
+    name: gzip_logs
+    data: |
+      ls
 
 - job:
     name: tox
@@ -110,6 +114,10 @@
         scripts:
           - git_checkout
           - run_tests
+        post:
+          - gzip_logs
+        publish:
+          - ["/etc/profile.d", "prof"]
 
 - job:
     parent: tox

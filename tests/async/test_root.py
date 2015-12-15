@@ -18,6 +18,7 @@ import mock
 
 from rallyci import root
 
+
 class RootTestCase(unittest.TestCase):
 
     def set_timeout(self, timeout):
