@@ -14,7 +14,6 @@
 
 import asyncio
 import copy
-from concurrent.futures import ALL_COMPLETED
 from functools import partial
 import time
 import os
@@ -45,7 +44,6 @@ class Job:
         self.log.debug("Job %s initialized." % self.id)
         self.vms = []
         self.console_listeners = []
-        Job.BOOT_LOCK = asyncio.Lock(loop=task.root.loop)
 
     def __repr__(self):
         return "<Job %s(%s) [%s]>" % (self.config["name"],
@@ -70,17 +68,9 @@ class Job:
         :param dict conf: vm item from job config
         """
         self.provider = self.root.providers[self.config["provider"]]
-        vms = {}
-        for vm in self.config["vms"]:
-            fut = asyncio.async(self.provider.get_vm(vm["name"], self),
-                                loop=self.root.loop)
-            vms[fut] = vm
-        with (yield from Job.BOOT_LOCK):
-            self.set_status("boot")
-            done, pending = yield from asyncio.wait(list(vms.keys()),
-                                                    return_when=ALL_COMPLETED)
-        for fut in done:
-            self.vms.append((fut.result(), vms[fut]))
+        for vm_conf in self.config["vms"]:
+            vm = yield from self.provider.get_vm(vm_conf["name"], self)
+            self.vms.append((vm, vm_conf))
 
         pub_dir = self.root.config.get_value("pub-dir", "/tmp/rally-pub")
         self.path = os.path.join(pub_dir, self.task.id, self.config["name"])

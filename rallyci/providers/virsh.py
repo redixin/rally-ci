@@ -155,14 +155,17 @@ BACKENDS = {"btrfs": BTRFS, "zfs": ZFS}
 
 class Host:
 
-    def __init__(self, ssh_conf, config, root):
+    def __init__(self, ssh_conf, provider, root):
         """
-        ssh_conf: item from hosts from provider
-        :param dict config: full "provider" item
+        :param dict ssh_conf: item from hosts from provider
+        :param Host host:
         """
-        self.image_locks = {}
-        self.config = config
+        self.provider = provider
         self.root = root
+
+        self.config = provider.config
+
+        self.image_locks = {}
         self._job_vms = {}
         self._job_bridge_numbers = {}
         ssh_conf.setdefault("username", "root")
@@ -170,7 +173,7 @@ class Host:
         self.ssh = SSH(root.loop, **ssh_conf)
         self.la = 0.0
         self.free = 0
-        storage_cf = config["storage"]
+        storage_cf = self.config["storage"]
         self.storage = BACKENDS[storage_cf["backend"]](self.ssh, **storage_cf)
         self.bridge_lock = asyncio.Lock(loop=root.loop)
 
@@ -337,7 +340,7 @@ class Provider:
 
     @asyncio.coroutine
     def start(self):
-        self.hosts = [Host(c, self.config, self.root)
+        self.hosts = [Host(c, self, self.root)
                       for c in self.config["hosts"]]
         mds_cfg = self.config.get("metadata_server", {})
         mds_addr = mds_cfg.get("listen_addr", "0.0.0.0")
@@ -376,8 +379,7 @@ class Provider:
         :param Job job:
         """
         host = yield from self._get_host_for_job(job)
-        with (yield from host.bridge_lock):
-            vm = yield from host.get_vm_for_job(name, job)
+        vm = yield from host.get_vm_for_job(name, job)
         return vm
 
     @asyncio.coroutine
