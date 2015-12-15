@@ -295,7 +295,7 @@ class Host:
         for vm in self._job_vms.pop(job, []):
             yield from vm.destroy()
         with (yield from self.bridge_lock):
-            self._job_bridge_numbers.pop(job)
+            self._job_bridge_numbers.pop(job, None)
 
     @asyncio.coroutine
     def _get_bridge(self, prefix):

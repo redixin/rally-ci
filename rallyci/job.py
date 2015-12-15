@@ -82,9 +82,9 @@ class Job:
             self.vms.append((fut.result(), vms[fut]))
 
         pub_dir = self.root.config.get_value("pub-dir", "/tmp/rally-pub")
-        path = os.path.join(pub_dir, self.task.id, self.config["name"])
-        os.makedirs(path)
-        path += "/console.log.gz"
+        self.path = os.path.join(pub_dir, self.task.id, self.config["name"])
+        os.makedirs(self.path)
+        path = self.path + "/console.log"
         self.console_log = open(path, "wb")
         return (yield from self._run_scripts("scripts"))
 
@@ -97,15 +97,14 @@ class Job:
                 ssh = yield from vm.get_ssh(script.get("user", "root"))
                 cmd = script.get("interpreter", "/bin/bash -xe -s")
                 e = yield from ssh.run(cmd, stdin=script["data"], env=self.env,
-                                       cb_out=partial(self._data_cb, 1),
-                                       cb_err=partial(self._data_cb, 2),
+                                       stdout=partial(self._data_cb, 1),
+                                       stderr=partial(self._data_cb, 2),
                                        check=False)
                 if e:
                     return e
 
     @asyncio.coroutine
     def cleanup(self):
-        error = 1
         try:
             error = yield from self._run_scripts("post")
         except Exception:
@@ -113,12 +112,12 @@ class Job:
         try:
             for vm, conf in self.vms:
                 for src, dst in conf.get("publish", []):
-                    yield from vm.publish(src, dst)
+                    ssh = yield from vm.get_ssh()
+                    yield from ssh.get(src, os.path.join(self.path, dst),
+                                       recurse=True, follow_symlinks=True)
+                    ssh.close()
         except Exception:
-            self.log.exception("Error while publishing")
-            error = 1
-        if error:
-            self.set_status("UNSTABLE")
+            self.log.exception("Error while publishing %s" % self)
         yield from self.provider.cleanup(self)
 
     @asyncio.coroutine

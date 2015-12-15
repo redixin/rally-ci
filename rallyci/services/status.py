@@ -127,7 +127,9 @@ class Service:
             if job.id not in self._jobs:
                 self._jobs[job.id] = job
         else:
-            self._jobs.pop(job.id)
+            job = self._jobs.pop(job.id, None)
+            if job is None:
+                return
             if job.id in self.console_listeners:
                 self.root.start_coro(self.close_console_listeners(job))
         self._send_all({"type": "job-status-update", "job": job.to_dict()})

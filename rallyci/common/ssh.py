@@ -83,6 +83,9 @@ class SSH:
         self._connecting = asyncio.Lock(loop=loop)
         self._connected = asyncio.Event(loop=loop)
 
+    def __repr__(self):
+        return "<SSH %s>" % self.hostname
+
     def client_factory(self, *args, **kwargs):
         return SSHClient(self, *args, **kwargs)
 
@@ -170,9 +173,11 @@ class SSH:
 
     @asyncio.coroutine
     def get(self, *args, **kwargs):
+        LOG.debug("SCP %s %s %s" % (args, kwargs, self))
         yield from self._ensure_connected()
         with (yield from self.conn.start_sftp_client()) as sftp:
             yield from sftp.get(*args, **kwargs)
+        LOG.debug("DONE SCP %s %s %s" % (args, kwargs, self))
 
 
 def _escape(string):

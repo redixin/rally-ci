@@ -104,6 +104,13 @@ class Task:
                     fut.cancel()
                 return
 
+    @asyncio.coroutine
+    def ___cleanup(self):
+        for fut, job in self._job_futures.items():
+            fut.cancel()
+            yield from fut
+        self._job_futures = {}
+
     def to_dict(self):
         return {
             "id": self.id,
