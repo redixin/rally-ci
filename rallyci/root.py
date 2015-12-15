@@ -17,7 +17,6 @@ from concurrent import futures
 import logging
 import signal
 import resource
-import time
 
 from rallyci.config import Config
 
@@ -83,8 +82,8 @@ class Root:
                 try:
                     handler(task)
                 except Exception:
-                    self.log.exception(
-                        "Exception in task end handler %s %s" % (task, cb))
+                    self.log.exception(("Exception in task end "
+                                        "handler %s %s") % (task, handler))
         except Exception:
             self.log.exception("Error in task_done_cb")
 
@@ -159,7 +158,7 @@ class Root:
                 self.log.info("Done")
             except asyncio.CancelledError:
                 return
-            except Exception as e:
+            except Exception:
                 self.log.exception("Error loading new config")
 
     @asyncio.coroutine
@@ -191,4 +190,5 @@ class Root:
 
     def get_daemon_statistics(self):
         usage = resource.getrusage(resource.RUSAGE_SELF)
-        return {"type": "daemon-statistics", "memory-used": getattr(usage, "ru_maxrss")}
+        return {"type": "daemon-statistics",
+                "memory-used": getattr(usage, "ru_maxrss")}

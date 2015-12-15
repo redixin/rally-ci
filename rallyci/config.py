@@ -44,7 +44,8 @@ class Config:
             if name:
                 self.data.setdefault(key, {})
                 if name in self.data[key]:
-                    raise ValueError("Duplicate name %s (%s)" % (name, self.data[key]))
+                    raise ValueError("Duplicate %s (%s)" % (name,
+                                                            self.data[key]))
                 self.data[key][name] = value
             else:
                 self.data.setdefault(key, [])
@@ -174,7 +175,8 @@ class Config:
             section = self.data.get("logging")[0]
             for key in section:
                 if default_log.get(key):
-                    LOGGING["handlers"][key] = default_log[key](key, section[key])
+                    LOGGING["handlers"][key] = default_log[key](key,
+                                                                section[key])
                     LOGGING["loggers"][""]["handlers"].append(key)
                 else:
                     raise ValueError("Unknown logging level")

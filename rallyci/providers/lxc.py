@@ -27,6 +27,7 @@ CREATE_OPTS = (("--zfsroot", "zfsroot"), )
 
 RE_LXC_IP = re.compile(r"IP:.+([\d\.]+)$")
 
+
 class Provider(base.BaseProvider):
 
     def __init__(self, root, cfg):
@@ -42,7 +43,8 @@ class Provider(base.BaseProvider):
         self._opts = sum(self._get_opts(COMMON_OPTS), [])
         self._create_opts = sum(self._get_opts(CREATE_OPTS), [])
         self._create_opts += self._opts
-        self._hosts = [SSH(loop=self.root.loop, **cfg) for cfg in cfg.get("hosts")]
+        self._hosts = [SSH(loop=self.root.loop, **cfg)
+                       for cfg in cfg.get("hosts")]
         self._public_key = root.config.data["ssh-key"]["default"]["public"]
 
     @asyncio.coroutine
@@ -107,6 +109,7 @@ class Provider(base.BaseProvider):
         cmd = ["lxc-start", "-d", "-n", name]
         yield from host.run(cmd, stderr=print)
         ip = yield from self._get_ip(host, name)
+        return ip
 
     @asyncio.coroutine
     def start(self):

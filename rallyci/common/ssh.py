@@ -18,7 +18,6 @@ import functools
 import logging
 import os
 import pwd
-import sys
 import time
 
 import asyncssh
@@ -97,7 +96,9 @@ class SSH:
         with (yield from self._connecting):
             if self._connected.is_set():
                 return
-            LOG.debug("Connecting %s@%s with keys %s" % (self.username, self.hostname, self.keys))
+            LOG.debug("Connecting %s@%s with keys %s" % (self.username,
+                                                         self.hostname,
+                                                         self.keys))
             self.conn, self.client = yield from asyncssh.create_connection(
                 functools.partial(SSHClient, self), self.hostname,
                 username=self.username, known_hosts=None,
@@ -114,7 +115,7 @@ class SSH:
         :param stdin: either string, bytes or file like object
         :param stdout: executable (e.g. sys.stdout.write)
         :param stderr: executable (e.g. sys.stderr.write)
-        :param boolean check: Raise an exception in case of non-zero exit status.
+        :param boolean check: Raise exception if non-zero exit status.
         """
         if isinstance(cmd, list):
             cmd = _escape_cmd(cmd)
@@ -167,6 +168,12 @@ class SSH:
                 raise SSHError("timeout %s:%s" % (self.hostname, self.port))
             yield from asyncio.sleep(delay)
 
+    @asyncio.coroutine
+    def get(self, *args, **kwargs):
+        yield from self._ensure_connected()
+        with (yield from self.conn.start_sftp_client()) as sftp:
+            yield from sftp.get(*args, **kwargs)
+
 
 def _escape(string):
     return string.replace(r"'", r"'\''")
@@ -182,4 +189,4 @@ def _escape_env(env):
 
 
 def _escape_cmd(cmd):
-   return " ".join(["'%s'" % _escape(arg) for arg in cmd])
+    return " ".join(["'%s'" % _escape(arg) for arg in cmd])

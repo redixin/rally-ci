@@ -15,19 +15,14 @@
 import asyncio
 import copy
 import contextlib
-import functools
 import time
 import os
 import random
 import re
-import json
 import logging
 import tempfile
-import uuid
 from xml.etree import ElementTree as et
 
-import aiohttp
-from aiohttp import web
 from clis import clis
 
 from rallyci import utils
@@ -40,8 +35,6 @@ RE_LA = re.compile(r".*load average: (\d+\.\d+),.*")
 RE_MEM = re.compile(r".*Mem: +\d+ +\d+ +(\d+) +\d+ +\d+ +(\d+).*")
 IFACE_RE = re.compile(r"\d+: ([a-z]+)(\d+): .*")
 IP_RE = re.compile(r"(\d+\.\d+\.\d+\.\d+)\s")
-DYNAMIC_BRIDGES = {}
-DYNAMIC_BRIDGE_LOCK = asyncio.Lock()
 
 
 class ZFS:
@@ -60,7 +53,8 @@ class ZFS:
     def list_files(self, name):
         cmd = "ls /{path}/{name}".format(path=self.path, name=name)
         err, ls, err = yield from self.ssh.out(cmd)
-        return [os.path.join("/", self.dataset, name, f) for f in ls.splitlines()]
+        return [os.path.join("/", self.dataset, name, f)
+                for f in ls.splitlines()]
 
     @asyncio.coroutine
     def clone(self, src, dst):
@@ -169,7 +163,6 @@ class Host:
         self.image_locks = {}
         self.config = config
         self.root = root
-        self.br_vm = {}
         self._job_vms = {}
         self._job_bridge_numbers = {}
         ssh_conf.setdefault("username", "root")
@@ -179,6 +172,7 @@ class Host:
         self.free = 0
         storage_cf = config["storage"]
         self.storage = BACKENDS[storage_cf["backend"]](self.ssh, **storage_cf)
+        self.bridge_lock = asyncio.Lock(loop=root.loop)
 
     def __str__(self):
         return "<Host %s (la: %s, free: %s)>" % (self.ssh.hostname,
@@ -221,7 +215,7 @@ class Host:
                 if url:
                     yield from self.storage.download(name, url)
                     yield from self.storage.snapshot(name)
-                    return # TODO: support build_script for downloaded images
+                    return  # TODO: support build_script for downloaded images
             build_scripts = image_conf.get("build-scripts")
             if build_scripts:
                 vm = yield from self.boot_image(name)
@@ -300,21 +294,12 @@ class Host:
     def cleanup(self, job):
         for vm in self._job_vms.pop(job, []):
             yield from vm.destroy()
-
-    @asyncio.coroutine
-    def cleanup_net(self):
-        clean = []
-        with (yield from DYNAMIC_BRIDGE_LOCK):
-            for br, vms in self.br_vm.items():
-                if not vms:
-                    yield from self.ssh.run(["ip", "link", "del", br])
-                    clean.append(br)
-            for br in clean:
-                del self.br_vm[br]
+        with (yield from self.bridge_lock):
+            self._job_bridge_numbers.pop(job)
 
     @asyncio.coroutine
     def _get_bridge(self, prefix):
-        with (yield from DYNAMIC_BRIDGE_LOCK):
+        with (yield from self.bridge_lock):
             err, data, err = yield from self.ssh.out(["ip", "link", "list"])
             nums = set()
             for line in data.splitlines():
@@ -344,7 +329,6 @@ class Provider:
         self.name = config["name"]
         self.key = root.config.get_ssh_key()
         self.last = time.time()
-        self.GET_VM_LOCK = asyncio.Lock(loop=root.loop)
         self._job_host_map = {}
 
     def get_stats(self):
@@ -388,8 +372,8 @@ class Provider:
         :param str name: vm name
         :param Job job:
         """
-        with (yield from self.GET_VM_LOCK):
-            host = yield from self._get_host_for_job(job)
+        host = yield from self._get_host_for_job(job)
+        with (yield from host.bridge_lock):
             vm = yield from host.get_vm_for_job(name, job)
         return vm
 
@@ -414,12 +398,14 @@ class Provider:
             LOG.debug("Chosing from %s" % self.hosts)
             for host in self.hosts:
                 yield from host.update_stats()
-                if host.free >= memory_required and host.la < self.config.get("maxla", 4):
+                maxla = self.config.get("maxla", 4)
+                if host.free >= memory_required and host.la < maxla:
                     LOG.debug("Chosen host: %s" % host)
                     self.last = time.time()
                     return host
             LOG.info("All servers are overloaded. Waiting 30 seconds.")
             yield from asyncio.sleep(30)
+
 
 class VM:
     def __init__(self, host, name, cfg=None):
@@ -436,7 +422,6 @@ class VM:
         self._ssh_cache = {}
         self.macs = []
         self.disks = []
-        self.bridges = []
         self.name = utils.get_rnd_name(name)
         x = XMLElement(None, "domain", type="kvm")
         self.x = x
@@ -464,17 +449,6 @@ class VM:
         return "<VM %s>" % (self.name)
 
     @asyncio.coroutine
-    def run_script(self, script, env=None, check=True, cb_out=None, cb_err=None):
-        LOG.debug("Running script: %s on vm %s with env %s" % (script, self, env))
-        yield from self.get_ip()
-        cmd = script.get("interpreter", "/bin/bash -xe -s")
-        ssh = yield from self.get_ssh(script.get("user", "root"))
-        status = yield from ssh.run(cmd, stdin=script["data"],
-                                    stdout=cb_out, stderr=cb_err,
-                                    check=check, env=env)
-        return status
-
-    @asyncio.coroutine
     def shutdown(self, timeout=30, storage=False):
         if not hasattr(self, "ip"):
             yield from self.destroy(storage=storage)
@@ -488,7 +462,7 @@ class VM:
             error = yield from self._ssh.run(cmd, check=False)
             if error:
                 return
-            elif time.time() > timeout:
+            elif time.time() > deadline:
                 yield from self.destroy(storage=storage)
                 return
 
@@ -499,15 +473,9 @@ class VM:
         if storage:
             for disk in self.disks:
                 yield from self.host.storage.destroy(disk)
-        for br in self.bridges:
-            lst = self.host.br_vm.get(br)
-            if lst and self in lst:
-                lst.remove(self)
-        yield from self.host.cleanup_net()
         for ssh in self._ssh_cache.values():
             ssh.close()
         self._ssh_cache = {}
-
 
     @asyncio.coroutine
     def get_ssh(self, user="root"):
@@ -532,7 +500,8 @@ class VM:
             if time.time() > deadline:
                 raise Exception("Unable to find ip of VM %s" % self.cfg)
             yield from asyncio.sleep(4)
-            LOG.debug("Checking for ip for vm %s (%s)" % (self.name, repr(self.macs)))
+            LOG.debug("Checking for ip for vm %s (%s)" % (self.name,
+                                                          repr(self.macs)))
             err, data, err = yield from self._ssh.out(cmd, check=False)
             for line in data.splitlines():
                 m = IP_RE.match(line)
@@ -574,7 +543,6 @@ class VM:
         net.se("model", type="virtio")
         net.se("mac", address=mac)
         self.macs.append(mac)
-        self.bridges.append(bridge)
 
 
 class XMLElement:

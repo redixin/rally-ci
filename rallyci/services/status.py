@@ -17,15 +17,12 @@ import collections
 import functools
 import pkgutil
 import logging
-import os.path
 
-import json
-import rallyci.common.periodictask as ptask
 import aiohttp
 import json
 from aiohttp import web
 
-from  rallyci.common import periodictask
+from rallyci.common import periodictask
 
 LOG = logging.getLogger(__name__)
 
@@ -64,7 +61,7 @@ class Service:
         job.console_listeners.append(functools.partial(self._con_cb, job.id))
         try:
             yield from ws.receive()
-        except CancelledError:
+        except asyncio.CancelledError:
             pass
         except Exception:
             LOG.exception("Websocket error %s" % ws)
@@ -143,7 +140,6 @@ class Service:
         stat = self.root.get_daemon_statistics()
         LOG.debug("Senging stats to websocket %s" % stat)
         self._send_all(stat)
-
 
     @asyncio.coroutine
     def run(self):

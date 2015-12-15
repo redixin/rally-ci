@@ -13,8 +13,6 @@
 #    limitations under the License.
 
 import asyncio
-from concurrent import futures
-import copy
 import cgi
 import time
 
@@ -115,3 +113,6 @@ class Task:
             "project": cgi.escape(self.event.project),
             "url": self.event.url,
         }
+
+    def __del__(self):
+        print("DEL %s" % self)

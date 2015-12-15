@@ -16,10 +16,8 @@ import asyncio
 import copy
 from concurrent.futures import ALL_COMPLETED
 from functools import partial
-import gzip
 import time
 import os
-import string
 
 from rallyci import utils
 
@@ -57,6 +55,14 @@ class Job:
         self.status = status
         self.root.job_updated(self)
 
+    def _data_cb(self, fd, data):
+        for cb in self.console_listeners:
+            try:
+                cb((fd, data))
+            except Exception:
+                self.root.log.exception("")
+        self.console_log.write(data.encode("utf-8"))
+
     @asyncio.coroutine
     def _run(self):
         """
@@ -79,38 +85,41 @@ class Job:
         path = os.path.join(pub_dir, self.task.id, self.config["name"])
         os.makedirs(path)
         path += "/console.log.gz"
-        console_log = gzip.open(path, "wb")
+        self.console_log = open(path, "wb")
+        return (yield from self._run_scripts("scripts"))
 
-        def _data(fd, data):
-            for cb in self.console_listeners:
-                try:
-                    cb((fd, data))
-                except Exception:
-                    self.root.log.exception("")
-            console_log.write(data.encode("utf-8"))
-
+    @asyncio.coroutine
+    def _run_scripts(self, key):
         for vm, conf in self.vms:
-            for script in conf.get("scripts", []):
+            for script in conf.get(key, []):
                 self.set_status(script)
                 script = self.root.config.data["script"][script]
-                error = yield from vm.run_script(script, env=self.env,
-                                                 check=False,
-                                                 cb_out=partial(_data, 1),
-                                                 cb_err=partial(_data, 2))
-                if error:
-                    console_log.close()
-                    return error
+                ssh = yield from vm.get_ssh(script.get("user", "root"))
+                cmd = script.get("interpreter", "/bin/bash -xe -s")
+                e = yield from ssh.run(cmd, stdin=script["data"], env=self.env,
+                                       cb_out=partial(self._data_cb, 1),
+                                       cb_err=partial(self._data_cb, 2),
+                                       check=False)
+                if e:
+                    return e
 
-        for vm, conf in self.vms:
-            for script in conf.get("post", []):
-                self.set_status(script)
-                script = self.root.config.data["script"][script]
-                error = yield from vm.run_script(script, env=self.env,
-                                                 check=False,
-                                                 cb_out=partial(_data, 1),
-                                                 cb_err=partial(_data, 2))
-
-        console_log.close()
+    @asyncio.coroutine
+    def cleanup(self):
+        error = 1
+        try:
+            error = yield from self._run_scripts("post")
+        except Exception:
+            self.log.exception("Error while running post scripts")
+        try:
+            for vm, conf in self.vms:
+                for src, dst in conf.get("publish", []):
+                    yield from vm.publish(src, dst)
+        except Exception:
+            self.log.exception("Error while publishing")
+            error = 1
+        if error:
+            self.set_status("UNSTABLE")
+        yield from self.provider.cleanup(self)
 
     @asyncio.coroutine
     def run(self):
@@ -132,11 +141,7 @@ class Job:
             self.log.exception("Error running %s" % self)
         finally:
             self.finished_at = time.time()
-        self.set_status(self.status) # TODO: fix cleanup in http status
-
-    @asyncio.coroutine
-    def cleanup(self):
-        yield from self.provider.cleanup(self)
+        self.set_status(self.status)  # TODO: fix cleanup in http status
 
     def to_dict(self):
         return {"id": self.id,
@@ -146,3 +151,6 @@ class Job:
                 "finished_at": self.finished_at,
                 "seconds": int(time.time()) - self.task.started_at,
                 }
+
+    def __del__(self):
+        print("DEL %s" % self)

@@ -13,7 +13,6 @@
 #    limitations under the License.
 
 import asyncio
-import functools
 import re
 import json
 
@@ -27,6 +26,7 @@ EVENT_TYPES = {
     "patchset-created": "patchset-created",
     "ref-updated": "change-merged",
 }
+
 
 class Event(base.BaseEvent):
 
@@ -43,14 +43,14 @@ class Event(base.BaseEvent):
             self.cr = raw_event["change"]["id"]
             self.commit = raw_event["patchSet"]["revision"]
         else:
-            template = cfg.get("merged-url-template", "")
+            template = cfg.get("commit-url-template", "")
             self.commit = raw_event["refUpdate"]["newRev"]
             self.cr = ""
         self.url = template.format(commit=self.commit, project=self.project)
         cfg_url = cfg.get("cfg-url-template", "")
         self.cfg_url = cfg_url.format(commit=self.commit, project=self.project)
         self.key = self.project + self.commit
-        self.subject = raw_event.get("change", {}).get("subject", "*****")
+        self.subject = raw_event.get("change", {}).get("subject", "MERGED")
 
 
 class Service:
@@ -121,7 +121,8 @@ class Service:
         if "port" not in self.cfg["ssh"]:
             self.cfg["ssh"]["port"] = 29418
 
-        self.cfg["ssh"]["keys"] = self.root.config.get_ssh_keys(keytype="private")
+        self.cfg["ssh"]["keys"] = self.root.config.get_ssh_keys(
+                keytype="private")
         self.ssh = SSH(self.loop, **self.cfg["ssh"])
         self.root.task_end_handlers.append(self._handle_task_end)
         reconnect_delay = self.cfg.get("reconnect_delay", 5)
@@ -130,7 +131,7 @@ class Service:
                 status = yield from self.ssh.run("gerrit stream-events",
                                                  stdout=self._handle_stdout,
                                                  stderr=self._handle_stderr)
-                self.log.info("Gerrit stream was closed with status %s" % status)
+                self.log.info("Gerrit stream exited with status %s" % status)
             except asyncio.CancelledError:
                 self.log.info("Stopping gerrit")
                 self.root.task_end_handlers.remove(self._handle_task_end)
@@ -178,6 +179,7 @@ class Service:
 def _get_project_name(e):
     return e.get("change", {}).get("project",
                                    e.get("refUpdate", {}).get("project"))
+
 
 def _get_env(event, cfg):
     """Get event environment.

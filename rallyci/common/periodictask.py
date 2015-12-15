@@ -17,6 +17,7 @@ import logging
 
 LOG = logging.getLogger(__name__)
 
+
 class PeriodicTask(object):
 
     def __init__(self, interval, method, loop=None):
