@@ -111,7 +111,7 @@ class Job:
             self.log.exception("Error while running post scripts")
         try:
             for vm, conf in self.vms:
-                for src, dst in conf.get("publish", []):
+                for src, dst in conf.get("publish_", []):
                     ssh = yield from vm.get_ssh()
                     yield from ssh.get(src, os.path.join(self.path, dst),
                                        recurse=True, follow_symlinks=True)

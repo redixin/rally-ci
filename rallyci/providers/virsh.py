@@ -330,6 +330,7 @@ class Provider:
         self.key = root.config.get_ssh_key()
         self.last = time.time()
         self._job_host_map = {}
+        self._get_host_lock = asyncio.Lock(loop=root.loop)
 
     def get_stats(self):
         pass
@@ -381,7 +382,8 @@ class Provider:
     def _get_host_for_job(self, job):
         host = self._job_host_map.get(job)
         if not host:
-            host = yield from self._get_host()
+            with (yield from self._get_host_lock):
+                host = yield from self._get_host()
             self._job_host_map[job] = host
         return host
 
