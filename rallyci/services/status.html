@@ -13,8 +13,8 @@ function Task(task) {
         for (job_id in this.jobs) {
             var job = this.jobs[job_id];
             html += "<tr><td class=job><a href='/logs/"+this.t.id+"/"+job.name+"/'>"
-            html += job.name+"</a></td><td class='result "+job.status+"'>"
-            html += "<a href='/jobs/"+job.id+"/' target=_blank id='"+job.id+"'>"+job.status;
+            html += job.name+"</a></td><td>";
+            html += "<a href='/jobs/"+job.id+"/' target=_blank id='"+job.id+"' class='result "+job.status+"'>"+job.status;
             html += "</a></td></tr></tr>";
         }
         html += "<tr></tr>";
@@ -137,10 +137,10 @@ h3 {margin: 0; padding: 1em; }
 h4 {text-align: center; margin: 0; padding: 0;}
 div.jobs div table tr td { font-family: monospace; border: 1px solid; border-color: white; margin: 0; background-color: #eee; }
 td.result {text-overflow: ellipsis; width: 30%;}
-.result a { color: black; }
-.SUCCESS a { color: green; }
-.FAILURE a { color: red; }
-.ERROR a { color: #a22; }
+a.result { color: black; }
+a.SUCCESS { color: green; }
+a.FAILURE { color: red; }
+a.ERROR { color: #a22; }
 </style>
 
 <style type="text/css" media="screen and (max-device-width:480px)">
