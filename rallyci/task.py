@@ -104,11 +104,12 @@ class Task:
                 return
 
     @asyncio.coroutine
-    def ___cleanup(self):
+    def cleanup(self):
         for fut, job in self._job_futures.items():
-            fut.cancel()
-            yield from fut
-        self._job_futures = {}
+            if not fut.cancelled():
+                fut.cancel()
+        yield from self._finished.wait()
+        self.jobs = []
 
     def to_dict(self):
         return {

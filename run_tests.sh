@@ -1,4 +1,11 @@
 #!/bin/sh
 
-.tox/py34/bin/flake8 &&\
-.tox/py34/bin/python -m unittest discover tests/unit
+PY='py34'
+DIR=".tox/${PY}/bin"
+
+if [ ! -d "$DIR" ]; then
+    tox -e${PY}
+fi
+
+${DIR}/flake8 &&\
+${DIR}/python -m unittest discover tests/unit

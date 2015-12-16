@@ -125,3 +125,8 @@ def retry(fun, *args, **kwargs):
             LOG.warning("Raised %s. Retrying (%s)." % (e, i))
             time.sleep(1)
     raise e
+
+
+class LogDel:
+    def __del__(self):
+        print("DELETED %s" % self)

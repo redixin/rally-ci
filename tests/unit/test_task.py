@@ -19,7 +19,11 @@ from rallyci.task import Task
 
 
 class TaskTestCase(unittest.TestCase):
-    def test___init__(self):
+
+    @mock.patch("rallyci.task.Task.__del__")
+    @mock.patch("rallyci.task.asyncio")
+    def test___init__(self, mock_asyncio, mock_del):
         root = mock.Mock()
-        t = Task(root, None)
+        event = mock.Mock()
+        t = Task(root, event)
         self.assertEqual([], t.jobs)

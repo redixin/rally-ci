@@ -22,6 +22,7 @@ import subprocess
 import time
 
 import asyncssh
+from rallyci.utils import LogDel
 
 LOG = logging.getLogger(__name__)
 
@@ -38,7 +39,7 @@ class SSHProcessKilled(SSHProcessFailed):
     pass
 
 
-class SSHClient(asyncssh.SSHClient):
+class SSHClient(asyncssh.SSHClient, LogDel):
 
     def __init__(self, ssh, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -54,7 +55,7 @@ class SSHClient(asyncssh.SSHClient):
         self._ssh = None
 
 
-class SSHClientSession(asyncssh.SSHClientSession):
+class SSHClientSession(asyncssh.SSHClientSession, LogDel):
 
     def __init__(self, callbacks, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -71,7 +72,7 @@ class SSHClientSession(asyncssh.SSHClientSession):
         self._stderr_cb = None
 
 
-class SSH:
+class SSH(LogDel):
 
     def __init__(self, loop, hostname, username=None, keys=None, port=22,
                  cb=None):
@@ -85,7 +86,7 @@ class SSH:
         self._connected = asyncio.Event(loop=loop)
 
     def __repr__(self):
-        return "<SSH %s>" % self.hostname
+        return "<SSH %s@%s>" % (self.username, self.hostname)
 
     def client_factory(self, *args, **kwargs):
         return SSHClient(self, *args, **kwargs)
