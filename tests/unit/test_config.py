@@ -17,7 +17,6 @@ from rallyci import config
 import os
 import unittest
 from unittest import mock
-import json
 
 
 class ConfigTestCase(unittest.TestCase):
@@ -35,9 +34,24 @@ class ConfigTestCase(unittest.TestCase):
 
     def test_get_jobs(self):
         jobs = list(self.config.get_jobs("openstack/rally"))
-        expected = [{'env': {'TOX_ENV': 'pep8'},
-            'name': 'tox-pep8',
-            'provider': 'my_virsh',
-            'vms': [{'name': 'ubuntu-1404-dev',
-            'scripts': ['git_checkout', 'run_tests']}]}]
+        expected = [{"env": {"TOX_ENV": "pep8"},
+                     "name": "tox-pep8",
+                     "provider": "my_virsh",
+                     "vms": [{"name": "ubuntu-1404-dev",
+                              "scripts": ["git_checkout", "run_tests"]}]}]
         self.assertEqual(expected, jobs)
+
+    def test_get_script(self):
+        s = self.config.get_script("show_env")
+        expected = {"name": "show_env", "user": "rally", "data": "env"}
+        self.assertEqual(expected, s)
+
+    def test_get_script_local(self):
+        local_config = [{"script": {"name": "test", "data": "ok"}}]
+        s = self.config.get_script("test", local_config)
+        self.assertEqual(local_config[0]["script"], s)
+
+    def test_get_script_local_override(self):
+        local_config = [{"script": {"name": "show_env", "data": "ok"}}]
+        s = self.config.get_script("show_env", local_config)
+        self.assertEqual(local_config[0]["script"], s)

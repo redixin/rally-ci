@@ -33,6 +33,7 @@ class Task:
         self.root = root
         self.event = event
 
+        self.local_config = None
         self.jobs = []
         self.finished_at = None
         self.started_at = time.time()
@@ -44,7 +45,7 @@ class Task:
         return "<Task %s %s>" % (self.event.project, self.id)
 
     @asyncio.coroutine
-    def _get_local_cfg(self, url):
+    def _get_local_config(self, url):
         self.root.log.debug("Trying to get config %s" % url)
         r = yield from aiohttp.get(url)
         if r.status == 200:
@@ -69,18 +70,16 @@ class Task:
         self._job_futures[fut] = job
         fut.add_done_callback(self._job_done_cb)
 
-    def _start_jobs(self, local_cfg):
-        """
-        :param list local_cfg: config loaded from project
-        """
+    def _start_jobs(self):
         cfg_gen = self.root.config.get_jobs
 
         if self.event.event_type == "change-merged":
-            for cfg in cfg_gen(self.event.project, "merged-jobs", local_cfg):
+            for cfg in cfg_gen(self.event.project, "merged-jobs",
+                               self.local_config):
                 self._start_job(cfg)
                 return
 
-        for cfg in cfg_gen(self.event.project, "jobs", local_cfg):
+        for cfg in cfg_gen(self.event.project, "jobs", self.local_config):
             self._start_job(cfg, voting=True)
 
         for cfg in cfg_gen(self.event.project, "non-voting-jobs", None):
@@ -88,10 +87,10 @@ class Task:
 
     @asyncio.coroutine
     def run(self):
-        local_cfg = None
         if self.event.cfg_url:
-            local_cfg = yield from self._get_local_cfg(self.event.cfg_url)
-        self._start_jobs(local_cfg)
+            self.local_config = yield from self._get_local_config(
+                    self.event.cfg_url)
+        self._start_jobs()
         for cb in self.root.task_start_handlers:
             cb(self)
         while not self._finished.is_set():

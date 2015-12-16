@@ -1,6 +1,7 @@
 from rallyci.common import ssh
 import unittest
 
+
 class SSHTestCase(unittest.TestCase):
     def test__escape_cmd(self):
         cmd = ["one", "two"]

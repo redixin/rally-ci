@@ -12,7 +12,6 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
-import copy
 import unittest
 from unittest import mock
 
@@ -20,4 +19,7 @@ from rallyci.task import Task
 
 
 class TaskTestCase(unittest.TestCase):
-    pass
+    def test___init__(self):
+        root = mock.Mock()
+        t = Task(root, None)
+        self.assertEqual([], t.jobs)

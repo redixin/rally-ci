@@ -86,7 +86,8 @@ class Job:
             for script in conf.get(key, []):
                 if update_status:
                     self.set_status(script)
-                script = self.root.config.data["script"][script]
+                script = self.root.config.get_script(script,
+                                                     self.task.local_config)
                 ssh = yield from vm.get_ssh(script.get("user", "root"))
                 cmd = script.get("interpreter", "/bin/bash -xe -s")
                 self.root.log.debug("Running cmd %s" % cmd)

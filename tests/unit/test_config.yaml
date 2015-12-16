@@ -53,8 +53,12 @@
         image: u1404
 
 - script:
+    name: show_env
+    user: rally
+    data: env
+
+- script:
     name: run_pytest
-    interpreter: /bin/bash -xe -s
     user: rally
     data: |
       cd $PROJECT
@@ -63,7 +67,6 @@
 
 - script:
     name: init_ubuntu_dev
-    interpreter: /bin/bash -xe -s
     data: |
       apt-get -y update && apt-get -y upgrade && apt-get -y install git
       apt-get -y remove cloud-init
@@ -74,7 +77,6 @@
 
 - script:
     name: clone_projects
-    interpreter: /bin/bash -xe -s
     user: rally
     data: |
       mkdir openstack-dev
@@ -83,7 +85,6 @@
 
 - script:
     name: git_checkout
-    interpreter: /bin/bash -xe -s
     user: rally
     data: |
       cd $GERRIT_PROJECT && git checkout master && git pull
@@ -94,7 +95,6 @@
 
 - script:
     name: run_tests
-    interpreter: /bin/bash -xe -s
     user: rally
     data: |
       env && ls

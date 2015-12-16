@@ -13,7 +13,6 @@
 #    limitations under the License.
 
 import asyncio
-import socket
 import unittest
 import mock
 
@@ -35,7 +34,7 @@ class HttpTestCase(unittest.TestCase):
         @asyncio.coroutine
         def test(loop):
             url = "http://localhost:%d" % config["listen"][1]
-            yield from asyncio.sleep(1, loop=loop) #  FIXME
+            yield from asyncio.sleep(1, loop=loop)  # FIXME
             response = yield from aiohttp.request("GET", url, loop=loop)
             body = yield from response.read()
             self.assertIn("Rally-CI", str(body))

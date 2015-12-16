@@ -17,6 +17,7 @@ from unittest import mock
 
 from rallyci.services import gerrit
 
+
 class GerritTestCase(unittest.TestCase):
 
     def test__get_project_name(self):

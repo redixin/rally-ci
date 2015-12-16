@@ -54,9 +54,9 @@ class ProviderTestCase(unittest.TestCase):
         self.loop = asyncio.get_event_loop()
 
     def test_get_vms(self):
-        cfgs = [
-                {'name': 'u1404_dsvm',
+        cfgs = [{'name': 'u1404_dsvm',
                  'scp': [['/home/rally', 'test-logs']],
-                 'scripts': ['git_checkout', 'show_git_log']}
-        ]
+                 'scripts': ['git_checkout', 'show_git_log']}]
         p = virsh.Provider(None, {"name": "name"})
+        self.assertIsNotNone(p)
+        self.assertIsNotNone(cfgs)

@@ -93,6 +93,15 @@ class Config:
                 if key == "job":
                     yield value
 
+    def get_script(self, script, local_config=None):
+        if local_config:
+            for item in local_config:
+                key, value = list(item.items())[0]
+                if key == "script":
+                    if value["name"] == script:
+                        return value
+        return self.data["script"].get(script, None)
+
     def get_provider(self, vm):
         return self.root.providers[self._vm_provider_map[vm]]
 

@@ -12,7 +12,6 @@
 #    limitations under the License.
 
 
-import urllib
 from urllib import request
 
 from tests.integrated import base
@@ -34,3 +33,4 @@ class StatusTestCase(base.IntegrationTest):
 
     def test_index(self):
         r = request.urlopen(self.url)
+        self.assertIsNotNone(r)
