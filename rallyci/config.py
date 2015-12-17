@@ -82,16 +82,21 @@ class Config:
         if project not in self._configured_projects:
             raise StopIteration
 
-        for matrix in self.data.get("matrix", []).values():
-            if project in matrix["projects"]:
-                for job in matrix.get(jobs_type, []):
-                    yield self.data["job"][job]
+        local_jobs = set()
 
         if local_config:
             for item in local_config:
                 key, value = list(item.items())[0]
                 if key == "job":
+                    local_jobs.add(value["name"])
                     yield value
+
+        for matrix in self.data.get("matrix", []).values():
+            if project in matrix["projects"]:
+                for job in matrix.get(jobs_type, []):
+                    value = self.data["job"][job]
+                    if value["name"] not in local_jobs:
+                        yield value
 
     def get_script(self, script, local_config=None):
         if local_config:

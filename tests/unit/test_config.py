@@ -41,6 +41,20 @@ class ConfigTestCase(unittest.TestCase):
                               "scripts": ["git_checkout", "run_tests"]}]}]
         self.assertEqual(expected, jobs)
 
+    def test_get_jobs_local(self):
+        job = {"name": "spam", "scripts": ["eggs"]}
+        local_config = [{"job": job}]
+        jobs_gen = self.config.get_jobs("openstack/rally", "jobs",
+                                        local_config)
+        self.assertIn(job, list(jobs_gen))
+
+    def test_get_jobs_local_override(self):
+        job = {"name": "tox-pep8", "scripts": ["eggs"]}
+        local_config = [{"job": job}]
+        jobs_gen = self.config.get_jobs("openstack/rally", "jobs",
+                                        local_config)
+        self.assertEqual([job], list(jobs_gen))
+
     def test_get_script(self):
         s = self.config.get_script("show_env")
         expected = {"name": "show_env", "user": "rally", "data": "env"}
