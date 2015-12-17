@@ -24,6 +24,7 @@ from rallyci import utils
 
 
 class Task:
+    summary = ""
 
     def __init__(self, root, event):
         """
@@ -50,9 +51,14 @@ class Task:
         r = yield from aiohttp.get(url)
         if r.status == 200:
             local_cfg = yield from r.text()
-            local_cfg = yaml.safe_load(local_cfg)
+            try:
+                local_cfg = yaml.safe_load(local_cfg)
+            except Exception as ex:
+                local_cfg = []
+                self.summary += "Error loading local config: %s" % ex
         else:
             self.root.log.debug("No local cfg for %s" % self)
+            self.root.log.debug("Response %s" % r)
             local_cfg = []
         r.close()
         return local_cfg

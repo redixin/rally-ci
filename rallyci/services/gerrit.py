@@ -91,7 +91,7 @@ class Service:
             if handler:
                 handler(event)
             else:
-                self.log.warning("Unknown event type %s" % event["type"])
+                self.log.debug("Unknown event type %s" % event["type"])
         else:
             self.log.warning("No project name")
 
@@ -172,6 +172,7 @@ class Service:
                                   time=time,
                                   log_path=job.log_path)
             summary += "\n"
+        summary += task.summary
         cmd += ["-m", summary, revision]
         yield from self.ssh.run(cmd)
 
