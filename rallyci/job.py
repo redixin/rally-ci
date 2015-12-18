@@ -123,6 +123,8 @@ class Job:
         except Exception:
             self.log.exception("Error while publishing %s" % self)
         yield from self.provider.cleanup(self)
+        for cb in self.root.job_end_handlers:
+            cb(self)  # TODO: move it to root
 
     @asyncio.coroutine
     def run(self):

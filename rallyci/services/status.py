@@ -14,7 +14,6 @@
 
 import asyncio
 import collections
-import functools
 import pkgutil
 import logging
 
@@ -36,17 +35,16 @@ class Service:
         self.console_listeners = {}
         self.clients = []
         self._jobs = {}
+        self._job_change_listeners = {}
         self._finished = collections.deque(maxlen=10)
+
+        self.root.job_end_handlers.append(self._job_finished_cb)
 
     @asyncio.coroutine
     def index(self, request):
         LOG.debug("Index requested: %s" % request)
         text = pkgutil.get_data(__name__, "status.html").decode("utf-8")
         return web.Response(text=text, content_type="text/html")
-
-    def _con_cb(self, job_id, data):
-        for cl in self.console_listeners.get(job_id, []):
-            cl.send_str(json.dumps(data))
 
     @asyncio.coroutine
     def console(self, request):
@@ -55,31 +53,28 @@ class Service:
             return web.HTTPNotFound()
         ws = web.WebSocketResponse()
         ws.start(request)
-        if job.id not in self.console_listeners:
-            self.console_listeners[job.id] = []
-        self.console_listeners[job.id].append(ws)
-        job.console_listeners.append(functools.partial(self._con_cb, job.id))
+        jcl = self._job_change_listeners.get(job, set())
+        if not jcl:
+            self._job_change_listeners[job] = jcl
+        jcl.add(ws)
+
+        def console_cb(data):
+            if data is None:
+                self.root.start_coro(ws.close())
+            ws.send_str(json.dumps(data))
+
+        job.console_listeners.append(console_cb)
         try:
             yield from ws.receive()
+        except aiohttp.errors.ClientDisconnectedError:
+            LOG.debug("Websocket client %s disconnected" % ws)
         except asyncio.CancelledError:
-            pass
+            LOG.info("Cancelled. Closing websocket %s" % ws)
         except Exception:
-            LOG.exception("Websocket error %s" % ws)
-        wss = self.console_listeners.get(job.id)
-        if wss and ws in wss:
-            wss.remove(ws)
-        if wss is not None:
-            if not wss:
-                self.console_listeners.pop(job.id)
+            LOG.exception("Error handling websocket %s (%s)" % (ws, self))
+        job.console_listeners.remove(console_cb)
+        self._job_change_listeners[job].remove(ws)
         return ws
-
-    @asyncio.coroutine
-    def close_console_listeners(self, job):
-        wss = self.console_listeners.pop(job.id)
-        for ws in wss:
-            ws.send_str(json.dumps({"status": job.status}))
-        for ws in wss:
-            yield from ws.close()
 
     @asyncio.coroutine
     def job(self, request):
@@ -120,19 +115,19 @@ class Service:
             c.send_str(json.dumps(data))
 
     def _task_started_cb(self, task):
+        for job in task.jobs:
+            self._jobs[job.id] = job
         self._send_all({"type": "task-started", "task": task.to_dict()})
 
     def _job_status_cb(self, job):
-        if job.finished_at is None:
-            if job.id not in self._jobs:
-                self._jobs[job.id] = job
-        else:
-            job = self._jobs.pop(job.id, None)
-            if job is None:
-                return
-            if job.id in self.console_listeners:
-                self.root.start_coro(self.close_console_listeners(job))
+        for ws in self._job_change_listeners.get(job, []):
+            ws.send_str(json.dumps(job.to_dict()))
         self._send_all({"type": "job-status-update", "job": job.to_dict()})
+
+    def _job_finished_cb(self, job):
+        self._jobs.pop(job.id, None)
+        for ws in self._job_change_listeners.get(job, []):
+            self.root.start_coro(ws.close())
 
     def _task_finished_cb(self, task):
         self._finished.append(task.to_dict())

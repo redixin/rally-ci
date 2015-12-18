@@ -36,6 +36,7 @@ class Root:
         self.providers = {}
         self.task_start_handlers = []
         self.task_end_handlers = []
+        self.job_end_handlers = []
         self.job_update_handlers = []
         self.stop_event = asyncio.Event(loop=loop)
         self.reload_event = asyncio.Event(loop=loop)
