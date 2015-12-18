@@ -10,9 +10,12 @@ $(document).ready(function(){
     var job_id = path[path.length-2];
     var scheme = location.protocol == 'https:' ? 'wss://' : 'ws://';
     var ws = new WebSocket(scheme + window.location.host + "/console/"+job_id+"/");
+    var con = $("#console");
+    var state = $("#connection_state");
+    var title = document.title;
+    var job_status = '';
 
     function append_lines(data) {
-        var con = $("#console");
         var lines = data[1].split("\n");
         for(var i=0; i<lines.length; i++) {
             con.append("<p class=fd_"+data[0]+">"+lines[i]+"</p>");
@@ -24,12 +27,19 @@ $(document).ready(function(){
         if(data.length==2) {
             append_lines(data);
         } else {
-            document.title = document.title + " :: " + data.status;
+            update_status(data);
         }
     }
+    ws.onopen = function(e) {
+        state.html("CONNECTED");
+    }
     ws.onclose = function(e) {
-        //TODO
+        state.html("CLOSED");
+        clearInterval(spinner);
     };
+    function update_status(data) {
+        document.title = title + ' :: ' + data.status;
+    }
 });
 </script>
 <style type=text/css>
@@ -42,6 +52,10 @@ $(document).ready(function(){
 </head>
 
 <div id=console>
+</div>
+
+<div id=status>
+<p id=connection_state></p>
 </div>
 
 </body>

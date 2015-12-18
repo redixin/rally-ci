@@ -53,6 +53,7 @@ class Service:
             return web.HTTPNotFound()
         ws = web.WebSocketResponse()
         ws.start(request)
+        ws.send_str(json.dumps(job.to_dict()))
         jcl = self._job_change_listeners.get(job, set())
         if not jcl:
             self._job_change_listeners[job] = jcl
