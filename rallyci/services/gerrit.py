@@ -174,7 +174,6 @@ class Service:
         summary += task.summary
         cmd += ["-m", summary, revision]
         yield from self.ssh.run(cmd)
-        task.jobs = []  # FIXME
 
 
 def _get_project_name(e):

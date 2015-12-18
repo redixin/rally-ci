@@ -40,6 +40,9 @@ class Root:
         self.stop_event = asyncio.Event(loop=loop)
         self.reload_event = asyncio.Event(loop=loop)
 
+        loop.add_signal_handler(signal.SIGINT, self.stop)
+        loop.add_signal_handler(signal.SIGHUP, self.reload_event.set)
+
     def stop(self):
         self.loop.remove_signal_handler(signal.SIGINT)
         self.loop.remove_signal_handler(signal.SIGHUP)

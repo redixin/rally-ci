@@ -46,7 +46,7 @@ class SSHClient(asyncssh.SSHClient, LogDel):
         self._ssh = ssh
 
     def connection_made(self, conn):
-        pass
+        self._ssh._connected.set()
 
     def connection_lost(self, ex):
         self._ssh._connected.clear()
@@ -109,7 +109,6 @@ class SSH(LogDel):
                 username=self.username, known_hosts=None,
                 client_keys=self.keys, port=self.port)
             LOG.debug("Connected %s@%s" % (self.username, self.hostname))
-            self._connected.set()
 
     @asyncio.coroutine
     def run(self, cmd, stdin=None, stdout=None, stderr=None, check=True,

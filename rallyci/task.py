@@ -48,7 +48,7 @@ class Task:
     @asyncio.coroutine
     def _get_local_config(self, url):
         self.root.log.debug("Trying to get config %s" % url)
-        r = yield from aiohttp.get(url)
+        r = yield from aiohttp.get(url, loop=self.root.loop)
         if r.status == 200:
             local_cfg = yield from r.text()
             try:
@@ -115,7 +115,6 @@ class Task:
             if not fut.cancelled():
                 fut.cancel()
         yield from self._finished.wait()
-        # self.jobs = []
 
     def to_dict(self):
         return {

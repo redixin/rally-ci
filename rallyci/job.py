@@ -17,6 +17,7 @@ import copy
 from functools import partial
 import time
 import os
+import weakref
 
 from rallyci import utils
 
@@ -30,7 +31,11 @@ class Job:
         :param dict config: job config
         """
         self.config = config
-        self.task = task
+        self._task = weakref.ref(task)
+
+        self.task_id = task.id
+        self.task_started_at = task.started_at
+        self.task_local_config = task.local_config
 
         self.voting = config.get("voting", voting)
         self.root = task.root
@@ -44,6 +49,10 @@ class Job:
         self.log.debug("Job %s initialized." % self.id)
         self.vms = []
         self.console_listeners = []
+
+    @property
+    def task(self):
+        return self._task()
 
     def __repr__(self):
         return "<Job %s(%s) [%s]>" % (self.config["name"],
@@ -73,7 +82,7 @@ class Job:
             self.vms.append((vm, vm_conf))
 
         pub_dir = self.root.config.get_value("pub-dir", "/tmp/rally-pub")
-        self.path = os.path.join(pub_dir, self.task.id, self.config["name"])
+        self.path = os.path.join(pub_dir, self.task_id, self.config["name"])
         os.makedirs(self.path)
         path = self.path + "/console.log"
         self.console_log = open(path, "wb")
@@ -87,7 +96,7 @@ class Job:
                 if update_status:
                     self.set_status(script)
                 script = self.root.config.get_script(script,
-                                                     self.task.local_config)
+                                                     self.task_local_config)
                 ssh = yield from vm.get_ssh(script.get("user", "root"))
                 cmd = script.get("interpreter", "/bin/bash -xe -s")
                 self.root.log.debug("Running cmd %s" % cmd)
@@ -141,9 +150,9 @@ class Job:
         return {"id": self.id,
                 "name": self.config["name"],
                 "status": self.status,
-                "task": self.task.id,
+                "task": self.task_id,
                 "finished_at": self.finished_at,
-                "seconds": int(time.time()) - self.task.started_at,
+                "seconds": int(time.time()) - self.task_started_at,
                 }
 
     def __del__(self):
