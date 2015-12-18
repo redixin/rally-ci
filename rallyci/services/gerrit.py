@@ -134,7 +134,6 @@ class Service:
                 self.log.info("Gerrit stream exited with status %s" % status)
             except asyncio.CancelledError:
                 self.log.info("Stopping gerrit")
-                self.root.task_end_handlers.remove(self._handle_task_end)
                 del self.ssh
                 return
             except:
@@ -175,6 +174,7 @@ class Service:
         summary += task.summary
         cmd += ["-m", summary, revision]
         yield from self.ssh.run(cmd)
+        task.jobs = []  # FIXME
 
 
 def _get_project_name(e):

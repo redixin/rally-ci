@@ -115,7 +115,7 @@ class Task:
             if not fut.cancelled():
                 fut.cancel()
         yield from self._finished.wait()
-        self.jobs = []
+        # self.jobs = []
 
     def to_dict(self):
         return {
