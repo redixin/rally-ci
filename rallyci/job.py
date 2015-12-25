@@ -36,6 +36,7 @@ class Job:
         self.task_id = task.id
         self.task_started_at = task.started_at
         self.task_local_config = task.local_config
+        self.error = 256
 
         self.voting = config.get("voting", voting)
         self.root = task.root
@@ -86,6 +87,7 @@ class Job:
         os.makedirs(self.path)
         path = self.path + "/console.log"
         self.console_log = open(path, "wb")
+        self.started_at = time.time()
         error = yield from self._run_scripts("scripts")
         return error
 
@@ -130,7 +132,6 @@ class Job:
     def run(self):
         self.log.info("Starting %s (timeout: %s)" % (self, self.timeout))
         self.set_status("queued")
-        self.started_at = time.time()
         fut = asyncio.async(self._run(), loop=self.root.loop)
         try:
             self.error = yield from asyncio.wait_for(fut, timeout=self.timeout)

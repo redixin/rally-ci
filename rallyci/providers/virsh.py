@@ -201,6 +201,17 @@ class Host:
         return vm
 
     @asyncio.coroutine
+    def _run_script(self, vm, script):
+        """
+        :param dict script: script
+        """
+
+        ssh = yield from vm.get_ssh(script.get("user", "root"))
+        cmd = script.get("interpreter", "/bin/bash -xe -s")
+        yield from ssh.run(cmd, stdin=script["data"],
+                           stderr=LOG.debug)
+
+    @asyncio.coroutine
     def build_image(self, name):
         LOG.info("Building image %s" % name)
         self.image_locks.setdefault(name, asyncio.Lock(loop=self.root.loop))
@@ -226,7 +237,7 @@ class Host:
                     for script in build_scripts:
                         script = self.root.config.data["script"][script]
                         LOG.debug("Running build script %s" % script)
-                        yield from vm.run_script(script)
+                        yield from self._run_script(vm, script)
                     yield from vm.shutdown(storage=False)
                 except:
                     LOG.exception("Error building image")
