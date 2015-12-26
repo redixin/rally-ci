@@ -30,17 +30,73 @@ Install prerequisites
 =====================
 Installing virsh and btrfs on ubuntu is as simple as::
 
-    sudo apt-get install libvirt-bin qemu-kvm zfs
-    sudo virsh net-start default
+    sudo apt-get install libvirt-bin qemu-kvm
 
 ZFS Dataset
 ===========
 Skip this step if you already have zfs.
 
-It is recommended to use separate disk, or at least disk partition or lvm volume::
+It is recommended to use separate disk, or at least disk partition or lvm volume.
+Run this commands as root::
 
+    add-apt-repository ppa:zfs-native/stable
+    apt-get update
+    apt-get install ubuntu-zfs
+    /sbin/modprobe zfs
     zpool create tank /dev/some-dev
     zfs create tank/ci
+
+Bridge
+======
+
+Edit /etc/network/interfaces::
+
+    iface br5 inet static
+       address 10.90.1.1
+       netmask 255.255.255.0
+       bridge_ports none
+
+Forwarding
+==========
+
+Uncomment in /etc/sysctl.conf::
+
+    net.ipv4.ip_forward=1
+
+Reload::
+
+    sysctl -p /etc/sysctl.conf
+
+Proxy
+=====
+
+Install and configure squid3::
+
+    apt-get install squid3
+    # http_port 0.0.0.0:3129 transparent
+    # iptables -t nat -I PREROUTING -s 10.0.0.0/8 \! -d 10.0.0.0/8 -p tcp --dport 80 -j REDIRECT --to-port 3129
+    # rc.local ^^
+
+DHCP
+====
+
+Dnsmasq is uncofigurable. Use isc-dhcp-server::
+
+    apt-get install isc-dhcp-server
+
+Edit /etc/dhcp/dhcpd.conf::
+
+    subnet 10.90.1.0 netmask 255.255.255.0 {
+      range 10.90.1.11 10.90.1.253;
+      option domain-name-servers 192.168.1.1 8.8.8.8; // use your dns server first
+      option routers 10.90.1.1;
+      default-lease-time 200; // lease time should be small enough
+      max-lease-time 300;
+    }
+
+Restart::
+
+    service isc-dhcp-server restart
 
 RallyCI
 *******

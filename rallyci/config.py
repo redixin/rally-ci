@@ -112,7 +112,7 @@ class Config:
 
     @asyncio.coroutine
     def validate(self):
-        yield from asyncio.sleep(0)
+        yield from asyncio.sleep(0, loop=self.loop)
 
     def get_instance(self, cfg, class_name, *args, **kwargs):
         module = self._get_module(cfg["module"])

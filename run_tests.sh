@@ -8,4 +8,5 @@ if [ ! -d "$DIR" ]; then
 fi
 
 ${DIR}/flake8 &&\
-${DIR}/python -m unittest discover tests/unit
+${DIR}/python -m unittest discover tests/unit &&\
+${DIR}/python -m unittest discover tests/async

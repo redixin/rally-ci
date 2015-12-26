@@ -92,13 +92,13 @@ class Root:
             self.log.exception("Error in task_done_cb")
 
     def start_coro(self, coro):
-        fut = asyncio.async(self.run_coro(coro), loop=self.loop)
+        fut = asyncio.ensure_future(self.run_coro(coro), loop=self.loop)
         self._running_coros.add(fut)
         fut.add_done_callback(self._running_coros.remove)
         return fut
 
     def start_obj(self, obj):
-        fut = asyncio.async(self.run_obj(obj), loop=self.loop)
+        fut = asyncio.ensure_future(self.run_obj(obj), loop=self.loop)
         self._running_objects[fut] = obj
         if hasattr(obj, "cleanup"):
             fut.add_done_callback(self.schedule_cleanup)
@@ -115,7 +115,7 @@ class Root:
 
     def schedule_cleanup(self, fut):
         obj = self._running_objects.pop(fut)
-        fut = asyncio.async(self.run_cleanup(obj), loop=self.loop)
+        fut = asyncio.ensure_future(self.run_cleanup(obj), loop=self.loop)
         self._running_cleanups.add(fut)
         fut.add_done_callback(self._running_cleanups.remove)
 
@@ -137,7 +137,8 @@ class Root:
         self.log.debug("Waiting for %s" % fs.values())
         while fs:
             done, pending = yield from asyncio.wait(
-                    list(fs.keys()), return_when=futures.FIRST_COMPLETED)
+                    list(fs.keys()), loop=self.loop,
+                    return_when=futures.FIRST_COMPLETED)
             for fut in done:
                 if fut in fs:
                     del(fs[fut])
@@ -172,17 +173,18 @@ class Root:
         for prov in self.config.iter_providers():
             self.providers[prov.name] = prov
             yield from prov.start()
-        reload_fut = asyncio.async(self.reload(), loop=self.loop)
+        reload_fut = asyncio.ensure_future(self.reload(), loop=self.loop)
         yield from self.stop_event.wait()
         self.log.info("Interrupted.")
         reload_fut.cancel()
         yield from reload_fut
         for obj in self._running_objects:
             obj.cancel()
-        yield from asyncio.wait(self._running_objects,
-                                return_when=futures.ALL_COMPLETED)
+        if self._running_objects:
+            yield from asyncio.wait(self._running_objects, loop=self.loop,
+                                    return_when=futures.ALL_COMPLETED)
         if self._running_cleanups:
-            yield from asyncio.wait(self._running_cleanups,
+            yield from asyncio.wait(self._running_cleanups, loop=self.loop,
                                     return_when=futures.ALL_COMPLETED)
         for provider in self.providers.values():
             yield from prov.stop()

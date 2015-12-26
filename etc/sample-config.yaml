@@ -12,7 +12,8 @@
     name: gerrit
     silent: true
     vote: false
-    fake-stream: resources/gerrit-sample-stream.json
+    no-fake-stream: resources/gerrit-sample-stream.json
+    fake-stream: /dev/null
     module: rallyci.services.gerrit
     cfg-url-template: https://review.openstack.org/gitweb?p={project}.git;a=blob_plain;f=.rally-ci.yaml;hb={commit}
     cr-url-template: https://review.openstack.org/#q,{commit},n,z
@@ -38,23 +39,32 @@
     name: my_virsh
     module: rallyci.providers.virsh
     hosts:
-      - hostname: 192.168.1.15
-        username: root
+      - hostname: 192.168.122.101
+      - hostname: 192.168.122.102
+      - hostname: 192.168.122.103
+      - hostname: 192.168.122.104
     storage:
       backend: zfs
       path: /tank/ci
       dataset: tank/ci
     images:
-      bare_u1510:
+      u1510:
         url: https://cloud-images.ubuntu.com/wily/current/wily-server-cloudimg-amd64-disk1.img
-      bare_u1404:
-        url: http://cloud-images.ubuntu.com/trusty/current/trusty-server-cloudimg-amd64-disk1.img
       u1404:
-        parent: bare_u1404
+        url: http://cloud-images.ubuntu.com/trusty/current/trusty-server-cloudimg-amd64-disk1.img
+      u1404_dev:
+        parent: u1404
+        build-scripts: ["init_ubuntu_dev"]
+      u1510_dev:
+        parent: u1510
         build-scripts: ["init_ubuntu_dev"]
     vms:
-      ubuntu-1404-dev:
-        image: u1404
+      u1404_dev:
+        image: u1404_dev
+        memory: 512
+      u1510_dev:
+        image: u1510_dev
+        memory: 512
 
 - script:
     name: run_pytest

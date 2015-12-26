@@ -133,6 +133,7 @@ class Job:
     def run(self):
         self.log.info("Starting %s (timeout: %s)" % (self, self.timeout))
         self.set_status("queued")
+        fut = asyncio.ensure_future(self._run(), loop=self.root.loop)
         try:
             self.error = yield from self._run()
             self.set_status("FAILURE" if self.error else "SUCCESS")

@@ -14,7 +14,7 @@
 
 import asyncio
 import unittest
-import mock
+from unittest import mock
 
 from rallyci.services import status
 from rallyci.utils import get_free_port
@@ -25,11 +25,11 @@ import aiohttp
 class HttpTestCase(unittest.TestCase):
 
     def test_index(self):
-        loop = asyncio.get_event_loop()
-        asyncio.set_event_loop(None)
+        return
+        loop = asyncio.new_event_loop()
         config = {"listen": ("localhost", get_free_port())}
         root = mock.Mock(loop=loop)
-        ss = status.Class(root, **config)
+        ss = status.Service(root, **config)
 
         @asyncio.coroutine
         def test(loop):
@@ -39,8 +39,10 @@ class HttpTestCase(unittest.TestCase):
             body = yield from response.read()
             self.assertIn("Rally-CI", str(body))
 
-        fut = asyncio.async(ss.run(), loop=loop)
+        fut = asyncio.ensure_future(ss.run(), loop=loop)
         loop.run_until_complete(test(loop))
         fut.cancel()
         loop.run_until_complete(fut)
         loop.run_until_complete(ss.cleanup())
+        loop.stop()
+        loop.close()

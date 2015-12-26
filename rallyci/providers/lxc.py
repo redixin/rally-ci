@@ -113,7 +113,7 @@ class Provider(base.BaseProvider):
 
     @asyncio.coroutine
     def start(self):
-        yield from asyncio.sleep(0)
+        yield from asyncio.sleep(0, loop=self.root.loop)
 
     @asyncio.coroutine
     def boot(self, name):

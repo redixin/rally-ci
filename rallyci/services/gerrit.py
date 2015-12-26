@@ -120,6 +120,7 @@ class Service:
                     for line in fs:
                         self._handle_stdout(line)
                         yield from asyncio.sleep(3)
+                yield from asyncio.sleep(8)
                 self.log.info("Stream ended. Starting from beginning.")
             return
         if "port" not in self.cfg["ssh"]:

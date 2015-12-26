@@ -155,9 +155,7 @@ class SSH(LogDel):
         status = yield from self.run(cmd, stdout=stdout.append,
                                      stderr=stderr.append,
                                      stdin=stdin, check=check, env=env)
-        stdout = "".join(stdout)
-        stderr = "".join(stderr)
-        return (status, stdout, stderr)
+        return (status, "".join(stdout), "".join(stderr))
 
     @asyncio.coroutine
     def wait(self, timeout=180, delay=2):
@@ -170,7 +168,7 @@ class SSH(LogDel):
                 pass
             if time.time() > (_start + timeout):
                 raise SSHError("timeout %s:%s" % (self.hostname, self.port))
-            yield from asyncio.sleep(delay)
+            yield from asyncio.sleep(delay, loop=self.loop)
 
     @asyncio.coroutine
     def get(self, *args, **kwargs):
@@ -200,7 +198,7 @@ class SSH(LogDel):
                 LOG.debug("scp: %s" % line)
         except asyncio.CancelledError:
             process.terminate()
-            asyncio.async(process.wait(), loop=asyncio.get_event_loop())
+            asyncio.ensure_future(process.wait(), loop=self.loop)
             raise
         LOG.debug("DONE SCP %s %s %s" % (src, dst, self))
         return process.returncode

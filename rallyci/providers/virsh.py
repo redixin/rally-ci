@@ -35,6 +35,7 @@ RE_LA = re.compile(r".*load average: (\d+\.\d+),.*")
 RE_MEM = re.compile(r".*Mem: +\d+ +\d+ +(\d+) +\d+ +\d+ +(\d+).*")
 IFACE_RE = re.compile(r"\d+: ([a-z]+)(\d+): .*")
 IP_RE = re.compile(r"(\d+\.\d+\.\d+\.\d+)\s")
+ZFS_SNAPSHOT_RE = re.compile(r"^([a-z\d\/\_ ]+)@1 +\d.*")
 
 
 class ZFS:
@@ -67,6 +68,16 @@ class ZFS:
         LOG.debug("Checking if image %s exist" % name)
         cmd = ["zfs", "list", "%s/%s@1" % (self.dataset, name)]
         return not (yield from self.ssh.run(cmd, check=False, stderr=print))
+
+    @asyncio.coroutine
+    def list_images(self):
+        self._images = set()
+        status, out, err = yield from self.ssh.out("zfs list -t snapshot")
+        for line in out.splitlines():
+            m = ZFS_SNAPSHOT_RE.match(line)
+            if m and m.group(1).startswith(self.dataset):
+                self._images.add(m.group(1)[len(self.dataset) + 1:])
+        return self._images
 
     @asyncio.coroutine
     def snapshot(self, name, snapshot="1"):
@@ -129,7 +140,7 @@ class BTRFS:
 
     @asyncio.coroutine
     def snapshot(self, *args, **kwargs):
-        yield from asyncio.sleep(0)
+        pass
 
     @asyncio.coroutine
     def destroy(self, name):
@@ -151,6 +162,32 @@ class BTRFS:
 
 
 BACKENDS = {"btrfs": BTRFS, "zfs": ZFS}
+
+
+class ImageBuilder:
+    def __init__(self, provider):
+        self.provider = provider
+
+        self.loop = provider.root.loop
+        self._image_locks = {}
+        self._image_sources = {}
+        self._image_find_source_lock = asyncio.Lock(loop=self.loop)
+
+    def _get_image_lock(self, image_name):
+        self._image_locks.setdefault(image_name, asyncio.Lock(loop=self.loop))
+        return self._image_locks[image_name]
+
+    @asyncio.coroutine
+    def build_images(self):
+        pass
+
+    @asyncio.coroutine
+    def obtain_image(self, host, image_name):
+        pass
+
+    @asyncio.coroutine
+    def build_image(self, host, image_name):
+        pass
 
 
 class Host:
@@ -176,6 +213,7 @@ class Host:
         storage_cf = self.config["storage"]
         self.storage = BACKENDS[storage_cf["backend"]](self.ssh, **storage_cf)
         self.bridge_lock = asyncio.Lock(loop=root.loop)
+        self.image_receive_lock = asyncio.Lock(loop=root.loop)
 
     def __str__(self):
         return "<Host %s (la: %s, free: %s)>" % (self.ssh.hostname,
@@ -213,9 +251,9 @@ class Host:
 
     @asyncio.coroutine
     def build_image(self, name):
-        LOG.info("Building image %s" % name)
-        self.image_locks.setdefault(name, asyncio.Lock(loop=self.root.loop))
-        with (yield from self.image_locks[name]):
+        self.provider._build_image_lock.setdefault(
+                name, asyncio.Lock(loop=self.root.loop))
+        with (yield from self.provider._build_image_lock[name]):
             if (yield from self.storage.exist(name)):
                 LOG.debug("Image %s exist" % name)
                 return
@@ -245,8 +283,9 @@ class Host:
                     raise
             else:
                 LOG.debug("No build script for image %s" % name)
-            yield from asyncio.sleep(4)
+            yield from asyncio.sleep(4, loop=self.root.loop)
             yield from self.storage.snapshot(name)
+        self._images.add(name)
 
     @asyncio.coroutine
     def _get_vm(self, name, conf):
@@ -343,8 +382,19 @@ class Provider:
         self.name = config["name"]
         self.key = root.config.get_ssh_key()
         self.last = time.time()
+
+        self._image_copy_lock = asyncio.Lock(loop=root.loop)
         self._job_host_map = {}
         self._get_host_lock = asyncio.Lock(loop=root.loop)
+        self._build_images_lock = asyncio.Lock(loop=root.loop)
+        self._build_image_lock = {}
+        self._image_host = {}
+
+    @property
+    def _image_lock(self, image_name):
+        self._build_image_lock.setdefault(image_name,
+                                          asyncio.Lock(loop=self.root.loop))
+        return self._build_image_lock[image_name]
 
     def get_stats(self):
         pass
@@ -360,7 +410,8 @@ class Provider:
                                listen_addr=mds_addr,
                                listen_port=mds_port,
                                ssh_keys=self.root.config.get_ssh_keys())
-        self.mds_future = asyncio.async(self.mds.run(), loop=self.root.loop)
+        self.mds_future = asyncio.ensure_future(self.mds.run(),
+                                                loop=self.root.loop)
         command = ("PREROUTING -d 169.254.169.254 -p tcp --dport 80 "
                    "-j DNAT --to-destination %s:%s")
         for host in self.hosts:
@@ -371,6 +422,19 @@ class Provider:
             cmd = command % (my_addr, mds_port)
             yield from host.ssh.run(("iptables -t nat -C %s ||"
                                      "iptables -t nat -I %s") % (cmd, cmd))
+
+            for image_name in self.config["images"]:
+                if image_name not in self._image_host:
+                    self._image_host[image_name] = set()
+                if host.storage.exist(image_name):
+                    self._image_host[image_name].add(host)
+
+    @asyncio.coroutine
+    def _build_images(self):
+        for image_name in self.config["images"]:
+            if not self._image_host[image_name]:
+                host = random.choice(self.hosts)
+                host.build_image(image_name)
 
     @asyncio.coroutine
     def cleanup(self, job):
@@ -409,7 +473,7 @@ class Provider:
 
         sleep = self.last + 15 - time.time()
         if sleep > 1:
-            yield from asyncio.sleep(sleep)
+            yield from asyncio.sleep(sleep, loop=self.root.loop)
         while best is None:
             random.shuffle(self.hosts)
             LOG.debug("Chosing from %s" % self.hosts)
@@ -421,7 +485,7 @@ class Provider:
                     self.last = time.time()
                     return host
             LOG.info("All servers are overloaded. Waiting 30 seconds.")
-            yield from asyncio.sleep(30)
+            yield from asyncio.sleep(30, loop=self.root.loop)
 
 
 class VM:

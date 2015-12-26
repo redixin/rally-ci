@@ -13,23 +13,34 @@
 #    limitations under the License.
 
 import asyncio
-import base
+import unittest
+
 from unittest import mock
 
-from rallyci import root
+
+class AsyncTest(unittest.TestCase):
+
+    def set_timeout(self, timeout):
+        if hasattr(self, "_timeout"):
+            self._timeout.cancel()
+        self._timeout = self.loop.call_later(timeout, self.loop.stop)
+
+    def setUp(self):
+        self.loop = asyncio.new_event_loop()
+        self.set_timeout(1)
+
+    def tearDown(self):
+        self._timeout.cancel()
+        self.loop.stop()
+        self.loop.close()
 
 
-class RootTestCase(base.AsyncTest):
+class FakeSSH:
 
-    def test_run_stop(self):
-        self.set_timeout(2)
-        r = root.Root(self.loop, None, None)
-        r._load_config = mock.Mock()
-        r.log = mock.Mock()
-        r.config = mock.Mock()
-        r.config.iter_providers.return_value = []
-        r.start_services = mock.Mock()
-        fut = asyncio.ensure_future(r.run(), loop=self.loop)
-        self.loop.call_later(1, r.stop_event.set)
-        self.loop.run_until_complete(fut)
-        r.config.iter_providers.assert_called_once_with()
+    def __init__(self, side_effect):
+        self._side_effect = side_effect
+        self.out = mock.Mock(wraps=self._out)
+
+    @asyncio.coroutine
+    def _out(self, cmd):
+        return self._side_effect.pop()
