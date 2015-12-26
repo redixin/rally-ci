@@ -45,6 +45,8 @@ class ZFS:
         self.path = path
         self.dataset = dataset
 
+        self.images = set()
+
     @asyncio.coroutine
     def create(self, name):
         cmd = ["zfs", "create", "/".join((self.dataset, name))]
@@ -71,13 +73,11 @@ class ZFS:
 
     @asyncio.coroutine
     def list_images(self):
-        self._images = set()
         status, out, err = yield from self.ssh.out("zfs list -t snapshot")
         for line in out.splitlines():
             m = ZFS_SNAPSHOT_RE.match(line)
             if m and m.group(1).startswith(self.dataset):
-                self._images.add(m.group(1)[len(self.dataset) + 1:])
-        return self._images
+                self.images.add(m.group(1)[len(self.dataset) + 1:])
 
     @asyncio.coroutine
     def snapshot(self, name, snapshot="1"):
@@ -170,8 +170,10 @@ class ImageBuilder:
 
         self.loop = provider.root.loop
         self._image_locks = {}
+        self._build_locks = {}
+        self._images_built = {}
         self._image_sources = {}
-        self._image_find_source_lock = asyncio.Lock(loop=self.loop)
+        self._image_building = {}
 
     def _get_image_lock(self, image_name):
         self._image_locks.setdefault(image_name, asyncio.Lock(loop=self.loop))
@@ -179,11 +181,53 @@ class ImageBuilder:
 
     @asyncio.coroutine
     def build_images(self):
-        pass
+        for host in self.provider.hosts:
+            pass
+
+        for image_name in self.provider.config["images"]:
+            self._image_building[image_name] = asyncio.Lock(loop=self.loop)
+            for host in self.provider.hosts:
+                if True: # TODO
+                    pass
+
+        for host in self.provider.hosts:
+            yield from host.storage.list_images()
+
+            for image_name in host.storage.images:
+                if image_name not in self._image_sources:
+                    self._image_sources[image_name] = []
+                self._image_sources[image_name].append(host)
+
+            for host in self.provider.hosts:
+                if image_name not in host.storage.images:
+                    yield from self.obtain_image(host, image_name)
 
     @asyncio.coroutine
-    def obtain_image(self, host, image_name):
-        pass
+    def obtain_images(self):
+        yield from self._image_building[image_name].wait()
+        sources = self._image_sources[image_name]
+        if sources:
+            source = sources.pop()
+            yield from source.upload(host, image_name)
+            sources.update((host, source))
+        else:
+            pass
+
+        source = None
+        uploading = None
+        with (yield from self._image_find_source_lock):
+            if image_name in self._image_sources:
+                source = self._image_sources.pop()
+            else:
+                uploading = self._image_uploading.get(image_name)
+                if uploading:
+                    yield from uploading.wait()
+        if source:
+            yield from source.upload_image(host)
+            with (yield from self._image_find_source_lock):
+                self._image_sources.update((source, host))
+        else:
+            yield from self.build_image(host, image_name)
 
     @asyncio.coroutine
     def build_image(self, host, image_name):
@@ -192,14 +236,14 @@ class ImageBuilder:
 
 class Host:
 
-    def __init__(self, ssh_conf, provider, root):
+    def __init__(self, ssh_conf, provider):
         """
         :param dict ssh_conf: item from hosts from provider
-        :param Host host:
+        :param Provider provider:
         """
         self.provider = provider
-        self.root = root
 
+        self.root = provider.root
         self.config = provider.config
 
         self.image_locks = {}
@@ -401,8 +445,11 @@ class Provider:
 
     @asyncio.coroutine
     def start(self):
-        self.hosts = [Host(c, self, self.root)
-                      for c in self.config["hosts"]]
+        self.hosts = []
+        for host_conf in self.config["hosts"]:
+            host = Host(host_conf, self)
+            yield from host.list_images()
+            self.hosts.append(host)
         mds_cfg = self.config.get("metadata_server", {})
         mds_addr = mds_cfg.get("listen_addr", "0.0.0.0")
         mds_port = mds_cfg.get("listen_port", 8088)
