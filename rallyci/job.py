@@ -88,8 +88,9 @@ class Job:
         path = self.path + "/console.log"
         self.console_log = open(path, "wb")
         self.started_at = time.time()
-        error = yield from self._run_scripts("scripts")
-        return error
+        fut = self._run_scripts("scripts")
+        return (yield from asyncio.wait_for(fut, self.timeout,
+                                            loop=self.root.loop))
 
     @asyncio.coroutine
     def _run_scripts(self, key, update_status=True):
@@ -132,9 +133,8 @@ class Job:
     def run(self):
         self.log.info("Starting %s (timeout: %s)" % (self, self.timeout))
         self.set_status("queued")
-        fut = asyncio.async(self._run(), loop=self.root.loop)
         try:
-            self.error = yield from asyncio.wait_for(fut, timeout=self.timeout)
+            self.error = yield from self._run()
             self.set_status("FAILURE" if self.error else "SUCCESS")
         except asyncio.TimeoutError:
             self.set_status("TIMEOUT")

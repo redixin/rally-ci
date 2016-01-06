@@ -66,7 +66,11 @@ class Service:
             "comment-added": self._handle_comment_added,
             "patchset-created": self._start_task,
             "ref-updated": self._start_task,
+            "ref-replicated": self._ignore_event,
         }
+
+    def _ignore_event(self, raw_event):
+        pass
 
     def _start_task(self, raw_event):
         event = Event(self.cfg, raw_event)
