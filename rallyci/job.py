@@ -92,6 +92,10 @@ class Job:
         return (yield from asyncio.wait_for(fut, self.timeout,
                                             loop=self.root.loop))
 
+    def get_script(self, script_name):
+        return self.root.config.get_script(script_name,
+                                           self.task_local_config)
+
     @asyncio.coroutine
     def _run_scripts(self, key, update_status=True):
         for vm, conf in self.vms:
