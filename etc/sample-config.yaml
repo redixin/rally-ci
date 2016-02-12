@@ -35,6 +35,13 @@
     listen: ["0.0.0.0", "8080"]
 
 - provider:
+    name: my_lxc
+    module: rallyci.provider.lxc
+    hosts:
+      - hostname: 172.18.184.162
+        username: root
+
+- provider:
     name: my_virsh
     module: rallyci.providers.virsh
     hosts:

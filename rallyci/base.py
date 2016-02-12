@@ -19,10 +19,7 @@ import abc
 class BaseVM(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
-    def run_script(self, script):
-        """
-        :param dict script:
-        """
+    def get_ssh(self, username="root"):
         pass
 
     @abc.abstractmethod
