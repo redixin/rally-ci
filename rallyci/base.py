@@ -12,11 +12,19 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
-
 import abc
+import asyncio
+import functools
 
 
 class BaseVM(metaclass=abc.ABCMeta):
+
+    def __init__(self, provider, host, job, ip, name):
+        self.provider = provider
+        self.host = host
+        self.job = job
+        self.ip = ip
+        self.name = name
 
     @abc.abstractmethod
     def get_ssh(self, username="root"):
@@ -25,6 +33,19 @@ class BaseVM(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def destroy(self):
         pass
+
+    @asyncio.coroutine
+    def run_script(self, script_name, output):
+        _out = functools.partial(output, 1)
+        _err = functools.partial(output, 2)
+        script = self.job.get_script(script_name)
+        ssh = yield from self.get_ssh(username=script.get("username", "root"))
+        cmd = script.get("interpreter", "/bin/bash -xe -s")
+        e = yield from ssh.run(cmd, stdin=script["data"], env=self.job.env,
+                               stdout=_out,
+                               stderr=_err,
+                               check=False)
+        return e
 
 
 class BaseProvider(metaclass=abc.ABCMeta):

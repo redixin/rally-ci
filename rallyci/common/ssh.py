@@ -134,7 +134,7 @@ class SSH(LogDel):
                 while True:
                     chunk = stdin.read(4096)
                     if hasattr(chunk, "decode"):
-                        chunk = chunk.decode("ascii") # TODO
+                        chunk = chunk.decode("ascii")  # TODO
                     if not chunk:
                         break
                     chan.write(chunk)

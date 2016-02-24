@@ -34,6 +34,8 @@ class Provider(base.BaseProvider):
         """
         :param dict cfg: provider config
         """
+        self.vms = {}
+
         self.root = root
         self.cfg = cfg
         self.name = cfg["name"]
@@ -88,7 +90,7 @@ class Provider(base.BaseProvider):
             cmd = ["lxc-start", "-d", "--name", image]
             yield from host.run(cmd, stderr=print)
             ip = yield from self._get_ip(host, image)
-            vm = VM(self, job, ip)
+            vm = VM(self, host, job, ip, image)
             for script in self.cfg["vms"][image].get("build-scripts", []):
                 yield from vm.run_script(script)
             cmd = ["lxc-stop", "-n", image]
@@ -114,12 +116,17 @@ class Provider(base.BaseProvider):
         host = yield from self._get_host()
         yield from self._build_image(host, image, job)
         name = utils.get_rnd_name("rci_")
+        # TODO: shield
         cmd = ["lxc-clone", "-o", image, "-n", name] + self._opts
         yield from host.run(cmd, stderr=print)
         cmd = ["lxc-start", "-d", "-n", name]
         yield from host.run(cmd, stderr=print)
         ip = yield from self._get_ip(host, name)
-        vm = VM(self, job, ip)
+        vm = VM(self, host, job, ip, name)
+        if job not in self.vms:
+            self.vms[job] = []
+        self.vms[job].append(vm)
+        # TODO: /shield
         return vm
 
     @asyncio.coroutine
@@ -132,30 +139,18 @@ class Provider(base.BaseProvider):
 
     @asyncio.coroutine
     def cleanup(self, job):
-        pass
+        for vm in self.vms.pop(job, []):
+            yield from vm.destroy()
 
     @asyncio.coroutine
     def stop(self):
-        pass
+        for job, vms in self.vms.items():
+            for vm in vms:
+                yield from vm.destroy()
+        self.vms = {}
 
 
 class VM(base.BaseVM):
-
-    def __init__(self, provider, job, ip):
-        self.provider = provider
-        self.job = job
-        self.ip = ip
-
-    @asyncio.coroutine
-    def run_script(self, script_name):
-        script = self.job.get_script(script_name)
-        ssh = yield from self.get_ssh(username=script.get("username", "root"))
-        cmd = script.get("interpreter", "/bin/bash -xe -s")
-        e = yield from ssh.run(cmd, stdin=script["data"], env=self.job.env,
-                               stdout=print,
-                               stderr=print,
-                               check=False)
-        return e
 
     @asyncio.coroutine
     def get_ssh(self, username="root"):
@@ -166,4 +161,5 @@ class VM(base.BaseVM):
 
     @asyncio.coroutine
     def destroy(self):
-        pass
+        cmd = ["lxc-destroy", "-f", "-n", self.name]
+        yield from self.host.run(cmd)
