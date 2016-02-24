@@ -88,7 +88,7 @@ class Provider(base.BaseProvider):
             cmd = ["lxc-start", "-d", "--name", image]
             yield from host.run(cmd, stderr=print)
             ip = yield from self._get_ip(host, image)
-            vm = VM(self, job, ip)
+            vm = VM(self, host, job, ip, image)
             for script in self.cfg["vms"][image].get("build-scripts", []):
                 yield from vm.run_script(script)
             cmd = ["lxc-stop", "-n", image]
@@ -119,7 +119,7 @@ class Provider(base.BaseProvider):
         cmd = ["lxc-start", "-d", "-n", name]
         yield from host.run(cmd, stderr=print)
         ip = yield from self._get_ip(host, name)
-        vm = VM(self, job, ip)
+        vm = VM(self, host, job, ip, name)
         return vm
 
     @asyncio.coroutine
@@ -141,10 +141,12 @@ class Provider(base.BaseProvider):
 
 class VM(base.BaseVM):
 
-    def __init__(self, provider, job, ip):
+    def __init__(self, provider, host, job, ip, name):
         self.provider = provider
+        self.host = host
         self.job = job
         self.ip = ip
+        self.name = name
 
     @asyncio.coroutine
     def run_script(self, script_name):
@@ -166,4 +168,5 @@ class VM(base.BaseVM):
 
     @asyncio.coroutine
     def destroy(self):
-        pass
+        cmd = ["lxc-destroy", "-n", self.name]
+        yield from self.host.run(cmd)
