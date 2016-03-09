@@ -259,7 +259,7 @@ class Host:
             yield from self.build_image(image)
         else:
             image = name
-        rnd_name = utils.get_rnd_name(name)
+        rnd_name = utils.get_rnd_name("rci_" + name)
         yield from self.storage.clone(image, rnd_name)
         vm = VM(self, name, conf)
         files = yield from self.storage.list_files(rnd_name)
@@ -439,7 +439,7 @@ class VM:
         self._ssh_cache = {}
         self.macs = []
         self.disks = []
-        self.name = utils.get_rnd_name(name)
+        self.name = utils.get_rnd_name("rci_" + name)
         x = XMLElement(None, "domain", type="kvm")
         self.x = x
         x.se("name").x.text = self.name

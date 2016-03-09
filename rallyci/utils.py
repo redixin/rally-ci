@@ -79,8 +79,7 @@ def get_safe_filename(name):
     return "".join([c for c in name if c in SAFE_CHARS])
 
 
-def get_rnd_name(prefix, length=12):
-    prefix = "_rci_" + prefix
+def get_rnd_name(prefix="", length=12):
     return prefix + "".join(random.sample(string.ascii_letters, length))
 
 

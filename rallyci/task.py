@@ -38,7 +38,7 @@ class Task:
         self.jobs = []
         self.finished_at = None
         self.started_at = time.time()
-        self.id = utils.get_rnd_name("task_", length=10)
+        self.id = utils.get_rnd_name(length=10)
         self._finished = asyncio.Event(loop=root.loop)
         self._job_futures = {}
 

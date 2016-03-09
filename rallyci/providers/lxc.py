@@ -103,7 +103,7 @@ class Provider(base.BaseProvider):
     def get_vm(self, image, job):
         host = yield from self._get_host()
         yield from self._build_image(host, image)
-        name = utils.get_rnd_name("rci_")
+        name = utils.get_rnd_name()
         cmd = ["lxc-clone", "-o", image, "-n", name] + self._opts
         yield from host.run(cmd, stderr=print)
         cmd = ["lxc-start", "-d", "-n", name]

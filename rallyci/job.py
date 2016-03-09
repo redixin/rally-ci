@@ -42,7 +42,7 @@ class Job:
         self.root = task.root
         self.log = task.root.log
         self.timeout = self.config.get("timeout", 90) * 60
-        self.id = utils.get_rnd_name("job_", length=10)
+        self.id = utils.get_rnd_name(length=10)
         self.env = copy.deepcopy(self.task.event.env)
         self.env.update(config.get("env", {}))
         self.status = "__init__"
