@@ -16,6 +16,7 @@ import abc
 import asyncio
 from concurrent import futures
 
+
 class BaseVM(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
@@ -29,26 +30,78 @@ class BaseVM(metaclass=abc.ABCMeta):
 
 class BaseProvider(metaclass=abc.ABCMeta):
 
-    @abc.abstractmethod
     def __init__(self, root, config):
         """
         :param Root root:
         :param dict config: full provider config
         """
-        pass
+        self.root = root
+        self.config = config
 
     @abc.abstractmethod
     def start(self):
         pass
 
     @abc.abstractmethod
-    def get_vm(self, cfg):
-        """Return list of VM instances.
+    def get_vms(self, job):
+        """Return Host instance.
 
-        :param cfg: job.runner part of job config
+        :param job: Job instance
+        :returns: list of VM instances
         """
         pass
 
+
+class BaseHost(metaclass=abc.ABCMeta):
+
+    def __init__(self, cfg, provider):
+        """
+        :param dict cfg: provider.hosts item
+        """
+        self.cfg = cfg
+        self.provider = provider
+
+
+class BaseVM(metaclass=abc.ABCMeta):
+
+    def __init__(self, host, cfg, job):
+        """
+        :param dict cfg: job.vms single item
+        """
+        self.host = host
+        self.cfg = cfg
+        self.job = job
+
+    @asyncio.coroutine
+    def run_scripts(self, key, script_cb, out_cb, err_cb):
+        for cfg in self.cfg:
+            for script in cfg.get(key, []):
+                script_cb(script["name"])
+                e = yield from self.run_script(script["name"], out_cb, err_cb)
+                if e:
+                    return e
+
+    @asyncio.coroutine
+    def publish(self, path):
+        ssh = yield from self.get_ssh()
+        for src, dst in self.cfg.get("publish", []):
+            yield from ssh.scp(src, os.path.join(path, dst), recurse=True)
+
+    @abc.abstractmethod
+    def get_ssh(self, username="root"):
+        pass
+
+    @abc.abstractmethod
+    def run_script(self, name, out_cb, err_cb):
+        script = self.job.task.get_script(name)
+        username = script.get("username", "root")
+        ssh = yield from self.get_ssh(username=username)
+        e = yield from ssh.run(cmd, stdin=script["data"],
+                               env=self.job.env,
+                               stdout=out_cb,
+                               stderr=err_cb,
+                               check=False)
+        return e
 
 class BaseEvent(metaclass=abc.ABCMeta):
     """Represent event."""

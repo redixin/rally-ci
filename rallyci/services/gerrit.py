@@ -73,10 +73,16 @@ class Service:
         pass
 
     def _start_task(self, raw_event):
+        project = _get_project_name(raw_event)
+        if not self.root.config.is_project_configured(project):
+            return
         event = Event(self.cfg, raw_event)
         self.root.start_task(event)
 
     def _handle_comment_added(self, raw_event):
+        project = _get_project_name(raw_event)
+        if not self.root.config.is_project_configured(project):
+            return
         r = self.cfg.get("recheck-regexp", "^rci recheck$")
         m = re.search(r, raw_event["comment"], re.MULTILINE)
         if m:
@@ -88,16 +94,9 @@ class Service:
         project = _get_project_name(event)
         self.log.debug("Event '%s' for project '%s'" % (event["type"],
                                                         project))
-        if project:
-            if not self.root.config.is_project_configured(project):
-                return
-            handler = self.handler_map.get(event["type"])
-            if handler:
-                handler(event)
-            else:
-                self.log.debug("Unknown event type %s" % event["type"])
-        else:
-            self.log.warning("No project name")
+        handler = self.handler_map.get(event["type"])
+        if handler:
+            handler(event)
 
     def _handle_stderr(self, data):
         self.log.warning("Error message from gerrit: %s" % data)

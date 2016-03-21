@@ -25,6 +25,7 @@ from xml.etree import ElementTree as et
 
 from clis import clis
 
+from rallyci import base
 from rallyci import utils
 from rallyci.common.ssh import SSH
 
@@ -32,7 +33,7 @@ from rallyci.common.ssh import SSH
 LOG = logging.getLogger(__name__)
 
 RE_LA = re.compile(r".*load average: (\d+\.\d+),.*")
-RE_MEM = re.compile(r".*Mem: +\d+ +\d+ +(\d+) +\d+ +\d+ +(\d+).*")
+RE_MEM = re.compile(r".*Mem: +(\d+) +\d+ +(\d+) +\d+ +\d+ +(\d+).*")
 IFACE_RE = re.compile(r"\d+: ([a-z]+)(\d+): .*")
 IP_RE = re.compile(r"(\d+\.\d+\.\d+\.\d+)\s")
 
@@ -153,29 +154,29 @@ class BTRFS:
 BACKENDS = {"btrfs": BTRFS, "zfs": ZFS}
 
 
-class Host:
+class Host(base.BaseHost):
 
-    def __init__(self, ssh_conf, provider, root):
+    def __init__(self, cfg, provider):
         """
         :param dict ssh_conf: item from hosts from provider
         :param Host host:
         """
-        self.provider = provider
-        self.root = root
+        super().__init__(cfg, provider)
 
         self.config = provider.config
 
         self.image_locks = {}
         self._job_vms = {}
         self._job_bridge_numbers = {}
-        ssh_conf.setdefault("username", "root")
-        ssh_conf["keys"] = root.config.get_ssh_keys(keytype="private")
-        self.ssh = SSH(root.loop, **ssh_conf)
+        cfg.setdefault("username", "root")
+        cfg["keys"] = self.provider.root.config.get_ssh_keys(keytype="private")
+        self.ssh = SSH(self.provider.root.loop, **cfg)
+        self.cpus = False
         self.la = 0.0
         self.free = 0
         storage_cf = self.config["storage"]
         self.storage = BACKENDS[storage_cf["backend"]](self.ssh, **storage_cf)
-        self.bridge_lock = asyncio.Lock(loop=root.loop)
+        self.bridge_lock = asyncio.Lock(loop=self.provider.root.loop)
 
     def __str__(self):
         return "<Host %s (la: %s, free: %s)>" % (self.ssh.hostname,
@@ -183,11 +184,34 @@ class Host:
 
     @asyncio.coroutine
     def update_stats(self):
+
+        if not self.cpus:
+            cmd = "cat /proc/cpuinfo | grep processor -c"
+            status, data, err = yield from self.ssh.out(cmd)
+            self.cpus = int(data)
+
         cmd = "uptime && free -m"
         err, data, err = yield from self.ssh.out(cmd)
         self.la = float(RE_LA.search(data, re.MULTILINE).group(1))
-        free = RE_MEM.search(data, re.MULTILINE).groups()
-        self.free = sum(map(int, free))
+        mem = RE_MEM.search(data, re.MULTILINE)
+        self.free = int(mem.group(2)) + int(mem.group(3))
+        self.mem = int(mem.group(1))
+
+        cmd = "virsh list --uuid --state-running"
+        status, data, err = yield from self.ssh.out(cmd)
+        vcpu = 0
+        vmem = 0
+        for line in data.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            cmd = "virsh dumpxml %s" % line
+            status, data, err = yield from self.ssh.out(cmd)
+            xml = et.fromstring(data)
+            vcpu += int(xml.find("vcpu").text)
+            vmem += int(xml.find("currentMemory").text)
+        self.vcpu = vcpu
+        self.vmem = vmem * 1024 * 1024
 
     @asyncio.coroutine
     def boot_image(self, name):
@@ -213,8 +237,9 @@ class Host:
 
     @asyncio.coroutine
     def build_image(self, name):
-        LOG.debug("Building image %s" % name)
-        self.image_locks.setdefault(name, asyncio.Lock(loop=self.root.loop))
+        LOG.info("Building image %s" % name)
+        self.image_locks.setdefault(name,
+                                    asyncio.Lock(loop=self.provider.root.loop))
         with (yield from self.image_locks[name]):
             if (yield from self.storage.exist(name)):
                 LOG.debug("Image %s exist" % name)
@@ -236,7 +261,8 @@ class Host:
                 vm = yield from self.boot_image(name)
                 try:
                     for script in build_scripts:
-                        script = self.root.config.data["script"][script]
+                        script = self.provider.root.config.\
+                                data["script"][script]
                         LOG.debug("Running build script %s" % script)
                         yield from self._run_script(vm, script)
                     yield from vm.shutdown(storage=False)
@@ -332,28 +358,37 @@ class Host:
         return br
 
 
-class Provider:
+class Provider(base.BaseProvider):
 
     def __init__(self, root, config):
         """
         :param config: full provider config
         """
-        self.root = root
-        self.config = config
+        super().__init__(root, config)
 
+        self.shutdown_event = asyncio.Event()
         self.name = config["name"]
         self.key = root.config.get_ssh_key()
         self.last = time.time()
         self._job_host_map = {}
         self._get_host_lock = asyncio.Lock(loop=root.loop)
+        self._get_vm_lock = asyncio.Lock(loop=root.loop)
 
-    def get_stats(self):
-        pass
+    def get_vms(self, job):
+        vms = []
+        host = yield from self._get_host_for_job(job)
+        with (yield from self._host_lock[host]):
+            for cfg in job.config["vms"]:
+                vm = yield from host.get_vm_for_job(cfg["name"], job)
+                vms.append(vm)
+        return vms
 
     @asyncio.coroutine
     def start(self):
-        self.hosts = [Host(c, self, self.root)
+        self.hosts = [Host(c, self)
                       for c in self.config["hosts"]]
+        self._host_lock = dict(((h, asyncio.Lock(loop=self.root.loop))
+                                 for h in self.hosts))
         mds_cfg = self.config.get("metadata_server", {})
         mds_addr = mds_cfg.get("listen_addr", "0.0.0.0")
         mds_port = mds_cfg.get("listen_port", 8088)
@@ -405,25 +440,32 @@ class Provider:
 
     @asyncio.coroutine
     def _get_host(self):
-        memory_required = self.config.get("freemb", 1024)
-        best = None
-
-        sleep = self.last + 15 - time.time()
-        if sleep > 1:
-            yield from asyncio.sleep(sleep)
-        while best is None:
-            random.shuffle(self.hosts)
-            LOG.debug("Chosing from %s" % self.hosts)
+        random.shuffle(self.hosts)
+        while True:
             for host in self.hosts:
                 yield from host.update_stats()
-                maxla = self.config.get("maxla", 4)
-                if host.free >= memory_required and host.la < maxla:
-                    LOG.debug("Chosen host: %s" % host)
-                    self.last = time.time()
-                    return host
-            LOG.info("All servers are overloaded. Waiting 30 seconds.")
-            yield from asyncio.sleep(30)
+                if host.la > host.cpus:
+                    LOG.debug("Host %s is overloaded by la/cpu" % host)
+                    continue
+                if host.free < self.config.get("freemb", 10240):
+                    LOG.debug("Host %s is overloaded by memory" % host)
+                    continue
+                if host.vmem > host.mem - self.config.get("freemb", 10240):
+                    LOG.debug("Host %s is overloaded by vmem" % host)
+                    continue
+                if host.vcpu > host.cpus:
+                    LOG.debug("Host %s is overloaded by vcpu" % host)
+                    continue
+                return host
 
+            LOG.info("All servers are overloaded. Waiting.")
+            wait = self.shutdown_event.wait()
+            try:
+                yield from asyncio.wait_for(wait, 10, loop=self.root.loop)
+            except asyncio.TimeoutError:
+                pass
+            else:
+                self.shutdown_event.clear()
 
 class VM:
     def __init__(self, host, name, cfg=None):
@@ -470,6 +512,7 @@ class VM:
     def shutdown(self, timeout=30, storage=False):
         if not hasattr(self, "ip"):
             yield from self.destroy(storage=storage)
+            self.host.provider.shutdown_event.set()
             return
         ssh = yield from self.get_ssh()
         yield from ssh.run("shutdown -h now")
@@ -479,6 +522,7 @@ class VM:
             yield from asyncio.sleep(4)
             error = yield from self._ssh.run(cmd, check=False)
             if error:
+                self.host.provider.shutdown_event.set()
                 return
             elif time.time() > deadline:
                 yield from self.destroy(storage=storage)
@@ -494,6 +538,7 @@ class VM:
         for ssh in self._ssh_cache.values():
             ssh.close()
         self._ssh_cache = {}
+        self.host.provider.shutdown_event.set()
 
     @asyncio.coroutine
     def get_ssh(self, user="root"):

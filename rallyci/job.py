@@ -38,6 +38,7 @@ class Job:
         self.task_local_config = task.local_config
         self.error = 256
 
+        self.provider = self.root.providers[self.config["provider"]]
         self.voting = config.get("voting", voting)
         self.root = task.root
         self.log = task.root.log
@@ -72,6 +73,12 @@ class Job:
         self.console_log.write(data.encode("utf-8"))
         self.console_log.flush()
 
+    def _out_cb(self, data):
+        self._data_cb(1, data)
+
+    def _err_cb(self, data):
+        self._data_cb(2, data)
+
     @asyncio.coroutine
     def _get_vm(self, vm_conf):
          vm = yield from self.provider.get_vm(vm_conf["name"], self)
@@ -85,39 +92,19 @@ class Job:
         self.provider = self.root.providers[self.config["provider"]]
         for vm_conf in self.config["vms"]:
             yield from asyncio.shield(self._get_vm(vm_conf), loop=self.root.loop)
-            #yield from self._get_vm(vm_conf)
         pub_dir = self.root.config.get_value("pub-dir", "/tmp/rally-pub")
         self.path = os.path.join(pub_dir, self.task_id, self.config["name"])
         os.makedirs(self.path)
         path = self.path + "/console.log"
         self.console_log = open(path, "wb")
         self.started_at = time.time()
-        fut = self._run_scripts("scripts")
-        return (yield from asyncio.wait_for(fut, self.timeout,
-                                            loop=self.root.loop))
-
-    def get_script(self, script_name):
-        return self.root.config.get_script(script_name,
-                                           self.task_local_config)
-
-    @asyncio.coroutine
-    def _run_scripts(self, key, update_status=True):
-        for vm, conf in self.vms:
-            for script in conf.get(key, []):
-                if update_status:
-                    self.set_status(script)
-                script = self.root.config.get_script(script,
-                                                     self.task_local_config)
-                ssh = yield from vm.get_ssh(script.get("user", "root"))
-                cmd = script.get("interpreter", "/bin/bash -xe -s")
-                self.root.log.debug("Running cmd %s" % cmd)
-                e = yield from ssh.run(cmd, stdin=script["data"], env=self.env,
-                                       stdout=partial(self._data_cb, 1),
-                                       stderr=partial(self._data_cb, 2),
-                                       check=False)
-                self.root.log.debug("DONE")
-                if e:
-                    return e
+        for vm in self.vms:
+            result = yield from vm.run_scripts("scripts",
+                                               script_cb=self.set_status,
+                                               out_cb=self._out_cb,
+                                               err_cb=self._err_cb)
+            if result:
+                return result
 
     @asyncio.coroutine
     def cleanup(self):
@@ -138,6 +125,12 @@ class Job:
                                       loop=self.root.loop)
         except:
             self.log.exception("Error while cleanup %s" % self)
+        self.console_log.close()
+        self.console_log = open(self.path + "/post.log", "wb")
+        for vm in self.vms:
+            yield from vm.run_scripts("post", out_cb=self._out_cb, err_cb=self._err_cb)
+            yield from vm.publish(self.path)
+        #
         for cb in self.root.job_end_handlers:
             cb(self)  # TODO: move it to root
 
