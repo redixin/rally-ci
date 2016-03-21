@@ -23,7 +23,7 @@ class BaseVM(metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    def destroy(self):
+    def run_script(self):
         pass
 
 

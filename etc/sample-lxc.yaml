@@ -2,8 +2,8 @@
 
 - ssh-key:
     name: default
-    public: "~/.ssh/test.pub"
-    private: "~/.ssh/test"
+    public: "~/.ssh/id_rsa.pub"
+    private: "~/.ssh/id_rsa"
 
 - rally-ci:
     pub-dir: /store/rally-ci/logs
@@ -27,7 +27,7 @@
     ssh:
       hostname: review.openstack.org
       username: CHANGEME
-      keys: ["~/.ssh/test"]
+      keys: ["~/.ssh/id_rsa"]
 
 - service:
     name: status
@@ -36,12 +36,18 @@
 
 - provider:
     name: my_lxc
-    module: rallyci.provider.lxc
+    module: rallyci.providers.lxc
     hosts:
-      - hostname: lxc-worker-1
+      - hostname: localhost
         username: root
+        keys: ["~/.ssh/id_rsa"]
     vms:
-      - 
+      ubuntu-1404-dev:
+        image: u1404
+        template: ubuntu
+        build-scripts:
+          - init_ubuntu_dev
+          - clone_projects
 
 - script:
     name: init_ubuntu_dev
@@ -57,9 +63,10 @@
     name: clone_projects
     user: rally
     data: |
-      mkdir openstack-dev
-      cd openstack-dev
+      mkdir openstack-dev && cd openstack-dev
       git clone git://git.openstack.org/openstack-dev/ci-sandbox.git
+      cd && mkdir openstack && cd openstack
+      git clone git://git.openstack.org/openstack/rally.git
 
 - script:
     name: git_checkout
@@ -72,13 +79,18 @@
       git diff --name-only master
 
 - script:
-    name: tox
+    name: run_tests
     user: rally
     data: |
       env && ls
       cd $GERRIT_PROJECT
       git status
       echo "tox -e${TOX_ENV}"
+
+- script:
+    name: gzip_logs
+    data: |
+        gzip -9 /var/log/*
 
 - job:
     name: tox
@@ -87,7 +99,11 @@
       - name: ubuntu-1404-dev
         scripts:
           - git_checkout
-          - tox
+          - run_tests
+        post:
+          - gzip_logs
+        publish:
+          - ["/var/log", "varlog"]
 
 - job:
     parent: tox
@@ -101,23 +117,11 @@
     env:
       TOX_ENV: py27
 
-- job:
-    parent: tox
-    name: tox-py34
-    env:
-      TOX_ENV: py34
-
 - matrix:
     name: tox-jobs
     projects:
       - openstack-dev/ci-sandbox
-      - openstack/designate
-      - openstack/murano
       - openstack/rally
-      - openstack/nova
-      - openstack/glance
-      - openstack/neutron
     jobs:
-      - tox-pep8
       - tox-py27
-      - tox-py34
+      - tox-pep8

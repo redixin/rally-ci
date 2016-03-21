@@ -75,13 +75,20 @@ class SSHClientSession(asyncssh.SSHClientSession, LogDel):
 class SSH(LogDel):
 
     def __init__(self, loop, hostname, username=None, keys=None, port=22,
-                 cb=None):
+                 cb=None, jumphost=None):
         self.loop = loop
         self.username = username or pwd.getpwuid(os.getuid()).pw_name
         self.hostname = hostname
-        self.keys = keys
         self.port = port
         self.cb = cb
+        if keys:
+            self.keys = []
+            for key in keys:
+                if key.startswith("~"):
+                    key = os.path.expanduser(key)
+                self.keys.append(key)
+        else:
+            self.keys = None
         self._connecting = asyncio.Lock(loop=loop)
         self._connected = asyncio.Event(loop=loop)
 
