@@ -37,7 +37,8 @@ class Client:
         self.auth_url = auth_url
         self.credentials = credentials
         self.log = log
-        self.headers = {"content-type": "application/json", "accept": "application/json"}
+        self.headers = {"content-type": "application/json",
+                        "accept": "application/json"}
 
     async def login(self):
         async with aiohttp.post(self.auth_url + "/auth/tokens",

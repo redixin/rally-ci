@@ -83,7 +83,7 @@ class Task:
             for cfg in cfg_gen(self.event.project, "merged-jobs",
                                self.local_config):
                 self._start_job(cfg)
-                return
+            return
 
         for cfg in cfg_gen(self.event.project, "jobs", self.local_config):
             self._start_job(cfg, voting=True)
@@ -97,6 +97,10 @@ class Task:
             self.local_config = yield from self._get_local_config(
                     self.event.cfg_url)
         self._start_jobs()
+        if not self.jobs:
+            # TODO
+            self._finished.set()
+            return
         for cb in self.root.task_start_handlers:
             cb(self)
         while not self._finished.is_set():
