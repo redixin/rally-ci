@@ -158,7 +158,7 @@ class Provider(base.BaseProvider):
         while 1:
             for host in self.hosts:
                 yield from host.update_stats()
-                if host.num_containers < 8:
+                if host.num_containers < self.cfg.get("max_containers", 8):
                     return host
             yield from asyncio.sleep(15)
 

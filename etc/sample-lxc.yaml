@@ -37,6 +37,7 @@
 - provider:
     name: my_lxc
     module: rallyci.providers.lxc
+    max_containers: 8
     hosts:
       - hostname: localhost
         username: root
