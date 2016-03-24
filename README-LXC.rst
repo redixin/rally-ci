@@ -18,6 +18,7 @@ Install and configure btrfs::
 Configure ssh::
 
     ssh-keygen # generate keypair
+    cat ~/.ssh/id_rsa.pub # add this key into CI gerrit account
     sudo service ssh restart
     sudo mkdir /root/.ssh
     sudo sh -c 'cat /home/ubuntu/.ssh/id_rsa.pub >> /root/.ssh/authorized_keys'
