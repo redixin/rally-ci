@@ -204,6 +204,7 @@ class VM(base.BaseVM):
     @asyncio.coroutine
     def get_ssh(self, username="root"):
         ssh = SSH(self.provider.root.loop, self.ip,
-                  username=username, keys=[self.provider.privkey])
+                  username=username, keys=[self.provider.privkey],
+                  jumphost=self.host.ssh)
         yield from ssh.wait()
         return ssh

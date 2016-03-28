@@ -6,7 +6,7 @@
     private: "~/.ssh/id_rsa"
 
 - rally-ci:
-    pub-dir: /store/rally-ci/logs
+    pub-dir: /tmp/rally-ci-logs
 
 - service:
     name: gerrit
@@ -39,7 +39,7 @@
     module: rallyci.providers.lxc
     max_containers: 8
     hosts:
-      - hostname: localhost
+      - hostname: 172.18.184.161
         username: root
         keys: ["~/.ssh/id_rsa"]
     vms:

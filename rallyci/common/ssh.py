@@ -76,11 +76,15 @@ class SSH(LogDel):
 
     def __init__(self, loop, hostname, username=None, keys=None, port=22,
                  cb=None, jumphost=None):
+        """
+        :param SSH jumphost:
+        """
         self.loop = loop
         self.username = username or pwd.getpwuid(os.getuid()).pw_name
         self.hostname = hostname
         self.port = port
         self.cb = cb
+        self.jumphost = jumphost
         if keys:
             self.keys = []
             for key in keys:
@@ -106,15 +110,21 @@ class SSH(LogDel):
     @asyncio.coroutine
     def _ensure_connected(self):
         with (yield from self._connecting):
+            if self.jumphost:
+                yield from self.jumphost._ensure_connected()
+                tunnel = self.jumphost.conn
+            else:
+                tunnel = None
             if self._connected.is_set():
                 return
-            LOG.debug("Connecting %s@%s with keys %s" % (self.username,
-                                                         self.hostname,
-                                                         self.keys))
+            LOG.debug("Connecting %s@%s (keys %s) (via %s)" % (self.username,
+                                                               self.hostname,
+                                                               self.keys,
+                                                               self.jumphost))
             self.conn, self.client = yield from asyncssh.create_connection(
                 functools.partial(SSHClient, self), self.hostname,
                 username=self.username, known_hosts=None,
-                client_keys=self.keys, port=self.port)
+                client_keys=self.keys, port=self.port, tunnel=tunnel)
             LOG.debug("Connected %s@%s" % (self.username, self.hostname))
 
     @asyncio.coroutine
@@ -175,8 +185,8 @@ class SSH(LogDel):
             try:
                 yield from self._ensure_connected()
                 return
-            except Exception:
-                pass
+            except Exception as ex:
+                LOG.debug("Waiting ssh %s: %s" % (self, ex))
             if time.time() > (_start + timeout):
                 raise SSHError("timeout %s:%s" % (self.hostname, self.port))
             yield from asyncio.sleep(delay)

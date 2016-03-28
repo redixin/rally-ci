@@ -125,7 +125,7 @@ class Job:
             for vm, conf in self.vms:
                 for src, dst in conf.get("publish", []):
                     ssh = yield from vm.get_ssh()
-                    yield from ssh.scp_get(src, os.path.join(self.path, dst))
+                    yield from ssh.get(src, os.path.join(self.path, dst), recurse=True)
                     ssh.close()
         except Exception:
             self.log.exception("Error while publishing %s" % self)
