@@ -82,6 +82,7 @@ class Task:
                 for fut in self._job_futures:
                     fut.cancel()
                 return
+        self.root.log.info("Task finished.")
 
     @asyncio.coroutine
     def cleanup(self):
@@ -89,6 +90,8 @@ class Task:
             if not fut.cancelled():
                 fut.cancel()
         yield from self._finished.wait()
+        for job in self.jobs:
+            yield from job.cleanup()
 
     def to_dict(self):
         return {

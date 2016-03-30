@@ -19,7 +19,9 @@ import signal
 import resource
 
 from rallyci.config import Config
+from rallyci.task import Task
 
+import aiohttp
 
 class Root:
     def __init__(self, loop, filename, verbose):
@@ -65,20 +67,44 @@ class Root:
         except Exception:
             self.log.exception("Exception running %s" % coro)
 
-    def is_task_running(self, event):
-        return event.key in self.task_set
-
-    def start_task(self, task):
-        """
-        :param Task task:
-        """
-        if task.event.key in self.task_set:
-            self.log.warning("Task '%s' is already running" % task.event.key)
-            return
+    @asyncio.coroutine
+    def get_local_config_and_start_task(self, event):
+        self.log.debug("Trying to get config for event %s" % event)
+        r = yield from aiohttp.get(event.cfg_url, loop=self.loop)
+        if r.status == 200:
+            local_cfg = yield from r.text()
+            try:
+                local_cfg = yaml.safe_load(local_cfg)
+            except Exception as ex:
+                local_cfg = []
+        else:
+            self.log.debug("No local cfg for %s" % event)
+            self.log.debug("Response %s" % r)
+            local_cfg = []
+        r.close()
+        task = Task(self, event, local_cfg)
         self.task_set.add(task.event.key)
         fut = self.start_obj(task)
         self.tasks[fut] = task
         fut.add_done_callback(self.task_done_cb)
+
+    def is_task_running(self, event):
+        return event.key in self.task_set
+
+    def start_task(self, event):
+        """
+        :param Event event:
+        """
+        if event.key in self.task_set:
+            self.log.info("Task '%s' is already running" % event)
+            return
+        self.log.info("Starting task for event: %s" % event)
+        fut = self.loop.create_task(
+                self.get_local_config_and_start_task(event))
+        fut.add_done_callback(self.log_finished)
+
+    def log_finished(self, fut):
+        self.log.info(fut)
 
     def task_done_cb(self, fut):
         try:

@@ -69,37 +69,15 @@ class Service:
             "ref-replicated": self._ignore_event,
         }
 
-    @asyncio.coroutine
-    def _get_local_config(self, url):
-        self.root.log.debug("Trying to get config %s" % url)
-        r = yield from aiohttp.get(self.url, loop=self.root.loop)
-        if r.status == 200:
-            local_cfg = yield from r.text()
-            try:
-                local_cfg = yaml.safe_load(local_cfg)
-            except Exception as ex:
-                local_cfg = []
-        else:
-            self.root.log.debug("No local cfg for %s" % url)
-            self.root.log.debug("Response %s" % r)
-            local_cfg = []
-        r.close()
-        return local_cfg
-
     def _ignore_event(self, raw_event):
         pass
 
     def _start_task(self, raw_event):
         event = Event(self.cfg, raw_event)
-        if self.root.is_task_running(event):
-            self.log.info("Task '%s' is already running" % event)
-            return
-        local_config = self._get_local_config(event.cfg_url)
-        task = Task(self.root, event, local_config)
-        self.root.start_task(task)
+        self.root.start_task(event)
 
     def _handle_comment_added(self, raw_event):
-        r = self.cfg.get("recheck-regexp", "^rally-ci recheck$")
+        r = self.cfg.get("recheck-regexp", "^rci recheck$")
         m = re.search(r, raw_event["comment"], re.MULTILINE)
         if m:
             self.log.info("Recheck for %s" % _get_project_name(raw_event))

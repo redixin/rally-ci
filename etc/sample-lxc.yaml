@@ -2,8 +2,8 @@
 
 - ssh-key:
     name: default
-    public: "~/.ssh/id_rsa.pub"
-    private: "~/.ssh/id_rsa"
+    public: "~/.ssh/test.pub"
+    private: "~/.ssh/test"
 
 - rally-ci:
     pub-dir: /tmp/rally-ci-logs
@@ -27,7 +27,7 @@
     ssh:
       hostname: review.openstack.org
       username: CHANGEME
-      keys: ["~/.ssh/id_rsa"]
+      keys: ["~/.ssh/test"]
 
 - service:
     name: status
@@ -41,7 +41,7 @@
     hosts:
       - hostname: 172.18.184.161
         username: root
-        keys: ["~/.ssh/id_rsa"]
+        keys: ["~/.ssh/test"]
     vms:
       ubuntu-1404-dev:
         image: u1404
