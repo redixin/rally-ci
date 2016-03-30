@@ -65,6 +65,9 @@ class Root:
         except Exception:
             self.log.exception("Exception running %s" % coro)
 
+    def is_task_running(self, event):
+        return event.key in self.task_set
+
     def start_task(self, task):
         """
         :param Task task:

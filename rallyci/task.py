@@ -24,15 +24,15 @@ from rallyci import utils
 
 
 class Task:
-    summary = ""
 
-    def __init__(self, root, event):
+    def __init__(self, root, event, local_config):
         """
         :param Root root:
         :param Event event:
         """
         self.root = root
         self.event = event
+        self.local_config = local_config
 
         self.local_config = None
         self.jobs = []
@@ -42,26 +42,17 @@ class Task:
         self._finished = asyncio.Event(loop=root.loop)
         self._job_futures = {}
 
-    def __repr__(self):
-        return "<Task %s %s>" % (self.event.project, self.id)
-
-    @asyncio.coroutine
-    def _get_local_config(self, url):
-        self.root.log.debug("Trying to get config %s" % url)
-        r = yield from aiohttp.get(url, loop=self.root.loop)
-        if r.status == 200:
-            local_cfg = yield from r.text()
-            try:
-                local_cfg = yaml.safe_load(local_cfg)
-            except Exception as ex:
-                local_cfg = []
-                self.summary += "Error loading local config: %s" % ex
-        else:
-            self.root.log.debug("No local cfg for %s" % self)
-            self.root.log.debug("Response %s" % r)
-            local_cfg = []
-        r.close()
-        return local_cfg
+        cfg_gen = self.root.config.get_jobs
+        if event.event_type == "change-merged":
+            for cfg in cfg_gen(event.project, "merged-jobs",
+                               self.local_config):
+                self.jobs.append(Job(self, cfg, voting=True))
+            return
+        for cfg in cfg_gen(event.project, "jobs", self.local_config):
+            self.jobs.append(Job(self, cfg, voting=True))
+        for cfg in cfg_gen(event.project, "non-voting-jobs",
+                           self.local_config):
+            self.jobs.append(Job(self, cfg, voting=False))
 
     def _job_done_cb(self, fut):
         job = self._job_futures.pop(fut)
@@ -69,40 +60,19 @@ class Task:
         if not self._job_futures:
             self._finished.set()
 
-    def _start_job(self, config, voting=False):
-        job = Job(self, config, voting)
-        self.jobs.append(job)
-        fut = self.root.start_obj(job)
+    def _start_job(self, job):
+        fut = asyncio.ensure_future(job.run(), loop=self.root.loop)
         self._job_futures[fut] = job
         fut.add_done_callback(self._job_done_cb)
 
-    def _start_jobs(self):
-        cfg_gen = self.root.config.get_jobs
-
-        if self.event.event_type == "change-merged":
-            for cfg in cfg_gen(self.event.project, "merged-jobs",
-                               self.local_config):
-                self._start_job(cfg)
-            return
-
-        for cfg in cfg_gen(self.event.project, "jobs", self.local_config):
-            self._start_job(cfg, voting=True)
-
-        for cfg in cfg_gen(self.event.project, "non-voting-jobs", None):
-            self._start_job(cfg)
-
     @asyncio.coroutine
     def run(self):
-        if self.event.cfg_url:
-            self.local_config = yield from self._get_local_config(
-                    self.event.cfg_url)
-        self._start_jobs()
-        if not self.jobs:
-            # TODO
-            self._finished.set()
-            return
         for cb in self.root.task_start_handlers:
             cb(self)
+
+        for job in self.jobs:
+            self._start_job(job)
+
         while not self._finished.is_set():
             try:
                 yield from self._finished.wait()
@@ -132,3 +102,6 @@ class Task:
 
     def __del__(self):
         print("DEL %s" % self)
+
+    def __repr__(self):
+        return "<Task %s %s>" % (self.event.project, self.id)

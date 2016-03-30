@@ -213,12 +213,13 @@ class Host:
 
     @asyncio.coroutine
     def build_image(self, name):
-        LOG.info("Building image %s" % name)
+        LOG.debug("Building image %s" % name)
         self.image_locks.setdefault(name, asyncio.Lock(loop=self.root.loop))
         with (yield from self.image_locks[name]):
             if (yield from self.storage.exist(name)):
                 LOG.debug("Image %s exist" % name)
                 return
+            LOG.info("Starting build %s" % name)
             image_conf = self.config["images"][name]
             parent = image_conf.get("parent")
             if parent:
@@ -501,7 +502,8 @@ class VM:
         if ssh:
             return ssh
         ssh = SSH(self.host.root.loop, self.ip, username=user,
-                  keys=self.host.root.config.get_ssh_keys("private"))
+                  keys=self.host.root.config.get_ssh_keys("private"),
+                  jumphost=self.host.ssh)
         yield from ssh.wait()
         self._ssh_cache[user] = ssh
         return ssh
