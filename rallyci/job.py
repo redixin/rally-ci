@@ -20,7 +20,7 @@ import os
 import weakref
 
 from rallyci import utils
-
+from rallyci import base
 
 class Job:
     finished_at = None
@@ -73,15 +73,19 @@ class Job:
         self.console_log.flush()
 
     @asyncio.coroutine
+    def _get_vm(self, vm_conf):
+         vm = yield from self.provider.get_vm(vm_conf["name"], self)
+         self.vms.append((vm, vm_conf))
+
+    @asyncio.coroutine
     def _run(self):
         """
         :param dict conf: vm item from job config
         """
         self.provider = self.root.providers[self.config["provider"]]
         for vm_conf in self.config["vms"]:
-            vm = yield from self.provider.get_vm(vm_conf["name"], self)
-            self.vms.append((vm, vm_conf))
-
+            yield from asyncio.shield(self._get_vm(vm_conf), loop=self.root.loop)
+            #yield from self._get_vm(vm_conf)
         pub_dir = self.root.config.get_value("pub-dir", "/tmp/rally-pub")
         self.path = os.path.join(pub_dir, self.task_id, self.config["name"])
         os.makedirs(self.path)
@@ -129,7 +133,11 @@ class Job:
                     ssh.close()
         except Exception:
             self.log.exception("Error while publishing %s" % self)
-        yield from self.provider.cleanup(self)
+        try:
+            yield from asyncio.shield(self.provider.cleanup(self),
+                                      loop=self.root.loop)
+        except:
+            self.log.exception("Error while cleanup %s" % self)
         for cb in self.root.job_end_handlers:
             cb(self)  # TODO: move it to root
 
@@ -143,12 +151,15 @@ class Job:
         except asyncio.TimeoutError:
             self.set_status("TIMEOUT")
             self.log.info("Timed out %s" % self)
+            raise
         except asyncio.CancelledError:
             self.set_status("CANCELLED")
             self.log.info("Cancelled %s" % self)
+            raise
         except Exception:
             self.set_status("ERROR")
             self.log.exception("Error running %s" % self)
+            raise
         finally:
             self.finished_at = time.time()
         self.set_status(self.status)  # TODO: fix cleanup in http status

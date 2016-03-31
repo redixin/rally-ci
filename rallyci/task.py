@@ -14,16 +14,18 @@
 
 import asyncio
 import cgi
+from concurrent import futures
 import time
 
 import aiohttp
+from functools import partial
 import yaml
 
 from rallyci.job import Job
 from rallyci import utils
+from rallyci import base
 
-
-class Task:
+class Task(base.ObjRunnerMixin):
 
     def __init__(self, root, event, local_config):
         """
@@ -34,13 +36,13 @@ class Task:
         self.event = event
         self.local_config = local_config
 
+        self.loop = root.loop
+        self.log = root.log
         self.local_config = None
         self.jobs = []
         self.finished_at = None
         self.started_at = time.time()
         self.id = utils.get_rnd_name(length=10)
-        self._finished = asyncio.Event(loop=root.loop)
-        self._job_futures = {}
 
         cfg_gen = self.root.config.get_jobs
         if event.event_type == "change-merged":
@@ -54,44 +56,16 @@ class Task:
                            self.local_config):
             self.jobs.append(Job(self, cfg, voting=False))
 
-    def _job_done_cb(self, fut):
-        job = self._job_futures.pop(fut)
-        self.root.log.info("Finished job %s" % job)
-        if not self._job_futures:
-            self._finished.set()
-
-    def _start_job(self, job):
-        fut = asyncio.ensure_future(job.run(), loop=self.root.loop)
-        self._job_futures[fut] = job
-        fut.add_done_callback(self._job_done_cb)
-
     @asyncio.coroutine
     def run(self):
-        for cb in self.root.task_start_handlers:
-            cb(self)
-
         for job in self.jobs:
-            self._start_job(job)
-
-        while not self._finished.is_set():
-            try:
-                yield from self._finished.wait()
-                self.finished_at = time.time()
-            except asyncio.CancelledError:
-                self.root.log.info("Cancelled %s" % self)
-                for fut in self._job_futures:
-                    fut.cancel()
-                return
-        self.root.log.info("Task finished.")
-
-    @asyncio.coroutine
-    def cleanup(self):
-        for fut, job in self._job_futures.items():
-            if not fut.cancelled():
-                fut.cancel()
-        yield from self._finished.wait()
-        for job in self.jobs:
-            yield from job.cleanup()
+            self.start_obj(job)
+        try:
+            yield from self.wait_objs()
+        except asyncio.CancelledError:
+            self.cancel_objs()
+            yield from self.wait_objs()
+        yield from asyncio.shield(self.wait_cleanups(), loop=self.loop)
 
     def to_dict(self):
         return {

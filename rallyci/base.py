@@ -12,9 +12,9 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
-
 import abc
-
+import asyncio
+from concurrent import futures
 
 class BaseVM(metaclass=abc.ABCMeta):
 
@@ -70,3 +70,56 @@ class BaseEvent(metaclass=abc.ABCMeta):
         :param dict raw_event: event data decoded from json
         """
         pass
+
+
+class ObjRunnerMixin:
+
+    _running_objs = {}
+    _running_cleanups = {}
+
+    @asyncio.coroutine
+    def _wait_objs(self, lst):
+        yield from asyncio.wait(lst, return_when=futures.ALL_COMPLETED,
+                                loop=self.loop)
+
+    @asyncio.coroutine
+    def wait_objs(self):
+        yield from self._wait_objs(self._running_objs.keys())
+
+    @asyncio.coroutine
+    def wait_cleanups(self):
+        yield from self._wait_objs(self._running_cleanups.keys())
+
+    def cancel_objs(self):
+        for obj in self._running_objs.keys():
+            obj.cancel()
+
+    def _cleanup_done_cb(self, fut):
+        obj = self._running_cleanups.pop(fut)
+        try:
+            result = fut.result()
+            self.log.info("Finished cleanup %s (%s)" % (obj, result))
+        except asyncio.CancelledError:
+            self.log.info("Cancelled cleanup %s" % obj)
+        except:
+            self.log.exception("Exception in cleanup %s:" % obj)
+
+    def _obj_done_cb(self, fut):
+        obj = self._running_objs.pop(fut)
+        if hasattr(obj, "cleanup"):
+            cl = self.loop.create_task(obj.cleanup())
+            cl.add_done_callback(self._cleanup_done_cb)
+            self._running_cleanups[cl] = obj
+        try:
+            result = fut.result()
+            self.log.info("Finished %s (%s)" % (obj, result))
+        except asyncio.CancelledError:
+            self.log.info("Cancelled %s" % obj)
+        except:
+            self.log.exception("Exception in %s:" % obj)
+
+    def start_obj(self, obj):
+        fut = self.loop.create_task(obj.run())
+        self._running_objs[fut] = obj
+        fut.add_done_callback(self._obj_done_cb)
+        return fut

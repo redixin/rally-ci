@@ -20,19 +20,20 @@ import resource
 
 from rallyci.config import Config
 from rallyci.task import Task
+from rallyci import base
 
 import aiohttp
 
 class Root:
     def __init__(self, loop, filename, verbose):
+        self._running_tasks = set()
         self._running_objects = {}
-        self._running_coros = set()
         self._running_cleanups = set()
+        self._running_coros = set()
 
         self.filename = filename
         self.verbose = verbose
 
-        self.tasks = {}
         self.task_set = set()
         self.loop = loop
         self.providers = {}
@@ -68,7 +69,8 @@ class Root:
             self.log.exception("Exception running %s" % coro)
 
     @asyncio.coroutine
-    def get_local_config_and_start_task(self, event):
+    def run_task(self, event):
+        self.task_set.add(event.key)
         self.log.debug("Trying to get config for event %s" % event)
         r = yield from aiohttp.get(event.cfg_url, loop=self.loop)
         if r.status == 200:
@@ -83,10 +85,23 @@ class Root:
             local_cfg = []
         r.close()
         task = Task(self, event, local_cfg)
-        self.task_set.add(task.event.key)
-        fut = self.start_obj(task)
-        self.tasks[fut] = task
-        fut.add_done_callback(self.task_done_cb)
+        for cb in self.task_start_handlers:
+            cb(task)
+        try:
+            self.log.debug("Calling task.run" + "-" * 80)
+            yield from task.run()
+        except asyncio.CancelledError:
+            self.log.warning("Cancelled %s" % task)
+        except:
+            self.log.exception("Error in %s" % task)
+        self.log.debug("Done task.run" + "-" * 80)
+        self.task_set.remove(event.key)
+        for handler in self.task_end_handlers:
+            try:
+                handler(task)
+            except Exception:
+                self.log.exception(("Exception in task end "
+                                    "handler %s %s") % (task, handler))
 
     def is_task_running(self, event):
         return event.key in self.task_set
@@ -99,26 +114,9 @@ class Root:
             self.log.info("Task '%s' is already running" % event)
             return
         self.log.info("Starting task for event: %s" % event)
-        fut = self.loop.create_task(
-                self.get_local_config_and_start_task(event))
-        fut.add_done_callback(self.log_finished)
-
-    def log_finished(self, fut):
-        self.log.info(fut)
-
-    def task_done_cb(self, fut):
-        try:
-            task = self.tasks.pop(fut)
-            self.log.info("Finished task %s" % task)
-            self.task_set.remove(task.event.key)
-            for handler in self.task_end_handlers:
-                try:
-                    handler(task)
-                except Exception:
-                    self.log.exception(("Exception in task end "
-                                        "handler %s %s") % (task, handler))
-        except Exception:
-            self.log.exception("Error in task_done_cb")
+        fut = self.loop.create_task(self.run_task(event))
+        self._running_tasks.add(fut)
+        fut.add_done_callback(self._running_tasks.pop)
 
     def start_coro(self, coro):
         fut = asyncio.async(self.run_coro(coro), loop=self.loop)
@@ -210,8 +208,12 @@ class Root:
             obj.cancel()
         yield from asyncio.wait(self._running_objects,
                                 return_when=futures.ALL_COMPLETED)
+        for task in self._running_tasks:
+            task.cancel()
+        yield from asyncio.wait(self._running_tasks, loop=self.loop,
+                                return_when=futures.ALL_COMPLETED)
         if self._running_cleanups:
-            yield from asyncio.wait(self._running_cleanups,
+            yield from asyncio.wait(self._running_cleanups, loop=self.loop,
                                     return_when=futures.ALL_COMPLETED)
         for provider in self.providers.values():
             yield from prov.stop()
