@@ -56,6 +56,9 @@ class Task(base.ObjRunnerMixin):
                            self.local_config):
             self.jobs.append(Job(self, cfg, voting=False))
 
+    def get_script(self, name):
+        return self.root.config.get_script(name, self.local_config)
+
     @asyncio.coroutine
     def run(self):
         for job in self.jobs:

@@ -62,25 +62,27 @@ class Host:
         yield from self.ssh.run(cmd, stderr=print)
 
     @asyncio.coroutine
-    def _build_image(self, image, job):
-        image_cfg = self.provider.cfg["vms"][image]
-        cmd = ["lxc-create", "--name", image] + self._create_opts
-        cmd += ["-t", image_cfg["template"],
-                "--", image_cfg.get("args", "")]
+    def _build_image(self, vm_cfg, job):
+        image = vm_cfg["name"]
         with (yield from self._building_images[image]):
-            check_cmd = ["lxc-info", "--name", image]
-            not_exist = yield from self.ssh.run(check_cmd, check=False)
+            cmd = ["lxc-info", "--name", image]
+            not_exist = yield from self.ssh.run(cmd, check=False)
             if not not_exist:
                 return
+            image_cfg = self.provider.cfg["vms"][image]
+            cmd = ["lxc-create", "--name", image] + self._create_opts
+            cmd += ["-t", image_cfg["template"],
+                    "--", image_cfg.get("args", "")]
+
             yield from self.ssh.run(cmd, stderr=print)
             yield from self._upload_ssh_key(image)
             cmd = ["lxc-start", "-d", "--name", image]
             yield from self.ssh.run(cmd, stderr=print)
             ip = yield from self._get_ip(image)
-            vm = VM(self, job, ip, image)
+            vm = VM(self, job, ip, vm_cfg, image)
             for script in self.provider.cfg["vms"][image].get("build-scripts",
                                                               []):
-                yield from vm.run_script(script)
+                yield from vm.run_script(script, out_cb=print, err_cb=print)
             cmd = ["lxc-stop", "-n", image]
             yield from self.ssh.run(cmd)
 
@@ -100,25 +102,20 @@ class Host:
                 raise Exception("Timeout waiting for %s" % name)
 
     @asyncio.coroutine
-    def get_vm(self, image, job):
-        yield from self._build_image(image, job)
+    def get_vm(self, vm_cfg, job):
+        """
+        :param dict vm_cfg: job.vms item
+        :param Job job:
+        """
+        yield from self._build_image(vm_cfg, job)
         name = utils.get_rnd_name("rci_")
-        cmd = ["lxc-clone", "-s", "-o", image, "-n", name]
+        cmd = ["lxc-clone", "-s", "-o", vm_cfg["name"], "-n", name]
         yield from self.ssh.run(cmd, stderr=print)
         cmd = ["lxc-start", "-d", "-n", name]
         yield from self.ssh.run(cmd, stderr=print)
         ip = yield from self._get_ip(name)
-        vm = VM(self, job, ip, name)
-        if job not in self.job_vm:
-            self.job_vm[job] = []
-        self.job_vm[job].append(vm)
+        vm = VM(self, job, ip, vm_cfg, name)
         return vm
-
-    @asyncio.coroutine
-    def cleanup(self, job):
-        for vm in self.job_vm.pop(job, []):
-            cmd = ["lxc-destroy", "-f", "-n", vm.name]
-            yield from self.ssh.run(cmd, stdout=print)
 
 
 class Provider(base.BaseProvider):
@@ -136,20 +133,18 @@ class Provider(base.BaseProvider):
         self.privkey = root.config.data["ssh-key"]["default"]["private"]
 
         self.gethost_lock = asyncio.Lock(loop=root.loop)
-        self.job_host = {}
         self.hosts = []
         for host_cfg in cfg.get("hosts"):
             self.hosts.append(Host(self, SSH(loop=self.root.loop, **host_cfg)))
 
     @asyncio.coroutine
-    def get_vm(self, image, job):
-        host = self.job_host.get(job)
-        if host is None:
-            with (yield from self.gethost_lock):
-                host = yield from self._get_host()
-            self.job_host[job] = host
-        vm = yield from host.get_vm(image, job)
-        return vm
+    def get_vms(self, job):
+        host = yield from self._get_host()
+        vms = []
+        for vm_cfg in job.config["vms"]:
+            vm = yield from host.get_vm(vm_cfg, job)
+            vms.append(vm)
+        return vms
 
     @asyncio.coroutine
     def _get_host(self):
@@ -171,35 +166,19 @@ class Provider(base.BaseProvider):
         pass
 
     @asyncio.coroutine
-    def cleanup(self, job):
-        host = self.job_host.pop(job, None)
-        if host:
-            yield from host.cleanup(job)
-
-    @asyncio.coroutine
     def stop(self):
         pass
 
 
 class VM(base.BaseVM):
 
-    def __init__(self, host, job, ip, name):
+    def __init__(self, host, job, ip, cfg, name):
         self.host = host
         self.provider = host.provider
         self.job = job
         self.ip = ip
+        self.cfg = cfg
         self.name = name
-
-    @asyncio.coroutine
-    def run_script(self, script_name):
-        script = self.job.get_script(script_name)
-        ssh = yield from self.get_ssh(username=script.get("user", "root"))
-        cmd = script.get("interpreter", "/bin/bash -xe -s")
-        e = yield from ssh.run(cmd, stdin=script["data"], env=self.job.env,
-                               stdout=print,
-                               stderr=print,
-                               check=False)
-        return e
 
     @asyncio.coroutine
     def get_ssh(self, username="root"):
@@ -208,3 +187,8 @@ class VM(base.BaseVM):
                   jumphost=self.host.ssh)
         yield from ssh.wait()
         return ssh
+
+    @asyncio.coroutine
+    def destroy(self):
+        cmd = ["lxc-destroy", "-f", "-n", self.name]
+        yield from self.host.ssh.run(cmd, stdout=print)

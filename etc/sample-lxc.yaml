@@ -44,7 +44,6 @@
         keys: ["~/.ssh/test"]
     vms:
       ubuntu-1404-dev:
-        image: u1404
         template: ubuntu
         build-scripts:
           - init_ubuntu_dev

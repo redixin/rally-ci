@@ -15,7 +15,7 @@
 import abc
 import asyncio
 from concurrent import futures
-
+import os
 
 class BaseVM(metaclass=abc.ABCMeta):
 
@@ -25,6 +25,10 @@ class BaseVM(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def run_script(self):
+        pass
+
+    @abc.abstractmethod
+    def destroy(self):
         pass
 
 
@@ -64,36 +68,29 @@ class BaseHost(metaclass=abc.ABCMeta):
 
 class BaseVM(metaclass=abc.ABCMeta):
 
-    def __init__(self, host, cfg, job):
-        """
-        :param dict cfg: job.vms single item
-        """
-        self.host = host
-        self.cfg = cfg
-        self.job = job
-
     @asyncio.coroutine
-    def run_scripts(self, key, script_cb, out_cb, err_cb):
-        for cfg in self.cfg:
-            for script in cfg.get(key, []):
-                script_cb(script["name"])
-                e = yield from self.run_script(script["name"], out_cb, err_cb)
-                if e:
-                    return e
+    def run_scripts(self, key, out_cb, err_cb, script_cb=None):
+        for script_name in self.cfg[key]:
+            if script_cb:
+                script_cb(script_name)
+            e = yield from self.run_script(script_name, out_cb, err_cb)
+            if e:
+                return e
 
     @asyncio.coroutine
     def publish(self, path):
         ssh = yield from self.get_ssh()
         for src, dst in self.cfg.get("publish", []):
-            yield from ssh.scp(src, os.path.join(path, dst), recurse=True)
+            yield from ssh.get(src, os.path.join(path, dst), recurse=True)
 
     @abc.abstractmethod
     def get_ssh(self, username="root"):
         pass
 
-    @abc.abstractmethod
+    @asyncio.coroutine
     def run_script(self, name, out_cb, err_cb):
         script = self.job.task.get_script(name)
+        cmd = script.get("interpreter", "/bin/bash -xe -s")
         username = script.get("username", "root")
         ssh = yield from self.get_ssh(username=username)
         e = yield from ssh.run(cmd, stdin=script["data"],
@@ -132,6 +129,8 @@ class ObjRunnerMixin:
 
     @asyncio.coroutine
     def _wait_objs(self, lst):
+        if not lst:
+            return
         yield from asyncio.wait(lst, return_when=futures.ALL_COMPLETED,
                                 loop=self.loop)
 

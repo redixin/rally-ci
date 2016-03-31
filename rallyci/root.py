@@ -46,6 +46,10 @@ class Root:
 
         loop.add_signal_handler(signal.SIGINT, self.stop)
         loop.add_signal_handler(signal.SIGHUP, self.reload_event.set)
+        loop.set_exception_handler(self._exception_handler)
+
+    def _exception_handler(self, loop, context):
+        self.log.error(context)
 
     def stop(self):
         self.loop.remove_signal_handler(signal.SIGINT)
@@ -88,13 +92,11 @@ class Root:
         for cb in self.task_start_handlers:
             cb(task)
         try:
-            self.log.debug("Calling task.run" + "-" * 80)
             yield from task.run()
         except asyncio.CancelledError:
             self.log.warning("Cancelled %s" % task)
         except:
             self.log.exception("Error in %s" % task)
-        self.log.debug("Done task.run" + "-" * 80)
         self.task_set.remove(event.key)
         for handler in self.task_end_handlers:
             try:
@@ -116,7 +118,7 @@ class Root:
         self.log.info("Starting task for event: %s" % event)
         fut = self.loop.create_task(self.run_task(event))
         self._running_tasks.add(fut)
-        fut.add_done_callback(self._running_tasks.pop)
+        fut.add_done_callback(self._running_tasks.remove)
 
     def start_coro(self, coro):
         fut = asyncio.async(self.run_coro(coro), loop=self.loop)

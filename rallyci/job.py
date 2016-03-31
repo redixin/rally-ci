@@ -37,8 +37,7 @@ class Job:
         self.task_started_at = task.started_at
         self.task_local_config = task.local_config
         self.error = 256
-
-        self.provider = self.root.providers[self.config["provider"]]
+        self.provider = self.task.root.providers[self.config["provider"]]
         self.voting = config.get("voting", voting)
         self.root = task.root
         self.log = task.root.log
@@ -51,6 +50,9 @@ class Job:
         self.log.debug("Job %s initialized." % self.id)
         self.vms = []
         self.console_listeners = []
+        pub_dir = self.root.config.get_value("pub-dir", "/tmp/rally-pub")
+        self.path = os.path.join(pub_dir, self.task_id, self.config["name"])
+        os.makedirs(self.path)
 
     @property
     def task(self):
@@ -80,9 +82,8 @@ class Job:
         self._data_cb(2, data)
 
     @asyncio.coroutine
-    def _get_vm(self, vm_conf):
-         vm = yield from self.provider.get_vm(vm_conf["name"], self)
-         self.vms.append((vm, vm_conf))
+    def _get_vms(self):
+        self.vms = yield from self.provider.get_vms(self)
 
     @asyncio.coroutine
     def _run(self):
@@ -90,11 +91,11 @@ class Job:
         :param dict conf: vm item from job config
         """
         self.provider = self.root.providers[self.config["provider"]]
-        for vm_conf in self.config["vms"]:
-            yield from asyncio.shield(self._get_vm(vm_conf), loop=self.root.loop)
-        pub_dir = self.root.config.get_value("pub-dir", "/tmp/rally-pub")
-        self.path = os.path.join(pub_dir, self.task_id, self.config["name"])
-        os.makedirs(self.path)
+        fut = self.root.loop.create_task(self._get_vms())
+        try:
+            yield from asyncio.shield(fut, loop=self.root.loop)
+        except asyncio.CancelledError:
+            yield from fut
         path = self.path + "/console.log"
         self.console_log = open(path, "wb")
         self.started_at = time.time()
@@ -108,28 +109,14 @@ class Job:
 
     @asyncio.coroutine
     def cleanup(self):
-        try:
-            yield from self._run_scripts("post", update_status=False)
-        except Exception:
-            self.log.exception("Error while running post scripts")
-        try:
-            for vm, conf in self.vms:
-                for src, dst in conf.get("publish", []):
-                    ssh = yield from vm.get_ssh()
-                    yield from ssh.get(src, os.path.join(self.path, dst), recurse=True)
-                    ssh.close()
-        except Exception:
-            self.log.exception("Error while publishing %s" % self)
-        try:
-            yield from asyncio.shield(self.provider.cleanup(self),
-                                      loop=self.root.loop)
-        except:
-            self.log.exception("Error while cleanup %s" % self)
-        self.console_log.close()
+        if hasattr(self, "console_log"):
+            self.console_log.close()
         self.console_log = open(self.path + "/post.log", "wb")
+        # TODO: do this in parallel
         for vm in self.vms:
             yield from vm.run_scripts("post", out_cb=self._out_cb, err_cb=self._err_cb)
             yield from vm.publish(self.path)
+            yield from vm.destroy() # TODO: do destroy in cany case!
         #
         for cb in self.root.job_end_handlers:
             cb(self)  # TODO: move it to root
