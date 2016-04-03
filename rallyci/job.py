@@ -83,7 +83,10 @@ class Job:
 
     @asyncio.coroutine
     def _get_vms(self):
-        self.vms = yield from self.provider.get_vms(self)
+        try:
+            self.vms = yield from self.provider.get_vms(self)
+        except:
+            self.log.exception("wat")
 
     @asyncio.coroutine
     def _run(self):

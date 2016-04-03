@@ -35,22 +35,27 @@
     listen: ["0.0.0.0", "8080"]
 
 - provider:
-    name: my_lxc
-    module: rallyci.providers.lxc
-    max_containers: 8
+    name: my_virsh
+    module: rallyci.providers.virsh
     hosts:
-      - hostname: 172.18.184.161
+      - hostname: 192.168.1.15
         username: root
-        keys: ["~/.ssh/test"]
+    storage:
+      backend: zfs
+      dataset: tank/ci
+      path: /tank/ci
     images:
       u1404:
-        template: ubuntu
-        scripts:
-          - init_ubuntu_dev
-          - clone_projects
+        url: "http://cloud-images.ubuntu.com/trusty/current/trusty-server-cloudimg-amd64-disk1.img"
+      u1404_dev:
+        parent: u1404
+        scripts: ["init_ubuntu_dev", "clone_projects"]
     vms:
-      ubuntu-1404-dev:
-        image: u1404
+      ubuntu_dev:
+        image: u1404_dev
+        memory: 1024
+        vcpu: 2
+        net: ["br5"]
 
 - script:
     name: init_ubuntu_dev
@@ -66,10 +71,9 @@
     name: clone_projects
     user: rally
     data: |
-      mkdir openstack-dev && cd openstack-dev
+      mkdir openstack-dev
+      cd openstack-dev
       git clone git://git.openstack.org/openstack-dev/ci-sandbox.git
-      cd && mkdir openstack && cd openstack
-      git clone git://git.openstack.org/openstack/rally.git
 
 - script:
     name: git_checkout
@@ -82,7 +86,7 @@
       git diff --name-only master
 
 - script:
-    name: run_tests
+    name: tox
     user: rally
     data: |
       env && ls
@@ -90,23 +94,14 @@
       git status
       echo "tox -e${TOX_ENV}"
 
-- script:
-    name: gzip_logs
-    data: |
-        gzip -9 /var/log/*
-
 - job:
     name: tox
-    provider: my_lxc
+    provider: my_virsh
     vms:
-      - name: ubuntu-1404-dev
+      - name: ubuntu_dev
         scripts:
           - git_checkout
-          - run_tests
-        post:
-          - gzip_logs
-        publish:
-          - ["/var/log", "varlog"]
+          - tox
 
 - job:
     parent: tox
@@ -120,11 +115,18 @@
     env:
       TOX_ENV: py27
 
+- job:
+    parent: tox
+    name: tox-py34
+    env:
+      TOX_ENV: py34
+
 - matrix:
     name: tox-jobs
     projects:
       - openstack-dev/ci-sandbox
       - openstack/rally
     jobs:
-      - tox-py27
       - tox-pep8
+      - tox-py27
+      - tox-py34

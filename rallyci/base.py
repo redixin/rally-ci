@@ -17,19 +17,8 @@ import asyncio
 from concurrent import futures
 import os
 
-class BaseVM(metaclass=abc.ABCMeta):
-
-    @abc.abstractmethod
-    def get_ssh(self, username="root"):
-        pass
-
-    @abc.abstractmethod
-    def run_script(self):
-        pass
-
-    @abc.abstractmethod
-    def destroy(self):
-        pass
+from rallyci import utils
+from rallyci.common.ssh import SSH
 
 
 class BaseProvider(metaclass=abc.ABCMeta):
@@ -48,11 +37,6 @@ class BaseProvider(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def get_vms(self, job):
-        """Return Host instance.
-
-        :param job: Job instance
-        :returns: list of VM instances
-        """
         pass
 
 
@@ -68,9 +52,18 @@ class BaseHost(metaclass=abc.ABCMeta):
 
 class BaseVM(metaclass=abc.ABCMeta):
 
+    def __init__(self, host, job, job_vm_conf, vm_conf, name=None):
+        self.host = host
+        self.job = job
+        self.job_vm_conf = job_vm_conf
+        self.vm_conf = vm_conf
+
+        self._ssh_cache = {}
+        self.name = name or utils.get_rnd_name("rci_" + job_vm_conf["name"])
+
     @asyncio.coroutine
     def run_scripts(self, key, out_cb, err_cb, script_cb=None):
-        for script_name in self.cfg[key]:
+        for script_name in self.job_vm_conf[key]:
             if script_cb:
                 script_cb(script_name)
             e = yield from self.run_script(script_name, out_cb, err_cb)
@@ -80,15 +73,33 @@ class BaseVM(metaclass=abc.ABCMeta):
     @asyncio.coroutine
     def publish(self, path):
         ssh = yield from self.get_ssh()
-        for src, dst in self.cfg.get("publish", []):
+        for src, dst in self.job_vm_conf.get("publish", []):
             yield from ssh.get(src, os.path.join(path, dst), recurse=True)
 
-    @abc.abstractmethod
-    def get_ssh(self, username="root"):
-        pass
+    @asyncio.coroutine
+    def close_ssh(self):
+        for ssh in self._ssh_cache.values():
+            ssh.close()
+        for ssh in self._ssh_cache.values():
+            yield from ssh.wait_closed()
+        self._ssh_cache = {}
 
     @asyncio.coroutine
-    def run_script(self, name, out_cb, err_cb):
+    def get_ssh(self, username="root"):
+        ssh = self._ssh_cache.get(username)
+        if ssh:
+            return ssh
+        if not hasattr(self, "ip"):
+            self.ip = yield from self._get_ip()
+        ssh = SSH(self.host.provider.root.loop, self.ip, username=username,
+                  keys=self.host.provider.root.config.get_ssh_keys("private"),
+                  jumphost=self.host.ssh)
+        yield from ssh.wait()
+        self._ssh_cache[username] = ssh
+        return ssh
+
+    @asyncio.coroutine
+    def run_script(self, name, out_cb, err_cb, check=False):
         script = self.job.task.get_script(name)
         cmd = script.get("interpreter", "/bin/bash -xe -s")
         username = script.get("username", "root")
@@ -97,8 +108,32 @@ class BaseVM(metaclass=abc.ABCMeta):
                                env=self.job.env,
                                stdout=out_cb,
                                stderr=err_cb,
-                               check=False)
+                               check=check)
         return e
+
+    def __repr__(self):
+        return "<VM %s>" % (self.name)
+
+    @abc.abstractmethod
+    def _get_ip(self):
+        pass
+
+    @abc.abstractmethod
+    def boot(self):
+        pass
+
+    @abc.abstractmethod
+    def shutdown(self):
+        pass
+
+    @abc.abstractmethod
+    def force_off(self):
+        pass
+
+    @abc.abstractmethod
+    def destroy(self):
+        pass
+
 
 class BaseEvent(metaclass=abc.ABCMeta):
     """Represent event."""

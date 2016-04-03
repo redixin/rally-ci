@@ -47,8 +47,10 @@ class SSHClient(asyncssh.SSHClient, LogDel):
 
     def connection_made(self, conn):
         self._ssh._connected.set()
+        self._ssh.closed.clear()
 
     def connection_lost(self, ex):
+        self._ssh.closed.sed()
         self._ssh._connected.clear()
         self._ssh.client = None
         self._ssh.conn = None
@@ -85,6 +87,8 @@ class SSH(LogDel):
         self.port = port
         self.cb = cb
         self.jumphost = jumphost
+
+        self._forwarded_remote_ports = []
         if keys:
             self.keys = []
             for key in keys:
@@ -95,6 +99,8 @@ class SSH(LogDel):
             self.keys = None
         self._connecting = asyncio.Lock(loop=loop)
         self._connected = asyncio.Event(loop=loop)
+        self.closed = asyncio.Event(loop=loop)
+        self.closed.set()
 
     def __repr__(self):
         return "<SSH %s@%s>" % (self.username, self.hostname)
@@ -108,14 +114,26 @@ class SSH(LogDel):
                 self.conn.close()
 
     @asyncio.coroutine
-    def _ensure_connected(self):
+    def wait_closed(self):
+        yield from self.closed.wait()
+
+    @asyncio.coroutine
+    def _ensure_connected(self, forward_remote_port=None):
         with (yield from self._connecting):
+            if forward_remote_port:
+                self._forwarded_remote_ports.append(forward_remote_port)
             if self.jumphost:
                 yield from self.jumphost._ensure_connected()
                 tunnel = self.jumphost.conn
             else:
                 tunnel = None
             if self._connected.is_set():
+                if forward_remote_port:
+                    args, kwargs = forward_remote_port
+                    listener = yield from self.conn.\
+                            forward_remote_port(*args, **kwargs)
+                    # TODO: cancel it when client closed
+                    self.loop.create_task(listener.wait_closed()) 
                 return
             LOG.debug("Connecting %s@%s (keys %s) (via %s)" % (self.username,
                                                                self.hostname,
@@ -125,7 +143,16 @@ class SSH(LogDel):
                 functools.partial(SSHClient, self), self.hostname,
                 username=self.username, known_hosts=None,
                 client_keys=self.keys, port=self.port, tunnel=tunnel)
+            for args, kwargs in self._forwarded_remote_ports:
+                try:
+                    yield from self.conn.forward_remote_port(*args, **kwargs)
+                except Exception as ex:
+                    print(ex)
             LOG.debug("Connected %s@%s" % (self.username, self.hostname))
+
+    @asyncio.coroutine
+    def forward_remote_port(self, *args, **kwargs):
+        yield from self._ensure_connected(forward_remote_port=(args, kwargs))
 
     @asyncio.coroutine
     def run(self, cmd, stdin=None, stdout=None, stderr=None, check=True,
@@ -137,6 +164,7 @@ class SSH(LogDel):
         :param stdout: executable (e.g. sys.stdout.write)
         :param stderr: executable (e.g. sys.stderr.write)
         :param boolean check: Raise exception if non-zero exit status.
+        :returns: exit status (if check==Fasle or status is zero)
         """
         if isinstance(cmd, list):
             cmd = _escape_cmd(cmd)

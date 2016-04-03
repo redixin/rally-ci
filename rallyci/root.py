@@ -212,8 +212,9 @@ class Root:
                                 return_when=futures.ALL_COMPLETED)
         for task in self._running_tasks:
             task.cancel()
-        yield from asyncio.wait(self._running_tasks, loop=self.loop,
-                                return_when=futures.ALL_COMPLETED)
+        if self._running_tasks:
+            yield from asyncio.wait(self._running_tasks, loop=self.loop,
+                                    return_when=futures.ALL_COMPLETED)
         if self._running_cleanups:
             yield from asyncio.wait(self._running_cleanups, loop=self.loop,
                                     return_when=futures.ALL_COMPLETED)
