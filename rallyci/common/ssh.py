@@ -50,7 +50,7 @@ class SSHClient(asyncssh.SSHClient, LogDel):
         self._ssh.closed.clear()
 
     def connection_lost(self, ex):
-        self._ssh.closed.sed()
+        self._ssh.closed.set()
         self._ssh._connected.clear()
         self._ssh.client = None
         self._ssh.conn = None

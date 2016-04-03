@@ -201,7 +201,7 @@ class Root:
         for prov in self.config.iter_providers():
             self.providers[prov.name] = prov
             yield from prov.start()
-        reload_fut = asyncio.async(self.reload(), loop=self.loop)
+        reload_fut = self.loop.create_task(self.reload())
         yield from self.stop_event.wait()
         self.log.info("Interrupted.")
         reload_fut.cancel()

@@ -59,11 +59,15 @@ class BaseVM(metaclass=abc.ABCMeta):
         self.vm_conf = vm_conf
 
         self._ssh_cache = {}
-        self.name = name or utils.get_rnd_name("rci_" + job_vm_conf["name"])
+        self.name = name or self._gen_name()
+    
+    def _gen_name(self):
+        return utils.get_rnd_name("rci_%s_%s_" % (self.job.config["name"],
+                                                  self.job_vm_conf["name"]))
 
     @asyncio.coroutine
     def run_scripts(self, key, out_cb, err_cb, script_cb=None):
-        for script_name in self.job_vm_conf[key]:
+        for script_name in self.job_vm_conf.get(key, []):
             if script_cb:
                 script_cb(script_name)
             e = yield from self.run_script(script_name, out_cb, err_cb)

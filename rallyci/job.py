@@ -82,23 +82,12 @@ class Job:
         self._data_cb(2, data)
 
     @asyncio.coroutine
-    def _get_vms(self):
-        try:
-            self.vms = yield from self.provider.get_vms(self)
-        except:
-            self.log.exception("wat")
-
-    @asyncio.coroutine
     def _run(self):
         """
         :param dict conf: vm item from job config
         """
         self.provider = self.root.providers[self.config["provider"]]
-        fut = self.root.loop.create_task(self._get_vms())
-        try:
-            yield from asyncio.shield(fut, loop=self.root.loop)
-        except asyncio.CancelledError:
-            yield from fut
+        yield from self.provider.get_vms(self)
         path = self.path + "/console.log"
         self.console_log = open(path, "wb")
         self.started_at = time.time()
@@ -119,7 +108,8 @@ class Job:
         for vm in self.vms:
             yield from vm.run_scripts("post", out_cb=self._out_cb, err_cb=self._err_cb)
             yield from vm.publish(self.path)
-            yield from vm.destroy() # TODO: do destroy in cany case!
+            yield from vm.force_off() # destroy in any case
+            yield from vm.destroy()
         #
         for cb in self.root.job_end_handlers:
             cb(self)  # TODO: move it to root

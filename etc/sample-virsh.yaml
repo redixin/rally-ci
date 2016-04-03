@@ -55,7 +55,7 @@
         image: u1404_dev
         memory: 1024
         vcpu: 2
-        net: ["br5"]
+        net: ["br5", "ok%", "ook% 00:11:12:13:14:15"]
 
 - script:
     name: init_ubuntu_dev
@@ -115,12 +115,6 @@
     env:
       TOX_ENV: py27
 
-- job:
-    parent: tox
-    name: tox-py34
-    env:
-      TOX_ENV: py34
-
 - matrix:
     name: tox-jobs
     projects:
@@ -129,4 +123,3 @@
     jobs:
       - tox-pep8
       - tox-py27
-      - tox-py34
