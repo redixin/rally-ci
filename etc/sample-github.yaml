@@ -1,10 +1,37 @@
 ---
 
-- source:
-    module: rallyci.source.github
-    name: mygh
-    bind: 0.0.0.0:8090
+- core:
+    listen: ["0.0.0.0", 8081]
+    url: "http://sc.r-ci.tk"
+
+- service:
+    module: rallyci.services.github
+    name: github
+    secrets: /etc/rci-secrets
+    data-path: /tmp/rci-gh
+    sessions-path: /tmp/rci-gh/sessions
 
 - provider:
-    module: rallyci.providers.lxc
+    name: os
+    module: rallyci.providers.openstack
 
+- script:
+    name: env
+    data: |
+      env
+
+- job:
+    name: env
+    provider: os
+    vms:
+      - image: ubuntu-14.04
+        scripts:
+          - env
+
+- matrix:
+    name: seecloud
+    projects:
+      - seecloud/automation
+      - seecloud/ceagle
+    jobs:
+      - env

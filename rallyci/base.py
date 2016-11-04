@@ -27,15 +27,16 @@ class BaseVM(metaclass=abc.ABCMeta):
         pass
 
 
-class BaseProvider(metaclass=abc.ABCMeta):
+class Provider(abc.ABC):
 
-    @abc.abstractmethod
     def __init__(self, root, config):
         """
         :param Root root:
         :param dict config: full provider config
         """
-        pass
+        self.root = root
+        self.config = config
+        self.name = config["name"]
 
     @abc.abstractmethod
     def start(self):
@@ -61,7 +62,6 @@ class BaseEvent(metaclass=abc.ABCMeta):
             env: environment variables to be added to env to vms
             project: project name
             commit: id of commit
-            cr: id of change request
             url: url to change request or merged patch
             cfg_url: url to fetch rally-ci config of project
             key: key

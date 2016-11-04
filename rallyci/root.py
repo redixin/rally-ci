@@ -19,9 +19,11 @@ import signal
 import resource
 
 from rallyci.config import Config
+from rallyci.http import HTTP
 
 
 class Root:
+
     def __init__(self, loop, filename, verbose):
         self._running_objects = {}
         self._running_coros = set()
@@ -165,9 +167,15 @@ class Root:
             except Exception:
                 self.log.exception("Error loading new config")
 
+
     @asyncio.coroutine
     def run(self):
         self._load_config()
+
+        listen = self.config.raw_data[0]["core"]["listen"]
+        self.http = HTTP(self.loop, listen)
+        yield from self.http.start()
+
         self.start_services()
         for prov in self.config.iter_providers():
             self.providers[prov.name] = prov
@@ -186,6 +194,8 @@ class Root:
                                     return_when=futures.ALL_COMPLETED)
         for provider in self.providers.values():
             yield from prov.stop()
+        self.http.stop()
+        yield from self.http.wait_closed()
         self.log.info("Exit.")
 
     def job_updated(self, job):
