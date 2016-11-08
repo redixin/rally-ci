@@ -14,48 +14,100 @@
 
 import asyncio
 import json
+import ssl
 
 import aiohttp
 
 
-class OpenStack:
-    def __init__(self, credentials, ssh_keypair):
-        self.ssh_keypair = ssh_keypair
-        self.credentials = credentials
-
-    @asyncio.coroutine
-    def login(self):
-        pass
-
-    @asyncio.coroutine
-    def get_vm(self, name, job):
-        pass
-
-
 class Client:
-    def __init__(self, auth_url, credentials, log=None):
+
+    def __init__(self, auth_url, username, tenant, loop=None, log=None,
+                 cafile=None, token_renew_delay=3300):
         self.auth_url = auth_url
-        self.credentials = credentials
+        self.username = username
+        self.tenant = tenant
         self.log = log
+        self.token_renew_delay = token_renew_delay
+        self.loop = loop or asyncio.get_event_loop()
         self.headers = {"content-type": "application/json",
                         "accept": "application/json"}
+        if cafile:
+            sslcontext = ssl.create_default_context(cafile=cafile)
+            conn = aiohttp.TCPConnector(ssl_context=sslcontext)
+            self.session = aiohttp.ClientSession(connector=conn, loop=self.loop)
+        else:
+            session = aiohttp.ClientSession(loop=self.loop)
 
-    async def login(self):
-        async with aiohttp.post(self.auth_url + "/auth/tokens",
-                                data=json.dumps(self.credentials),
-                                headers=self.headers) as r:
+    async def login(self, *, password=None, token=None):
+        credentials = {
+            "auth": {"tenantName": self.tenant}
+        }
+        if password:
+            credentials["auth"]["passwordCredentials"] = {
+                "username": self.username,
+                "password": password,
+            }
+        else:
+            credentials["auth"]["token"] = {"id": token}
+        async with self.session.post(self.auth_url + "/tokens",
+                                     data=json.dumps(credentials),
+                                     headers=self.headers) as r:
             self.token_data = await r.json()
-            self.headers["X-Auth-Token"] = r.headers["X-Subject-Token"]
-        self.project_id = self.token_data["token"]["project"]["id"]
+            self.headers["X-Auth-Token"] = self.token_data["access"]["token"]["id"]
+        self.loop.call_later(self.token_renew_delay, self.loop.create_task,
+                             self.login(token=self.headers["X-Auth-Token"]))
 
     async def list_images(self):
         url = self.get_endpoint("image")
         async with self.get(url + "/v1/images") as r:
             return(await r.json())
 
+    async def list_networks(self):
+        url = self.get_endpoint("network")
+        async with self.get(url + "/v2.0/networks") as r:
+            return await r.json()
+
+    async def create_network(self, name, admin_state_up=True):
+        url = self.get_endpoint("network")
+        payload = {
+            "network": {
+                "name": name,
+                "admin_state_up": admin_state_up,
+            }
+        }
+        async with self.post(url + "/v2.0/networks", payload) as r:
+            data = await r.json()
+        return data
+
+    async def create_subnet(self, network_id):
+        url = url = self.get_endpoint("network")
+        payload = {
+            "subnet": {
+                "network_id": network_id,
+                "gateway_ip": None,
+                "cidr": "10.1.1.0/24",
+                "ip_version": 4,
+            }
+        }
+        async with self.post(url + "/v2.0/subnets", payload) as r:
+            return await r.json()
+
     async def list_flavors(self):
         url = self.get_endpoint("compute") + "/flavors"
         async with self.get(url) as r:
+            return await r.json()
+
+    async def create_server(self, name, imageRef, flavorRef, networks):
+        payload = {
+            "server": {
+                "name": name,
+                "imageRef": imageRef,
+                "flavorRef": flavorRef,
+                "networks": networks,
+            }
+        }
+        url = self.get_endpoint("compute") + "/servers"
+        async with self.post(url, payload) as r:
             return await r.json()
 
     async def boot_server(self, name, image, flavor):
@@ -108,18 +160,18 @@ class Client:
 
     def delete(self, url):
         print("DELETE", url)
-        return aiohttp.delete(url, headers=self.headers)
+        return self.session.delete(url, headers=self.headers)
 
     def get(self, url):
         print("GET", url)
-        return aiohttp.get(url, headers=self.headers)
+        return self.session.get(url, headers=self.headers)
 
     def post(self, url, payload):
-        print("POST", url)
-        return aiohttp.post(url, headers=self.headers,
-                            data=json.dumps(payload))
+        print("POST", url, payload)
+        return self.session.post(url, headers=self.headers,
+                                 data=json.dumps(payload))
 
     def get_endpoint(self, service_type):
-        for item in self.token_data["token"]["catalog"]:
+        for item in self.token_data["access"]["serviceCatalog"]:
             if item["type"] == service_type:
-                return item["endpoints"][0]["url"]
+                return item["endpoints"][0]["publicURL"]

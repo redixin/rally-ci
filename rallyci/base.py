@@ -16,15 +16,26 @@
 import abc
 
 
-class BaseVM(metaclass=abc.ABCMeta):
+class VM(abc.ABC):
 
     @abc.abstractmethod
-    def get_ssh(self, username="root"):
+    async def run_script(self, script):
+        """Run script.
+
+        :param dict script: script instance from config
+        """
         pass
 
     @abc.abstractmethod
-    def run_script(self):
+    async def publish_directory(self, src_path, dst_path):
         pass
+
+
+class Cluster:
+
+    def __init__(self):
+        self.networks = {}
+        self.vms = {}
 
 
 class Provider(abc.ABC):
@@ -37,21 +48,22 @@ class Provider(abc.ABC):
         self.root = root
         self.config = config
         self.name = config["name"]
+        self.clusters = []
 
     @abc.abstractmethod
-    def start(self):
+    async def start(self):
         pass
 
     @abc.abstractmethod
-    def get_vm(self, cfg):
-        """Return list of VM instances.
+    async def get_cluster(self, name):
+        """Boot vms and return Cluster instance.
 
-        :param cfg: job.runner part of job config
+        :param name: cluster name
         """
         pass
 
 
-class BaseEvent(metaclass=abc.ABCMeta):
+class Event(abc.ABC):
     """Represent event."""
 
     @abc.abstractmethod

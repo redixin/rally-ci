@@ -27,7 +27,7 @@ from aiohttp import web
 import yaml
 
 
-class Event(base.BaseEvent):
+class Event(base.Event):
 
     def __init__(self, cfg, raw_event):
         self.cfg = cfg
@@ -98,8 +98,7 @@ class Service:
         self.root.http.add_route("GET", urls.get("register", "/reg/"), self._handle_registraion)
         self.root.http.add_route("GET", urls.get("settings", "/settings/"), self._handle_settings)
         self.root.http.add_route("POST", urls.get("webhook", "/webhook"), self._handle_webhook)
-        secrets = yaml.safe_load(open(self.cfg["secrets"]))
-        self.oauth = github.OAuth(**secrets)
+        self.oauth = github.OAuth(**root.config.secrets[self.cfg["name"]])
         store = kwargs["data-path"]
         os.makedirs(store, exist_ok=True)
         self.tokens = dbm.open(os.path.join(store, "tokens.db"), "cs")

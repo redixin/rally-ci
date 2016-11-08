@@ -3,35 +3,80 @@
 - core:
     listen: ["0.0.0.0", 8081]
     url: "http://sc.r-ci.tk"
+    secrets: /etc/rci-secrets.yaml
 
 - service:
     module: rallyci.services.github
-    name: github
-    secrets: /etc/rci-secrets
+    name: gh
     data-path: /tmp/rci-gh
     sessions-path: /tmp/rci-gh/sessions
 
 - provider:
     name: os
     module: rallyci.providers.openstack
+    ssh:
+      default_username: ubuntu
+      key_name: rci
+      private_key_path: /home/eye/.ssh/test
+    clusters:
+      single_ubuntu:
+        ubuntu:
+          image: "Ubuntu-16.04 LTS"
+          flavor: m1.tiny
+          interfaces:
+            - ["static", "rci-int-net"]
+      test_cluster:
+        master:
+          image: TestVM
+          flavor: m1.tiny
+          interfaces:
+            - ["static", "rci-int-net"]
+            - ["dynamic", "testcluster-int-net"]
+        slave1:
+          image: TestVM
+          flavor: m1.tiny
+          interfaces:
+            - ["dynamic", "testcluster-int-net"]
+        slave2:
+          image: TestVM
+          flavor: m1.tiny
+          interfaces:
+            - ["dynamic", "testcluster-int-net"]
+        slave3:
+          image: TestVM
+          flavor: m1.tiny
+          interfaces:
+            - ["dynamic", "testcluster-int-net"]
 
 - script:
     name: env
     data: |
       env
 
+- script:
+    name: gzip_logs
+    data:
+      gzip /var/log/syslog --stdout > /tmp/syslog.txt.gz
+
 - job:
-    name: env
+    name: test
     provider: os
-    vms:
-      - image: ubuntu-14.04
-        scripts:
-          - env
+    cluster: test_cluster
+    scripts:
+      master:
+        - env
+    post_scripts:
+      master:
+        - gzip_logs
+    publish:
+      master:
+        - ["/tmp/syslog.gz", "syslog.txt.gz"]
 
 - matrix:
     name: seecloud
     projects:
       - seecloud/automation
       - seecloud/ceagle
+      - r-ci/ci-conf
     jobs:
-      - env
+      - test

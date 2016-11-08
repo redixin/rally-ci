@@ -54,6 +54,11 @@ class Config:
         for matrix in self.data.get("matrix", {}).values():
             for project in matrix["projects"]:
                 self._configured_projects.add(project)
+        secrets_file = self.raw_data[0]["core"].get("secrets")
+        if secrets_file:
+            self.secrets = yaml.safe_load(open(secrets_file))
+        else:
+            self.secrets = {}
 
     def get_value(self, value, default):
         return self.data["rally-ci"][0].get(value, default)
