@@ -97,13 +97,14 @@ class Client:
         async with self.get(url) as r:
             return await r.json()
 
-    async def create_server(self, name, imageRef, flavorRef, networks):
+    async def create_server(self, name, imageRef, flavorRef, networks, key_name):
         payload = {
             "server": {
                 "name": name,
                 "imageRef": imageRef,
                 "flavorRef": flavorRef,
                 "networks": networks,
+                "key_name": key_name,
             }
         }
         url = self.get_endpoint("compute") + "/servers"
@@ -136,6 +137,9 @@ class Client:
         print(server["server"]["addresses"])
         return server
 
+    def list_servers(self):
+        return self._get("compute", "/servers")
+
     async def get_server(self, server_id):
         url = self.get_endpoint("compute")
         async with self.get(url + "/servers/%s" % server_id) as r:
@@ -157,6 +161,12 @@ class Client:
                 return server
             if current_status in error_statuses:
                 raise Exception("Error status %s" % current_status)
+
+    async def _get(self, service, url):
+        async with self.session.get(self.get_endpoint(service) + url,
+                                    headers=self.headers) as r:
+            print(service, url)
+            return (await r.json())
 
     def delete(self, url):
         print("DELETE", url)

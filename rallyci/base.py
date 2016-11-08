@@ -27,7 +27,7 @@ class VM(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def publish_directory(self, src_path, dst_path):
+    async def publish_path(self, src_path, dst_path):
         pass
 
 

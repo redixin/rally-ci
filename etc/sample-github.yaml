@@ -18,6 +18,8 @@
       default_username: ubuntu
       key_name: rci
       private_key_path: /home/eye/.ssh/test
+      jumphost: 172.16.169.54
+      access_net: "rci-int-net"
     clusters:
       single_ubuntu:
         ubuntu:
