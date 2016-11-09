@@ -29,7 +29,7 @@ class Task:
     def __init__(self, root, event):
         """
         :param Root root:
-        :param Event event:
+        :param rallyci.base.Event event:
         """
         self.root = root
         self.event = event
@@ -44,24 +44,6 @@ class Task:
 
     def __repr__(self):
         return "<Task %s %s>" % (self.event.project, self.id)
-
-    @asyncio.coroutine
-    def _get_local_config(self, url):
-        self.root.log.debug("Trying to get config %s" % url)
-        r = yield from aiohttp.get(url, loop=self.root.loop)
-        if r.status == 200:
-            local_cfg = yield from r.text()
-            try:
-                local_cfg = yaml.safe_load(local_cfg)
-            except Exception as ex:
-                local_cfg = []
-                self.summary += "Error loading local config: %s" % ex
-        else:
-            self.root.log.debug("No local cfg for %s" % self)
-            self.root.log.debug("Response %s" % r)
-            local_cfg = []
-        r.close()
-        return local_cfg
 
     def _job_done_cb(self, fut):
         job = self._job_futures.pop(fut)
@@ -79,23 +61,21 @@ class Task:
     def _start_jobs(self):
         cfg_gen = self.root.config.get_jobs
 
-        if self.event.event_type == "change-merged":
-            for cfg in cfg_gen(self.event.project, "merged-jobs",
+        if self.event.event_type == "push":
+            for cfg in cfg_gen(self.event.project, "jobs-push",
                                self.local_config):
                 self._start_job(cfg)
             return
 
-        for cfg in cfg_gen(self.event.project, "jobs", self.local_config):
-            self._start_job(cfg, voting=True)
+        if self.event.event_type == "cr":
+            for cfg in cfg_gen(self.event.project, "jobs-cr", self.local_config):
+                self._start_job(cfg, voting=True)
+            for cfg in cfg_gen(self.event.project, "jobs-cr-non-voting", None):
+                self._start_job(cfg)
 
-        for cfg in cfg_gen(self.event.project, "non-voting-jobs", None):
-            self._start_job(cfg)
-
-    @asyncio.coroutine
-    def run(self):
-        if self.event.cfg_url:
-            self.local_config = yield from self._get_local_config(
-                    self.event.cfg_url)
+    async def run(self):
+        self.root.log.info("Starting task %s" % self)
+        self.local_config = await self.event.get_local_config()
         self._start_jobs()
         if not self.jobs:
             # TODO
@@ -105,7 +85,7 @@ class Task:
             cb(self)
         while not self._finished.is_set():
             try:
-                yield from self._finished.wait()
+                await self._finished.wait()
                 self.finished_at = time.time()
             except asyncio.CancelledError:
                 self.root.log.info("Cancelled %s" % self)
@@ -113,12 +93,11 @@ class Task:
                     fut.cancel()
                 return
 
-    @asyncio.coroutine
-    def cleanup(self):
+    async def cleanup(self):
         for fut, job in self._job_futures.items():
             if not fut.cancelled():
                 fut.cancel()
-        yield from self._finished.wait()
+        await self._finished.wait()
 
     def to_dict(self):
         return {

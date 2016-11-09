@@ -59,6 +59,7 @@ class Config:
             self.secrets = yaml.safe_load(open(secrets_file))
         else:
             self.secrets = {}
+        self.core = self.raw_data[0]["core"]
 
     def get_value(self, value, default):
         return self.data["rally-ci"][0].get(value, default)

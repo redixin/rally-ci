@@ -21,6 +21,7 @@ import dbm
 import os
 
 from rallyci import base
+from rallyci.task import Task
 
 from aiogh import github
 from aiohttp import web
@@ -29,19 +30,18 @@ import yaml
 
 class Event(base.Event):
 
-    def __init__(self, cfg, raw_event):
-        self.cfg = cfg
+    def __init__(self, raw_event, event_type, client):
         self.raw_event = raw_event
+        self.client = client
 
         pr = raw_event["pull_request"]
-        self.project_name = pr["head"]["repo"]["full_name"]
-        self.commit = pr["head"]["sha"]
+        self.project = pr["head"]["repo"]["full_name"]
+        self.head = pr["head"]["sha"]
         self.url = pr["url"]
-        self.key = self.commit
-
+        self.event_type = event_type
         self.env = {
-            "GITHUB_REPO": self.project_name,
-            "GITHUB_COMMIT": self.commit,
+            "GITHUB_REPO": self.project,
+            "GITHUB_HEAD": self.head,
         }
 
 
@@ -113,7 +113,8 @@ class Service:
         self.root.log.info("Pull request")
         if data["action"] in ("opened", "synchronized"):
             self.root.log.info("Emiting event")
-            event = Event(self.cfg, data)
+            task = Task(self.root, Event(data, "cr", None))
+            self.root.start_task(task)
 
     async def _handle_webhook(self, request):
         event = request.headers["X-Github-Event"]
@@ -143,21 +144,24 @@ class Service:
         return response
 
     async def _handle_settings(self, request):
-        return web.Response(text="ok")
-        client = self._get_client(request)
-        orgs = await client.get("user/orgs")
-        #repos = await client.get("user/repos")
         data = {
             "name": "web",
             "active": True,
             "events": ["*"],
             "config": {
-                "url": "http://sc.r-ci.tk/webhook",
-                "content_type": "json"},
+                "url": self.root.config.core["url"] + self.cfg["urls"]["webhook"],
+                "content_type": "json"
+            },
         }
-        for org in orgs:
-            url = "/orgs/"
-            resp = await client.post("/orgs/:org/hooks", org["login"], **data)
+        client = self._get_client(request)
+        for org in (await client.get("user/orgs")):
+            hooks = await client.get("orgs/:org/hooks", org["login"])
+            if isinstance(hooks, list):
+                for hook in hooks:
+                    resp = await client.delete("/orgs/:org/hooks/:id", org["login"], str(org["id"]))
+                    print(resp)
+                resp = await client.post("/orgs/:org/hooks", org["login"], **data)
+                print(resp)
         return web.Response(text="ok")
 
     async def _handle_registraion(self, request):
@@ -169,4 +173,5 @@ class Service:
         await asyncio.sleep(1)
 
     async def run(self):
+        #await self._webhook_pull_request(None, json.load(open("/tmp/pr.json")))
         await asyncio.Event(loop=self.root.loop).wait()

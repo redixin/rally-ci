@@ -2,7 +2,7 @@
 
 - core:
     listen: ["0.0.0.0", 8081]
-    url: "http://sc.r-ci.tk"
+    url: "https://seecloud.mirantis.com"
     secrets: /etc/rci-secrets.yaml
 
 - service:
@@ -10,6 +10,11 @@
     name: gh
     data-path: /tmp/rci-gh
     sessions-path: /tmp/rci-gh/sessions
+    urls:
+      oauth2: "/rci/oauth2"
+      webhook: "/rci/webhook"
+      register: "/rci/register"
+      settings: "/rci/settings"
 
 - provider:
     name: os
@@ -82,5 +87,9 @@
       - seecloud/automation
       - seecloud/ceagle
       - r-ci/ci-conf
-    jobs:
+    jobs-cr:
+      - test
+    jobs-push:
+      - test
+    jobs-branch:
       - test

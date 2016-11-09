@@ -78,6 +78,9 @@ class Job:
         :param dict conf: vm item from job config
         """
         self.provider = self.root.providers[self.config["provider"]]
+        self.cluster = yield from self.provider.get_cluster(self.config["cluster"])
+        return
+
         for vm_conf in self.config["vms"]:
             vm = yield from self.provider.get_vm(vm_conf["name"], self)
             self.vms.append((vm, vm_conf))
@@ -117,6 +120,8 @@ class Job:
 
     @asyncio.coroutine
     def cleanup(self):
+        yield from self.provider.delete_cluster(self.cluster)
+        return
         try:
             yield from self._run_scripts("post", update_status=False)
         except Exception:

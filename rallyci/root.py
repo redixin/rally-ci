@@ -71,10 +71,10 @@ class Root:
         """
         :param Task task:
         """
-        if task.event.key in self.task_set:
-            self.log.warning("Task '%s' is already running" % task.event.key)
+        if task.event.head in self.task_set:
+            self.log.warning("Task '%s' is already running" % task.event.head)
             return
-        self.task_set.add(task.event.key)
+        self.task_set.add(task.event.head)
         fut = self.start_obj(task)
         self.tasks[fut] = task
         fut.add_done_callback(self.task_done_cb)
@@ -83,7 +83,7 @@ class Root:
         try:
             task = self.tasks.pop(fut)
             self.log.info("Finished task %s" % task)
-            self.task_set.remove(task.event.key)
+            self.task_set.remove(task.event.head)
             for handler in self.task_end_handlers:
                 try:
                     handler(task)

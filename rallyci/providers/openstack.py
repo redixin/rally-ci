@@ -21,6 +21,10 @@ from rallyci.common.ssh import SSH
 
 class Provider(base.Provider):
 
+    def __init__(self, root, *args, **kwargs):
+        super().__init__(root, *args, **kwargs)
+        self._ready = asyncio.Event(loop=root.loop)
+
     async def start(self):
         self.access_net = self.config["ssh"]["access_net"]
         self.ssh_keys = [self.config["ssh"]["private_key_path"]]
@@ -46,12 +50,15 @@ class Provider(base.Provider):
         for item in (await self.client.list_flavors())["flavors"]:
             self.flavor_ids[item["name"]] = item["id"]
 
+        self._ready.set()
+
+        return
         cluster = await self.get_cluster("test_cluster")
         await cluster.vms["master"].ssh.wait()
         await cluster.vms["master"].ssh.run("env", stdout=print)
-        await self._delete_cluster(cluster)
+        await self.delete_cluster(cluster)
 
-    async def _delete_cluster(self, cluster):
+    async def delete_cluster(self, cluster):
         for vm in cluster.vms.values():
             await self.client.delete_server(vm.uuid, wait=True)
         for uuid in cluster.networks.values():
@@ -64,6 +71,7 @@ class Provider(base.Provider):
             return access_net[0]["addr"]
 
     async def get_cluster(self, name):
+        await self._ready.wait()
         cluster = base.Cluster()
         for vm_name, vm_conf in self.config["clusters"][name].items():
             networks = []

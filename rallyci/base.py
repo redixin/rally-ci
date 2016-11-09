@@ -65,21 +65,32 @@ class Provider(abc.ABC):
 
 
 class Event(abc.ABC):
-    """Represent event."""
 
     @abc.abstractmethod
-    def __init__(self, cfg, raw_event):
-        """Wrap raw_event.
+    def __init__(self, *args, **kwargs):
+        """
+        :param str event_type: one of "cr", "push", "branch"
+        """
+        self.project = project
+        self.head = head
+        self.url = url
+        self.event_type = event_type
+        self.env = env
 
-        should define properties:
-            env: environment variables to be added to env to vms
-            project: project name
-            commit: id of commit
-            url: url to change request or merged patch
-            cfg_url: url to fetch rally-ci config of project
-            key: key
+    async def get_local_config(self):
+        """
+        :returns list: parsed json/yaml data
+        """
+        return []
 
-        :param dict cfg: service config section
-        :param dict raw_event: event data decoded from json
+    async def update_job_status(self, job):
+        """
+        :param rallyci.job.Job job:
+        """
+        pass
+
+    async def publish_results(self, jobs):
+        """
+        :param list jobs: list of rallyci.job.Job instances
         """
         pass
