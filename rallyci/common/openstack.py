@@ -19,6 +19,66 @@ import ssl
 import aiohttp
 
 
+class OpenStackError(Exception):
+    pass
+
+
+class OverQuota(OpenStackError):
+    pass
+
+
+class NeutronError(OpenStackError):
+    pass
+
+
+class Forbidden(OpenStackError):
+    pass
+
+
+NEUTRON_EXCEPTION_MAP = {
+    "OverQuota": OverQuota,
+}
+
+
+def neutron_exception_factory(r, json):
+    error_type = json["NeutronError"]["type"]
+    message = json["NeutronError"].get("message")
+    exception = NEUTRON_EXCEPTION_MAP.get(error_type)
+    if exception:
+        return exception(message)
+    return NeutronException(message)
+
+
+def forbidden_exceotion_factory(r, json):
+    message = json["forbidden"].get("message")
+    if message:
+        if "exceeded" in message:
+            return OverQuota(message)
+        else:
+            return Forbidden(message)
+    return Forbidden(str(json))
+
+
+EXCEPTION_FACTORY_MAP = {
+    "NeutronError": neutron_exception_factory,
+    "forbidden": forbidden_exceotion_factory,
+}
+
+
+async def _process_response(r):
+    if r.headers["Content-Type"].startswith("application/json"):
+        json = await r.json()
+        print(json)
+        if len(json) > 1:
+            return json
+        else:
+            key = list(json.keys())[0]
+            exception_factory = EXCEPTION_FACTORY_MAP.get(key)
+            if exception_factory:
+                raise exception_factory(r, json)
+            return json
+
+
 class Client:
 
     def __init__(self, auth_url, username, tenant, loop=None, log=None,
@@ -68,16 +128,15 @@ class Client:
             return await r.json()
 
     async def create_network(self, name, admin_state_up=True):
-        url = self.get_endpoint("network")
-        payload = {
+        return await self._post("network", "/v2.0/networks", {
             "network": {
                 "name": name,
                 "admin_state_up": admin_state_up,
             }
-        }
-        async with self.post(url + "/v2.0/networks", payload) as r:
-            data = await r.json()
-        return data
+        })
+
+    async def delete_network(self, network_id):
+        return await self._delete("network", "/v2.0/networks/" + network_id)
 
     async def create_subnet(self, network_id):
         url = url = self.get_endpoint("network")
@@ -98,7 +157,7 @@ class Client:
             return await r.json()
 
     async def create_server(self, name, imageRef, flavorRef, networks, key_name):
-        payload = {
+        return await self._post("compute", "/servers", {
             "server": {
                 "name": name,
                 "imageRef": imageRef,
@@ -106,10 +165,7 @@ class Client:
                 "networks": networks,
                 "key_name": key_name,
             }
-        }
-        url = self.get_endpoint("compute") + "/servers"
-        async with self.post(url, payload) as r:
-            return await r.json()
+        })
 
     async def boot_server(self, name, image, flavor):
         images = await self.list_images()
@@ -133,8 +189,7 @@ class Client:
         async with self.post(url, payload) as r:
             server = await r.json()
         server_id = server["server"]["id"]
-        server = await self.wait_server(server_id, "ACTIVE", [])
-        print(server["server"]["addresses"])
+        server = await self.wait_server(server_id, "ACTIVE", ["ERROR"])
         return server
 
     def list_servers(self):
@@ -143,29 +198,54 @@ class Client:
     async def get_server(self, server_id):
         url = self.get_endpoint("compute")
         async with self.get(url + "/servers/%s" % server_id) as r:
+            if r.status != 200:
+                raise OpenStackError(r.status)
             data = await r.json()
         return data
 
-    async def delete_server(self, server_id):
+    async def delete_server(self, server_id, wait=False):
         url = self.get_endpoint("compute")
         async with self.delete(url + "/servers/%s" % server_id) as r:
             data = await r.json()
+        if wait:
+            while 1:
+                try:
+                    await asyncio.sleep(1)
+                    server = await self.get_server(server_id)
+                except OpenStackError:
+                    return
         return data
 
-    async def wait_server(self, server_id, status, error_statuses, delay=1):
-        while True:
+    async def wait_server(self, server_id, status, error_statuses, delay=1, retries=64):
+        while retries:
             await asyncio.sleep(delay)
             server = await self.get_server(server_id)
             current_status = server["server"]["status"]
             if current_status == status:
                 return server
             if current_status in error_statuses:
-                raise Exception("Error status %s" % current_status)
+                raise Exception("VM error %s" % server)
+            else:
+                print(current_status)
+            retries -= 1
+
+
+    async def _post(self, service, url, payload):
+        async with self.session.post(self.get_endpoint(service) + url,
+                                     headers=self.headers,
+                                     data=json.dumps(payload)) as r:
+            return await _process_response(r)
 
     async def _get(self, service, url):
         async with self.session.get(self.get_endpoint(service) + url,
                                     headers=self.headers) as r:
             print(service, url)
+            return (await r.json())
+
+    async def _delete(self, service, url):
+        async with self.session.delete(self.get_endpoint(service) + url,
+                                       headers=self.headers) as r:
+            print(await r.text())
             return (await r.json())
 
     def delete(self, url):
