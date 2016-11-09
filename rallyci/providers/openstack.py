@@ -22,6 +22,12 @@ from rallyci.common.ssh import SSH
 class Provider(base.Provider):
 
     async def start(self):
+        self.access_net = self.config["ssh"]["access_net"]
+        self.ssh_keys = [self.config["ssh"]["private_key_path"]]
+        self.jumphost = self.config["ssh"].get("jumphost")
+        if self.jumphost:
+            self.jumphost = SSH(self.root.loop, keys=self.ssh_keys, **self.jumphost)
+            await self.jumphost.wait()
         secrets = self.root.config.secrets[self.name]
         self.client = openstack.Client(secrets["auth_url"],
                                        secrets["username"],
@@ -40,23 +46,22 @@ class Provider(base.Provider):
         for item in (await self.client.list_flavors())["flavors"]:
             self.flavor_ids[item["name"]] = item["id"]
 
-        print(self.network_ids, self.image_ids, self.flavor_ids)
         cluster = await self.get_cluster("test_cluster")
-        print(cluster.vms)
-        print(cluster.networks)
+        await cluster.vms["master"].ssh.wait()
+        await cluster.vms["master"].ssh.run("env", stdout=print)
+        await self._delete_cluster(cluster)
 
-    async def _get_vm_ip(self, uuid, delay=2, retry=10):
-        while retry:
-            data = await self.client.get_server(uuid)
-            print(data)
-            if data["server"]["status"] != "ACTIVE":
-                await asyncio.sleep(delay)
-                retry -= 1
-            else:
-                try:
-                    return data["server"]["addresses"][self.config["ssh"]["access_net"]][0]["addr"]
-                except KeyError:
-                    return
+    async def _delete_cluster(self, cluster):
+        for vm in cluster.vms.values():
+            await self.client.delete_server(vm.uuid, wait=True)
+        for uuid in cluster.networks.values():
+            await self.client.delete_network(uuid)
+
+    async def _get_vm_ip(self, uuid):
+        data = await self.client.wait_server(uuid, delay=4, status="ACTIVE", error_statuses=["ERROR"])
+        access_net = data["server"]["addresses"].get(self.access_net)
+        if access_net:
+            return access_net[0]["addr"]
 
     async def get_cluster(self, name):
         cluster = base.Cluster()
@@ -83,12 +88,12 @@ class Provider(base.Provider):
             if ip is not None:
                 vm.ssh = SSH(self.root.loop, ip,
                              self.config["ssh"]["default_username"],
-                             [self.config["ssh"]["private_key_path"]])
+                             keys=self.ssh_keys,
+                             jumphost=self.jumphost)
         return cluster
 
 
 class VM(base.VM):
-    ssh = None
 
     def __init__(self, uuid):
         self.uuid = uuid

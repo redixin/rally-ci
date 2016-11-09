@@ -18,35 +18,37 @@
       default_username: ubuntu
       key_name: rci
       private_key_path: /home/eye/.ssh/test
-      jumphost: 172.16.169.54
+      jumphost:
+        hostname: sc
+        username: ubuntu
       access_net: "rci-int-net"
     clusters:
       single_ubuntu:
         ubuntu:
-          image: "Ubuntu-16.04 LTS"
-          flavor: m1.tiny
+          image: "rci-u1404"
+          flavor: rci-1vcpu-1024ram
           interfaces:
             - ["static", "rci-int-net"]
       test_cluster:
         master:
-          image: TestVM
-          flavor: m1.tiny
+          image: "rci-u1404"
+          flavor: rci-1vcpu-1024ram
           interfaces:
             - ["static", "rci-int-net"]
             - ["dynamic", "testcluster-int-net"]
         slave1:
-          image: TestVM
-          flavor: m1.tiny
+          image: "rci-u1404"
+          flavor: rci-1vcpu-1024ram
           interfaces:
             - ["dynamic", "testcluster-int-net"]
         slave2:
-          image: TestVM
-          flavor: m1.tiny
+          image: "rci-u1404"
+          flavor: rci-1vcpu-1024ram
           interfaces:
             - ["dynamic", "testcluster-int-net"]
         slave3:
-          image: TestVM
-          flavor: m1.tiny
+          image: "rci-u1404"
+          flavor: rci-1vcpu-1024ram
           interfaces:
             - ["dynamic", "testcluster-int-net"]
 

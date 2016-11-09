@@ -17,6 +17,7 @@ import abc
 
 
 class VM(abc.ABC):
+    ssh = None
 
     @abc.abstractmethod
     async def run_script(self, script):
