@@ -110,11 +110,13 @@ class Service:
         self.root.log.info("Push")
 
     async def _webhook_pull_request(self, request, data):
-        self.root.log.info("Pull request")
-        if data["action"] in ("opened", "synchronized"):
+        self.root.log.debug("Pull request")
+        if data["action"] in ("opened", "synchronize"):
             self.root.log.info("Emiting event")
             task = Task(self.root, Event(data, "cr", None))
             self.root.start_task(task)
+        else:
+            self.root.log.debug("Skipping event %s" % data["action"])
 
     async def _handle_webhook(self, request):
         event = request.headers["X-Github-Event"]
