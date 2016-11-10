@@ -68,7 +68,21 @@
       gzip /var/log/syslog --stdout > /tmp/syslog.txt.gz
 
 - job:
-    name: test
+    name: test-job-1
+    provider: os
+    cluster: test_cluster
+    scripts:
+      master:
+        - env
+    post_scripts:
+      master:
+        - gzip_logs
+    publish:
+      master:
+        - ["/tmp/syslog.gz", "syslog.txt.gz"]
+
+- job:
+    name: test-2
     provider: os
     cluster: test_cluster
     scripts:
@@ -88,8 +102,11 @@
       - seecloud/ceagle
       - r-ci/ci-conf
     jobs-cr:
-      - test
+      - test-job-1
+      - test-2
     jobs-push:
-      - test
+      - test-job-1
+      - test-2
     jobs-branch:
-      - test
+      - test-job-1
+      - test-2

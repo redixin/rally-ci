@@ -50,6 +50,7 @@ class Job:
         self.log.debug("Job %s initialized." % self.id)
         self.vms = []
         self.console_listeners = []
+        self.name = config["name"]
 
     @property
     def task(self):
@@ -72,17 +73,16 @@ class Job:
         self.console_log.write(data.encode("utf-8"))
         self.console_log.flush()
 
-    @asyncio.coroutine
-    def _run(self):
+    async def _run(self):
         """
         :param dict conf: vm item from job config
         """
         self.provider = self.root.providers[self.config["provider"]]
-        self.cluster = yield from self.provider.get_cluster(self.config["cluster"])
+        self.cluster = await self.provider.get_cluster(self.config["cluster"])
         return
 
         for vm_conf in self.config["vms"]:
-            vm = yield from self.provider.get_vm(vm_conf["name"], self)
+            vm = await self.provider.get_vm(vm_conf["name"], self)
             self.vms.append((vm, vm_conf))
 
         pub_dir = self.root.config.get_value("pub-dir", "/tmp/rally-pub")
@@ -92,25 +92,24 @@ class Job:
         self.console_log = open(path, "wb")
         self.started_at = time.time()
         fut = self._run_scripts("scripts")
-        return (yield from asyncio.wait_for(fut, self.timeout,
+        return (await asyncio.wait_for(fut, self.timeout,
                                             loop=self.root.loop))
 
     def get_script(self, script_name):
         return self.root.config.get_script(script_name,
                                            self.task_local_config)
 
-    @asyncio.coroutine
-    def _run_scripts(self, key, update_status=True):
+    async def _run_scripts(self, key, update_status=True):
         for vm, conf in self.vms:
             for script in conf.get(key, []):
                 if update_status:
                     self.set_status(script)
                 script = self.root.config.get_script(script,
                                                      self.task_local_config)
-                ssh = yield from vm.get_ssh(script.get("user", "root"))
+                ssh = await vm.get_ssh(script.get("user", "root"))
                 cmd = script.get("interpreter", "/bin/bash -xe -s")
                 self.root.log.debug("Running cmd %s" % cmd)
-                e = yield from ssh.run(cmd, stdin=script["data"], env=self.env,
+                e = await ssh.run(cmd, stdin=script["data"], env=self.env,
                                        stdout=partial(self._data_cb, 1),
                                        stderr=partial(self._data_cb, 2),
                                        check=False)
@@ -118,42 +117,46 @@ class Job:
                 if e:
                     return e
 
-    @asyncio.coroutine
-    def cleanup(self):
-        yield from self.provider.delete_cluster(self.cluster)
+    async def cleanup(self):
+        await self.provider.delete_cluster(self.cluster)
         return
         try:
-            yield from self._run_scripts("post", update_status=False)
+            await self._run_scripts("post", update_status=False)
         except Exception:
             self.log.exception("Error while running post scripts")
         try:
             for vm, conf in self.vms:
                 for src, dst in conf.get("publish", []):
-                    ssh = yield from vm.get_ssh()
-                    yield from ssh.scp_get(src, os.path.join(self.path, dst))
+                    ssh = await vm.get_ssh()
+                    await ssh.scp_get(src, os.path.join(self.path, dst))
                     ssh.close()
         except Exception:
             self.log.exception("Error while publishing %s" % self)
-        yield from self.provider.cleanup(self)
+        await self.provider.cleanup(self)
         for cb in self.root.job_end_handlers:
             cb(self)  # TODO: move it to root
 
-    @asyncio.coroutine
-    def run(self):
+    async def run(self):
         self.log.info("Starting %s (timeout: %s)" % (self, self.timeout))
         self.set_status("queued")
+        await self.task.event.job_started_cb(self)
         try:
-            self.error = yield from self._run()
+            self.error = await self._run()
             self.set_status("FAILURE" if self.error else "SUCCESS")
+            state = "failure" if self else "success"
+            await self.task.event.job_finished_cb(self, state)
         except asyncio.TimeoutError:
             self.set_status("TIMEOUT")
             self.log.info("Timed out %s" % self)
+            await self.task.event.job_finished_cb(self, "error")
         except asyncio.CancelledError:
             self.set_status("CANCELLED")
             self.log.info("Cancelled %s" % self)
+            await self.task.event.job_finished_cb(self, "error")
         except Exception:
             self.set_status("ERROR")
             self.log.exception("Error running %s" % self)
+            await self.task.event.job_finished_cb(self, "error")
         finally:
             self.finished_at = time.time()
         self.set_status(self.status)  # TODO: fix cleanup in http status

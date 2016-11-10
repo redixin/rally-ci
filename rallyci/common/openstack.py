@@ -139,17 +139,14 @@ class Client:
         return await self._delete("network", "/v2.0/networks/" + network_id)
 
     async def create_subnet(self, network_id):
-        url = url = self.get_endpoint("network")
-        payload = {
+        return await self._post("network", "/v2.0/subnets", {
             "subnet": {
                 "network_id": network_id,
                 "gateway_ip": None,
                 "cidr": "10.1.1.0/24",
                 "ip_version": 4,
             }
-        }
-        async with self.post(url + "/v2.0/subnets", payload) as r:
-            return await r.json()
+        })
 
     async def list_flavors(self):
         url = self.get_endpoint("compute") + "/flavors"

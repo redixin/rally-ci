@@ -44,6 +44,26 @@ class Event(base.Event):
             "GITHUB_HEAD": self.head,
         }
 
+    async def job_started_cb(self, job):
+        data = {
+            "state": "pending",
+            "context": "rci/%s" % job.name,
+            "description": "RCI job",
+            "target_url": "http://example.com/" + job.id,
+        }
+        await self.client.post("/repos/:repo/statuses/:sha",
+                               self.project, self.head, **data)
+
+    async def job_finished_cb(self, job, state):
+        data = {
+            "state": state,
+            "description": "RCI job state: " + state,
+            "target_url": "http://example.com/" + job.id,
+            "context": "rci/%s" % job.name,
+        }
+        await self.client.post("/repos/:repo/statuses/:sha",
+                               self.project, self.head, **data)
+
 
 def session_resp(handler):
     @functools.wraps(handler)
@@ -113,7 +133,9 @@ class Service:
         self.root.log.debug("Pull request")
         if data["action"] in ("opened", "synchronize"):
             self.root.log.info("Emiting event")
-            task = Task(self.root, Event(data, "cr", None))
+            owner = str(data["repository"]["owner"]["id"]).encode("ascii")
+            client = github.Client(self.tokens[owner].decode("ascii"))
+            task = Task(self.root, Event(data, "cr", client))
             self.root.start_task(task)
         else:
             self.root.log.debug("Skipping event %s" % data["action"])
@@ -138,7 +160,6 @@ class Service:
     async def _handle_oauth2(self, request):
         client = await self.oauth.oauth(request.GET["code"], request.GET["state"])
         user_data = await client.get("user")
-        orgs = await client.get("user/orgs")
         session = self.ss.session(request)
         self.tokens[str(user_data["id"])] = client.token
         session.data["token"] = client.token
@@ -162,8 +183,10 @@ class Service:
                 for hook in hooks:
                     resp = await client.delete("/orgs/:org/hooks/:id", org["login"], str(org["id"]))
                     print(resp)
+                self.tokens[str(org["id"])] = client.token
                 resp = await client.post("/orgs/:org/hooks", org["login"], **data)
                 print(resp)
+                print(self.tokens[str(org["id"])])
         return web.Response(text="ok")
 
     async def _handle_registraion(self, request):

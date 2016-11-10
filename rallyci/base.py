@@ -83,6 +83,15 @@ class Event(abc.ABC):
         """
         return []
 
+    async def job_started_cb(self, job):
+        pass
+
+    async def job_finished_cb(self, job, state):
+        """
+        :param str state: one of "success", "failure", "error"
+        """
+        pass
+
     async def update_job_status(self, job):
         """
         :param rallyci.job.Job job:
