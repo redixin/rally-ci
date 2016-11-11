@@ -101,16 +101,13 @@ class Provider(base.Provider):
         return cluster
 
 
-class VM(base.VM):
+class VM(base.SSHVM):
 
     def __init__(self, uuid):
         self.uuid = uuid
 
     def __str__(self):
         return "<OpenStack VM %s (%s)>" % (self.uuid, self.ssh)
-
-    async def run_script(self, script):
-        pass
 
     async def publish_path(self, src, dst):
         pass

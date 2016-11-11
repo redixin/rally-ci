@@ -4,6 +4,8 @@
     listen: ["0.0.0.0", 8081]
     url: "https://seecloud.mirantis.com"
     secrets: /etc/rci-secrets.yaml
+    jobs-logs: /tmp/rci-logs
+    logs-url: "https://seecloud.mirantis.com/rci/logs/"
 
 - service:
     module: rallyci.services.github
@@ -28,6 +30,12 @@
         username: ubuntu
       access_net: "rci-int-net"
     clusters:
+      os-image-builder:
+        vm:
+          image: rci-u1404
+          flavor: m1.small
+          interfaces:
+            - ["static", "rci-int-net"]
       single_ubuntu:
         ubuntu:
           image: "rci-u1404"
@@ -51,11 +59,6 @@
           flavor: rci-1vcpu-1024ram
           interfaces:
             - ["dynamic", "testcluster-int-net"]
-        slave3:
-          image: "rci-u1404"
-          flavor: rci-1vcpu-1024ram
-          interfaces:
-            - ["dynamic", "testcluster-int-net"]
 
 - script:
     name: env
@@ -63,8 +66,50 @@
       env
 
 - script:
+    name: git-checkout
+    data: |
+      env
+      sudo apt-get -y update
+      git help -g || sudo apt-get -y install git
+      mkdir -p $GITHUB_REPO
+      cd $GITHUB_REPO
+      cd ..
+      git clone git://github.com/$GITHUB_REPO.git || true
+      cd ../$GITHUB_REPO
+      git checkout $GITHUB_HEAD
+
+- script:
+    name: build-os-image
+    data: |
+      env
+      sudo apt-get -y install git rng-tools gnupg unzip qemu
+      sudo chgrp sudo /dev/kvm
+      sudo rngd -r /dev/urandom
+      cat > keygen <<EOF
+      Key-Type: RSA
+      Key-Length: 2048
+      Subkey-Type: RSA
+      Subkey-Length: 2048
+      Name-Real: RCI
+      Name-Comment: no passphrse
+      Name-Email: support@mirantis.com
+      Expire-Date: 0
+      Passphrase: abc
+      %commit
+      %echo done
+      EOF
+      gpg --batch --gen-key keygen
+      mv .gnupg /tmp/
+      wget https://releases.hashicorp.com/packer/0.11.0/packer_0.11.0_linux_amd64.zip
+      unzip packer_0.11.0_linux_amd64.zip
+      wget http://buildlogs.centos.org/rolling/7/isos/x86_64/CentOS-7-x86_64-Minimal-1511.iso -O /tmp/CentOS-7-x86_64-Minimal-1511.iso
+      cd $GITHUB_REPO
+      ../../packer build -only qemu centos7.json
+      ls -lha /tmp/
+
+- script:
     name: gzip_logs
-    data:
+    data: |
       gzip /var/log/syslog --stdout > /tmp/syslog.txt.gz
 
 - job:
@@ -82,18 +127,20 @@
         - ["/tmp/syslog.gz", "syslog.txt.gz"]
 
 - job:
-    name: test-2
+    name: test-os-image-builder
     provider: os
-    cluster: test_cluster
+    cluster: os-image-builder
     scripts:
-      master:
-        - env
-    post_scripts:
-      master:
-        - gzip_logs
-    publish:
-      master:
-        - ["/tmp/syslog.gz", "syslog.txt.gz"]
+      vm:
+        - git-checkout
+        - build-os-image
+
+- matrix:
+    name: image-builder
+    projects:
+      - r-ci/os-image-builder
+    jobs-cr:
+      - test-os-image-builder
 
 - matrix:
     name: seecloud
@@ -103,10 +150,7 @@
       - r-ci/ci-conf
     jobs-cr:
       - test-job-1
-      - test-2
     jobs-push:
       - test-job-1
-      - test-2
     jobs-branch:
       - test-job-1
-      - test-2

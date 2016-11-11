@@ -32,6 +32,17 @@ class VM(abc.ABC):
         pass
 
 
+class SSHVM(VM):
+
+    async def run_script(self, script, env, stdout_cb, stderr_cb):
+        cmd = script.get("interpreter", "/bin/bash -xe -s")
+        e = await self.ssh.run(cmd, stdin=script["data"], env=env,
+                               stdout=stdout_cb, stderr=stderr_cb,
+                               check=False)
+        if e:
+            return e
+
+
 class Cluster:
 
     def __init__(self):

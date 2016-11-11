@@ -38,19 +38,22 @@ class Job:
         self.task_local_config = task.local_config
         self.error = 256
 
+        self.name = config["name"]
         self.voting = config.get("voting", voting)
         self.root = task.root
         self.log = task.root.log
         self.timeout = self.config.get("timeout", 90) * 60
-        self.id = utils.get_rnd_name(length=10)
+        self.id = self.task_id + "/" + self.name
         self.env = copy.deepcopy(self.task.event.env)
         self.env.update(config.get("env", {}))
         self.status = "__init__"
-        self.log_path = os.path.join(self.task.id, config["name"])
-        self.log.debug("Job %s initialized." % self.id)
+        self.log_path = os.path.join(self.root.config.core["jobs-logs"],
+                                     self.task.id, self.name)
         self.vms = []
         self.console_listeners = []
-        self.name = config["name"]
+
+        os.makedirs(self.log_path)
+        self.log.debug("Job %s initialized." % self.id)
 
     @property
     def task(self):
@@ -79,43 +82,25 @@ class Job:
         """
         self.provider = self.root.providers[self.config["provider"]]
         self.cluster = await self.provider.get_cluster(self.config["cluster"])
-        return
-
-        for vm_conf in self.config["vms"]:
-            vm = await self.provider.get_vm(vm_conf["name"], self)
-            self.vms.append((vm, vm_conf))
-
-        pub_dir = self.root.config.get_value("pub-dir", "/tmp/rally-pub")
-        self.path = os.path.join(pub_dir, self.task_id, self.config["name"])
-        os.makedirs(self.path)
-        path = self.path + "/console.log"
-        self.console_log = open(path, "wb")
+        self.console_log = open(os.path.join(self.log_path, "console.log"), "wb")
         self.started_at = time.time()
-        fut = self._run_scripts("scripts")
-        return (await asyncio.wait_for(fut, self.timeout,
-                                            loop=self.root.loop))
+        console_cb = lambda data: self.console_log.write(data.encode("utf8"))
+        for vm, scripts in self.config["scripts"].items():
+            vm = self.cluster.vms[vm]
+            for script in scripts:
+                script = self.root.config.get_script(script)
+                self.root.log.debug("%s: running script: %s", self, script)
+                await vm.ssh.wait()
+                error = await vm.run_script(script, self.env, console_cb, console_cb)
+                if error:
+                    self.root.log.debug("%s error in script %s", self, script)
+                    return error
+        self.root.log.debug("%s all scripts success", self)
+        # TODO: run scripts in parallel
 
     def get_script(self, script_name):
         return self.root.config.get_script(script_name,
                                            self.task_local_config)
-
-    async def _run_scripts(self, key, update_status=True):
-        for vm, conf in self.vms:
-            for script in conf.get(key, []):
-                if update_status:
-                    self.set_status(script)
-                script = self.root.config.get_script(script,
-                                                     self.task_local_config)
-                ssh = await vm.get_ssh(script.get("user", "root"))
-                cmd = script.get("interpreter", "/bin/bash -xe -s")
-                self.root.log.debug("Running cmd %s" % cmd)
-                e = await ssh.run(cmd, stdin=script["data"], env=self.env,
-                                       stdout=partial(self._data_cb, 1),
-                                       stderr=partial(self._data_cb, 2),
-                                       check=False)
-                self.root.log.debug("DONE")
-                if e:
-                    return e
 
     async def cleanup(self):
         await self.provider.delete_cluster(self.cluster)
@@ -143,7 +128,7 @@ class Job:
         try:
             self.error = await self._run()
             self.set_status("FAILURE" if self.error else "SUCCESS")
-            state = "failure" if self else "success"
+            state = "failure" if self.error else "success"
             await self.task.event.job_finished_cb(self, state)
         except asyncio.TimeoutError:
             self.set_status("TIMEOUT")

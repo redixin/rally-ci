@@ -181,8 +181,7 @@ class Service:
             hooks = await client.get("orgs/:org/hooks", org["login"])
             if isinstance(hooks, list):
                 for hook in hooks:
-                    resp = await client.delete("/orgs/:org/hooks/:id", org["login"], str(org["id"]))
-                    print(resp)
+                    print(hook)
                 self.tokens[str(org["id"])] = client.token
                 resp = await client.post("/orgs/:org/hooks", org["login"], **data)
                 print(resp)
