@@ -30,7 +30,8 @@ import yaml
 
 class Event(base.Event):
 
-    def __init__(self, raw_event, event_type, client):
+    def __init__(self, root, raw_event, event_type, client):
+        self.root = root
         self.raw_event = raw_event
         self.client = client
 
@@ -47,9 +48,9 @@ class Event(base.Event):
     async def job_started_cb(self, job):
         data = {
             "state": "pending",
-            "context": "rci/%s" % job.name,
-            "description": "RCI job",
-            "target_url": "http://example.com/" + job.id,
+            "context": job.name,
+            "description": "pending...",
+            "target_url": self.root.config.core["logs-url"] + job.id,
         }
         await self.client.post("/repos/:repo/statuses/:sha",
                                self.project, self.head, **data)
@@ -57,9 +58,9 @@ class Event(base.Event):
     async def job_finished_cb(self, job, state):
         data = {
             "state": state,
-            "description": "RCI job state: " + state,
-            "target_url": "http://example.com/" + job.id,
-            "context": "rci/%s" % job.name,
+            "description": state,
+            "target_url": self.root.config.core["logs-url"] + job.id,
+            "context": job.name,
         }
         await self.client.post("/repos/:repo/statuses/:sha",
                                self.project, self.head, **data)
@@ -127,15 +128,14 @@ class Service:
         self.ss = SessionStore(session_store, kwargs.get("cookie_name", "ghs"))
 
     async def _webhook_push(self, request, data):
-        self.root.log.info("Push")
+        print(data)
 
     async def _webhook_pull_request(self, request, data):
-        self.root.log.debug("Pull request")
         if data["action"] in ("opened", "synchronize"):
             self.root.log.info("Emiting event")
             owner = str(data["repository"]["owner"]["id"]).encode("ascii")
             client = github.Client(self.tokens[owner].decode("ascii"))
-            task = Task(self.root, Event(data, "cr", client))
+            task = Task(self.root, Event(self.root, data, "cr", client))
             self.root.start_task(task)
         else:
             self.root.log.debug("Skipping event %s" % data["action"])
@@ -147,9 +147,8 @@ class Service:
             self.root.log.debug("Unknown event")
             self.root.log.debug(str(request.headers))
             return web.Response(text="ok")
-        self.root.log.debug("Event: %s" % event)
-        data = json.loads((await request.read()).decode("utf-8"))
-        await handler(request, data)
+        self.root.log.info("Event: %s" % event)
+        await handler(request, await request.json())
         return web.Response(text="ok")
 
     def _get_client(self, request):

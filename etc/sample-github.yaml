@@ -21,6 +21,7 @@
 - provider:
     name: os
     module: rallyci.providers.openstack
+    max_vms: 4
     ssh:
       default_username: ubuntu
       key_name: rci
@@ -112,19 +113,10 @@
     data: |
       gzip /var/log/syslog --stdout > /tmp/syslog.txt.gz
 
-- job:
-    name: test-job-1
-    provider: os
-    cluster: test_cluster
-    scripts:
-      master:
-        - env
-    post_scripts:
-      master:
-        - gzip_logs
-    publish:
-      master:
-        - ["/tmp/syslog.gz", "syslog.txt.gz"]
+- script:
+    name: sleep60
+    data: |
+      sleep 60
 
 - job:
     name: test-os-image-builder
@@ -134,6 +126,15 @@
       vm:
         - git-checkout
         - build-os-image
+
+- job:
+    name: env
+    provider: os
+    cluster: test_cluster
+    scripts:
+      master:
+        - git-checkout
+        - sleep60
 
 - matrix:
     name: image-builder
@@ -149,8 +150,8 @@
       - seecloud/ceagle
       - r-ci/ci-conf
     jobs-cr:
-      - test-job-1
+      - env
     jobs-push:
-      - test-job-1
+      - env
     jobs-branch:
-      - test-job-1
+      - env
