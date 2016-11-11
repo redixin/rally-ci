@@ -24,6 +24,8 @@ class Provider(base.Provider):
     def __init__(self, root, *args, **kwargs):
         super().__init__(root, *args, **kwargs)
         self._ready = asyncio.Event(loop=root.loop)
+        self._get_cluster_lock = asyncio.Lock()
+        self._vms_semaphore = asyncio.Semaphore(self.config["max_vms"])
 
     async def start(self):
         self.access_net = self.config["ssh"]["access_net"]
@@ -52,15 +54,10 @@ class Provider(base.Provider):
 
         self._ready.set()
 
-        return
-        cluster = await self.get_cluster("test_cluster")
-        await cluster.vms["master"].ssh.wait()
-        await cluster.vms["master"].ssh.run("env", stdout=print)
-        await self.delete_cluster(cluster)
-
     async def delete_cluster(self, cluster):
         for vm in cluster.vms.values():
             await self.client.delete_server(vm.uuid, wait=True)
+            self._vms_semaphore.release()
         for uuid in cluster.networks.values():
             await self.client.delete_network(uuid)
 
@@ -70,7 +67,18 @@ class Provider(base.Provider):
         if access_net:
             return access_net[0]["addr"]
 
+    async def _create_server(self, server_name, image_id, flavor_id,
+                             networks, ssh_key_name):
+        await self._vms_semaphore.acquire()
+        server = await self.client.create_server(
+            server_name, image_id, flavor_id, networks, ssh_key_name)
+        return server
+
     async def get_cluster(self, name):
+        async with self._get_cluster_lock:
+            return await self._get_cluster(name)
+
+    async def _get_cluster(self, name):
         await self._ready.wait()
         cluster = base.Cluster()
         for vm_name, vm_conf in self.config["clusters"][name].items():
@@ -86,7 +94,7 @@ class Provider(base.Provider):
                 else:
                     uuid = self.network_ids[if_name]
                 networks.append({"uuid": uuid})
-            server = await self.client.create_server(
+            server = await self._create_server(
                 vm_name, self.image_ids[vm_conf["image"]],
                 self.flavor_ids[vm_conf["flavor"]],
                 networks, self.config["ssh"]["key_name"])
