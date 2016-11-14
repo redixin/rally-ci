@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style type=text/css>
+td { border: 1px solid; }
+</style>
+</head>
+<body>
+
+<div id=content>
+<table id=orgs>
+{% for org in orgs%}
+<tr>
+  <td><img src="{{org.avatar_url}}" width=64px/></td>
+  <td class="liName">{{org.login}}</td>
+  <td class="liDescription">{{org.description or ""}}</td>
+  <td><form method="post" action="/github/add_org_webhook">
+        <input type=hidden name=org value="{{org.login}}"></input>
+        <input type=submit value="Enable webhook"></input></form>
+  </td>
+</tr>
+{% endfor %}
+</table>
+</div>
+</body>
+</html>

@@ -12,11 +12,6 @@
     name: gh
     data-path: /tmp/rci-gh
     sessions-path: /tmp/rci-gh/sessions
-    urls:
-      oauth2: "/rci/oauth2"
-      webhook: "/rci/webhook"
-      register: "/rci/register"
-      settings: "/rci/settings"
 
 - provider:
     name: os

@@ -114,11 +114,12 @@ class Service:
     def __init__(self, root, **kwargs):
         self.root = root
         self.cfg = kwargs
-        urls = kwargs.get("urls", {})
-        self.root.http.add_route("GET", urls.get("oauth2", "/oauth2/"), self._handle_oauth2)
-        self.root.http.add_route("GET", urls.get("register", "/reg/"), self._handle_registraion)
-        self.root.http.add_route("GET", urls.get("settings", "/settings/"), self._handle_settings)
-        self.root.http.add_route("POST", urls.get("webhook", "/webhook"), self._handle_webhook)
+        self.url = url = kwargs.get("url", "/github/")
+        self.root.http.add_route("GET", url + "oauth2", self._handle_oauth2)
+        self.root.http.add_route("GET", url + "login", self._handle_registraion)
+        self.root.http.add_route("GET", url + "settings", self._handle_settings)
+        self.root.http.add_route("POST", url + "webhook", self._handle_webhook)
+        self.root.http.add_route("POST", url + "add_org_webhook", self._handle_add_org_webhook)
         self.oauth = github.OAuth(**root.config.secrets[self.cfg["name"]])
         store = kwargs["data-path"]
         os.makedirs(store, exist_ok=True)
@@ -153,7 +154,9 @@ class Service:
 
     def _get_client(self, request):
         session = self.ss.session(request)
-        return github.Client(session.data["token"])
+        token = session.data.get("token")
+        if token:
+            return github.Client(token)
 
     @session_resp
     async def _handle_oauth2(self, request):
@@ -162,30 +165,37 @@ class Service:
         session = self.ss.session(request)
         self.tokens[str(user_data["id"])] = client.token
         session.data["token"] = client.token
-        response = web.Response(text="ok")
+        response = web.HTTPFound(self.cfg["urls"]["settings"])
         return response
 
     async def _handle_settings(self, request):
+        import jinja2
+        import pkgutil
+        template = jinja2.Template(
+                pkgutil.get_data("rallyci.services",
+                                 "github_settings.html").decode("utf8"))
+        client = self._get_client(request)
+        if client is None:
+            return web.HTTPUnauthorized(text="fail")
+        orgs = []
+        for org in (await client.get("user/orgs")):
+            orgs.append(org)
+        return web.Response(text=template.render(orgs=orgs), content_type="text/html")
+
+    async def _handle_add_org_webhook(self, request):
+        await request.post()
         data = {
             "name": "web",
             "active": True,
             "events": ["*"],
             "config": {
-                "url": self.root.config.core["url"] + self.cfg["urls"]["webhook"],
+                "url": self.url + "webhook",
                 "content_type": "json"
             },
         }
         client = self._get_client(request)
-        for org in (await client.get("user/orgs")):
-            hooks = await client.get("orgs/:org/hooks", org["login"])
-            if isinstance(hooks, list):
-                for hook in hooks:
-                    print(hook)
-                self.tokens[str(org["id"])] = client.token
-                resp = await client.post("/orgs/:org/hooks", org["login"], **data)
-                print(resp)
-                print(self.tokens[str(org["id"])])
-        return web.Response(text="ok")
+        resp = await client.post("/orgs/:org/hooks", request.POST["org"], **data)
+        return web.Response(text=str(resp))
 
     async def _handle_registraion(self, request):
         url = self.oauth.generate_request_url(
@@ -196,5 +206,4 @@ class Service:
         await asyncio.sleep(1)
 
     async def run(self):
-        #await self._webhook_pull_request(None, json.load(open("/tmp/pr.json")))
         await asyncio.Event(loop=self.root.loop).wait()
