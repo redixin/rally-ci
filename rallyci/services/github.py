@@ -1,4 +1,4 @@
-# Copyright 2015: Mirantis Inc.
+# Copyright 2016: Mirantis Inc.
 # All Rights Reserved.
 #    Licensed under the Apache License, Version 2.0 (the "License");
 #    you may not use this file except in compliance with the License.
@@ -127,6 +127,14 @@ class Service:
         self.orgs = dbm.open(os.path.join(store, "orgs.db"), "cs")
         session_store = dbm.open(os.path.join(store, "sessions.db"), "cs")
         self.ss = SessionStore(session_store, kwargs.get("cookie_name", "ghs"))
+
+    @staticmethod
+    async def check_config(config, service_name):
+        """
+        :param rallyci.config.Config config:
+        :param str service_name:
+        """
+        pass
 
     async def _webhook_push(self, request, data):
         print(data)
