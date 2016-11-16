@@ -173,7 +173,7 @@ class Service:
         session = self.ss.session(request)
         self.tokens[str(user_data["id"])] = client.token
         session.data["token"] = client.token
-        response = web.HTTPFound(self.cfg["urls"]["settings"])
+        response = web.HTTPFound(self.url + "/settings")
         return response
 
     async def _handle_settings(self, request):
