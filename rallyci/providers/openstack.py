@@ -61,12 +61,6 @@ class Provider(base.Provider):
         for uuid in cluster.networks.values():
             await self.client.delete_network(uuid)
 
-    async def _get_vm_ip(self, uuid):
-        data = await self.client.wait_server(uuid, delay=4, status="ACTIVE", error_statuses=["ERROR"])
-        access_net = data["server"]["addresses"].get(self.access_net)
-        if access_net:
-            return access_net[0]["addr"]
-
     async def _create_server(self, server_name, image_id, flavor_id,
                              networks, ssh_key_name):
         await self._vms_semaphore.acquire()
@@ -98,21 +92,29 @@ class Provider(base.Provider):
                 vm_name, self.image_ids[vm_conf["image"]],
                 self.flavor_ids[vm_conf["flavor"]],
                 networks, self.config["ssh"]["key_name"])
-            cluster.vms[vm_name] = VM(server["server"]["id"])
+            cluster.vms[vm_name] = VM(server["server"]["id"], vm_name)
         for vm in cluster.vms.values():
-            ip = await self._get_vm_ip(vm.uuid)
+            data = await self.client.wait_server(vm.uuid, delay=4, status="ACTIVE",
+                                                 error_statuses=["ERROR"])
+            addresses = data["server"]["addresses"]
+            ip = addresses.get(self.access_net)
             if ip is not None:
+                ip = ip[0]["addr"]
                 vm.ssh = SSH(self.root.loop, ip,
                              self.config["ssh"]["default_username"],
                              keys=self.ssh_keys,
                              jumphost=self.jumphost)
+            else:
+                ip = list(addresses.values())[0][0]["addr"]
+            cluster.env["RCI_SERVER_" + vm.name] = ip
         return cluster
 
 
 class VM(base.SSHVM):
 
-    def __init__(self, uuid):
+    def __init__(self, uuid, name):
         self.uuid = uuid
+        self.name = name
 
     def __str__(self):
         return "<OpenStack VM %s (%s)>" % (self.uuid, self.ssh)

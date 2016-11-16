@@ -138,12 +138,12 @@ class Client:
     async def delete_network(self, network_id):
         return await self._delete("network", "/v2.0/networks/" + network_id)
 
-    async def create_subnet(self, network_id):
+    async def create_subnet(self, network_id, cidr="10.1.1.0/24"):
         return await self._post("network", "/v2.0/subnets", {
             "subnet": {
                 "network_id": network_id,
                 "gateway_ip": None,
-                "cidr": "10.1.1.0/24",
+                "cidr": cidr,
                 "ip_version": 4,
             }
         })

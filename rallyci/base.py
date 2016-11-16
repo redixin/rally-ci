@@ -18,6 +18,7 @@ import abc
 
 class VM(abc.ABC):
     ssh = None
+    name = None
 
     @abc.abstractmethod
     async def run_script(self, script):
@@ -48,6 +49,7 @@ class Cluster:
     def __init__(self):
         self.networks = {}
         self.vms = {}
+        self.env = {}
 
 
 class Provider(abc.ABC):

@@ -16,7 +16,7 @@
 - provider:
     name: os
     module: rallyci.providers.openstack
-    max_vms: 4
+    max_vms: 64
     ssh:
       default_username: ubuntu
       key_name: rci
@@ -38,21 +38,36 @@
           flavor: rci-1vcpu-1024ram
           interfaces:
             - ["static", "rci-int-net"]
-      test_cluster:
+      seecloud_cluster:
         master:
           image: "rci-u1404"
           flavor: rci-1vcpu-1024ram
           interfaces:
             - ["static", "rci-int-net"]
             - ["dynamic", "testcluster-int-net"]
-        slave1:
-          image: "rci-u1404"
-          flavor: rci-1vcpu-1024ram
+        pr1:
+          image: centos-iso-base.qcow
+          flavor: rci-2vcpu-4096ram-20disk
           interfaces:
             - ["dynamic", "testcluster-int-net"]
-        slave2:
-          image: "rci-u1404"
-          flavor: rci-1vcpu-1024ram
+        pr2:
+          image: centos-iso-base.qcow
+          flavor: rci-2vcpu-4096ram-20disk
+          interfaces:
+            - ["dynamic", "testcluster-int-net"]
+        pr3:
+          image: centos-iso-base.qcow
+          flavor: rci-2vcpu-4096ram-20disk
+          interfaces:
+            - ["dynamic", "testcluster-int-net"]
+        pr4:
+          image: centos-iso-base.qcow
+          flavor: rci-2vcpu-4096ram-20disk
+          interfaces:
+            - ["dynamic", "testcluster-int-net"]
+        pr5:
+          image: centos-iso-base.qcow
+          flavor: rci-2vcpu-4096ram-20disk
           interfaces:
             - ["dynamic", "testcluster-int-net"]
 
@@ -62,23 +77,29 @@
       env
 
 - script:
+    name: init
+    data: |
+      sudo apt-get -y update
+      sudo apt-get -y install git
+
+- script:
     name: git-checkout
     data: |
       env
-      sudo apt-get -y update
       git help -g || sudo apt-get -y install git
       mkdir -p $GITHUB_REPO
       cd $GITHUB_REPO
       cd ..
       git clone git://github.com/$GITHUB_REPO.git || true
       cd ../$GITHUB_REPO
+      git pull
       git checkout $GITHUB_HEAD
 
 - script:
     name: build-os-image
     data: |
       env
-      sudo apt-get -y install git rng-tools gnupg unzip qemu
+      sudo apt-get -y install rng-tools gnupg unzip qemu
       sudo chgrp sudo /dev/kvm
       sudo rngd -r /dev/urandom
       cat > keygen <<EOF
@@ -113,6 +134,90 @@
     data: |
       sleep 60
 
+- script:
+    name: install-latest-ansible
+    data: |
+      sudo apt-add-repository -y ppa:ansible/ansible
+      sudo apt-get -y update
+      sudo apt-get -y install ansible
+
+- script:
+    name: copy-ssh-key-to-slaves
+    data: |
+        ssh-keygen -t rsa -N "" -f .ssh/id_rsa
+        PUBLIC_KEY=$(cat .ssh/id_rsa.pub)
+        cat > /tmp/.node-setup.sh << EOF
+        sudo mkdir /root/.ssh || true
+        echo $PUBLIC_KEY > /tmp/.pk
+        sudo mv /tmp/.pk /root/.ssh/authorized_keys
+        sudo chown root:root /root/.ssh/authorized_keys
+        sudo chmod 600 /root/.ssh/authorized_keys
+        EOF
+        upload_key () {
+        n=0
+        until [ $n -ge 60 ]
+        do
+         n=$[$n+1]
+         sshpass -p mirantis ssh -o StrictHostKeyChecking=no mirantis@${!SRV} sh -xs < /tmp/.node-setup.sh
+         SVNAME=$(echo $SRV | sed 's/^RCI_SERVER_\([[:alnum:]]\+\).*/\1/')
+         ssh -o StrictHostKeyChecking=no root@$SVNAME id
+         if [ $? -eq 0 ]
+         then
+          return
+         fi
+         sleep 10
+        done
+        echo "Timeout waiting for host"
+        exit 255
+        }
+        for SRV in ${!RCI_SERVER_pr*}
+        do
+        upload_key
+        done
+
+- script:
+    name: eth1-up
+    data: |
+      cat > /tmp/.eth1 <<EOF
+      auto eth1
+      iface eth1 inet dhcp
+      EOF
+      sudo mv /tmp/.eth1 /etc/network/interfaces.d/eth1.cfg
+      sudo ifup eth1
+
+- script:
+    name: add-all-servers-to-etc-hosts
+    data: |
+      env
+      rm /tmp/_hosts || true
+      for S in ${!RCI_SERVER_*}
+      do
+       SVNAME=$(echo $S | sed 's/^RCI_SERVER_\([[:alnum:]]\+\).*/\1/')
+       echo "${!S} $SVNAME" >> /tmp/_hosts
+      done
+      sudo sh -c 'cat /tmp/_hosts >> /etc/hosts'
+
+- script:
+    name: run-automation
+    data: |
+      cd $GITHUB_REPO
+      ansible -i inventory -m ping all
+      ansible-playbook -i inventory init_runner.yml
+
+- job:
+    name: test-automation
+    provider: os
+    cluster: seecloud_cluster
+    scripts:
+      master:
+        - init
+        - git-checkout
+        - eth1-up
+        - install-latest-ansible
+        - add-all-servers-to-etc-hosts
+        - copy-ssh-key-to-slaves
+        - run-automation
+
 - job:
     name: test-os-image-builder
     provider: os
@@ -132,21 +237,17 @@
         - sleep60
 
 - matrix:
+    name: automation
+    projects:
+      - seecloud/automation
+      - r-ci/automation
+    jobs-cr:
+      test-automation
+
+- matrix:
     name: image-builder
     projects:
       - r-ci/os-image-builder
+      - seecloud/os-image-builder
     jobs-cr:
       - test-os-image-builder
-
-- matrix:
-    name: seecloud
-    projects:
-      - seecloud/automation
-      - seecloud/ceagle
-      - r-ci/ci-conf
-    jobs-cr:
-      - env
-    jobs-push:
-      - env
-    jobs-branch:
-      - env
