@@ -123,7 +123,7 @@ class Service:
         self.oauth = github.OAuth(**root.config.secrets[self.cfg["name"]])
         store = kwargs["data-path"]
         os.makedirs(store, exist_ok=True)
-        self.tokens = dbm.open(os.path.join(store, "tokens.db"), "cs")
+        self.users = dbm.open(os.path.join(store, "users.db"), "cs")
         self.orgs = dbm.open(os.path.join(store, "orgs.db"), "cs")
         session_store = dbm.open(os.path.join(store, "sessions.db"), "cs")
         self.ss = SessionStore(session_store, kwargs.get("cookie_name", "ghs"))
@@ -142,8 +142,14 @@ class Service:
     async def _webhook_pull_request(self, request, data):
         if data["action"] in ("opened", "synchronize"):
             self.root.log.info("Emiting event")
-            owner = str(data["repository"]["owner"]["id"]).encode("ascii")
-            client = github.Client(self.tokens[owner].decode("ascii"))
+            owner = data["repository"]["owner"]
+            owner_type = str(owner["type"]).encode("ascii")
+            owner_id = str(owner["id"]).encode("ascii")
+            if owner_type == b"Organization":
+                token = self.orgs[owner_id].decode("ascii")
+            else:
+                token = self.users[owner_id].decode("ascii")
+            client = github.Client(token)
             task = Task(self.root, Event(self.root, data, "cr", client))
             self.root.start_task(task)
         else:
@@ -171,7 +177,7 @@ class Service:
         client = await self.oauth.oauth(request.GET["code"], request.GET["state"])
         user_data = await client.get("user")
         session = self.ss.session(request)
-        self.tokens[str(user_data["id"])] = client.token
+        self.users[str(user_data["id"])] = client.token
         session.data["token"] = client.token
         response = web.HTTPFound(self.url + "/settings")
         return response
@@ -203,6 +209,8 @@ class Service:
         }
         client = self._get_client(request)
         resp = await client.post("/orgs/:org/hooks", request.POST["org"], **data)
+        org_data = await client.get("/orgs/:org", request.POST["org"])
+        self.orgs[str(org_data["id"]).encode("ascii")] = client.token
         return web.Response(text=str(resp))
 
     async def _handle_registraion(self, request):

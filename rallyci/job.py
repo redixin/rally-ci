@@ -83,7 +83,7 @@ class Job:
         self.provider = self.root.providers[self.config["provider"]]
         self.cluster = await self.provider.get_cluster(self.config["cluster"])
         self.env.update(self.cluster.env)
-        self.console_log = open(os.path.join(self.log_path, "console.log"), "wb")
+        self.console_log = open(os.path.join(self.log_path, "console.log.txt"), "wb")
         self.started_at = time.time()
         console_cb = lambda data: self.console_log.write(data.encode("utf8"))
         for vm, scripts in self.config["scripts"].items():
