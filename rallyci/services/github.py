@@ -36,7 +36,7 @@ class Event(base.Event):
         self.client = client
 
         pr = raw_event["pull_request"]
-        self.project = pr["head"]["repo"]["full_name"]
+        self.project = raw_event["repository"]["full_name"]
         self.head = pr["head"]["sha"]
         self.url = pr["url"]
         self.event_type = event_type
@@ -44,6 +44,8 @@ class Event(base.Event):
             "GITHUB_REPO": self.project,
             "GITHUB_HEAD": self.head,
         }
+        if pr["head"]["repo"]["full_name"] != self.project:
+            self.env["GITHUB_REMOTE"] = pr["head"]["repo"]["clone_url"]
 
     async def job_started_cb(self, job):
         data = {
