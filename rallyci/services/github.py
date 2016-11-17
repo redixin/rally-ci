@@ -197,7 +197,7 @@ class Service:
             "active": True,
             "events": ["*"],
             "config": {
-                "url": self.url + "webhook",
+                "url": self.root.config.core["url"] + self.url + "webhook",
                 "content_type": "json"
             },
         }
