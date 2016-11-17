@@ -174,12 +174,12 @@ class Root:
 
         listen = self.config.raw_data[0]["core"]["listen"]
         self.http = HTTP(self.loop, listen)
-        yield from self.http.start()
 
         self.start_services()
         for prov in self.config.iter_providers():
             self.providers[prov.name] = prov
             yield from prov.start()
+        yield from self.http.start()
         reload_fut = asyncio.async(self.reload(), loop=self.loop)
         yield from self.stop_event.wait()
         self.log.info("Interrupted.")
