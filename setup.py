@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name="rally-ci",
+    name="rci",
     version="0.1.1a1",
     data_files=[
         ("etc/rally-ci/", ["etc/sample-config.yaml",
@@ -11,5 +11,5 @@ setup(
     packages=find_packages(),
     include_package_data=True,
     install_requires=["pyyaml", "aiohttp", "asyncssh"],
-    entry_points={"console_scripts": ["rally-ci = rallyci.daemon:run"]}
+    entry_points={"console_scripts": ["rci = rallyci.daemon:run"]}
 )

@@ -28,7 +28,7 @@ EVENT_TYPES = {
 }
 
 
-class Event(base.BaseEvent):
+class Event(base.Event):
 
     def __init__(self, cfg, raw_event):
         """

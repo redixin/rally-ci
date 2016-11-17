@@ -1,5 +1,12 @@
 ---
 
+- core:
+    listen: ["0.0.0.0", 8081]
+    url: "https://example.net/"
+    secrets: /dev/null
+    jobs-logs: /tmp/logs
+    logs-url: "https://example.net/logs"
+
 - ssh-key:
     name: default
     public: "/keys/test.pub"

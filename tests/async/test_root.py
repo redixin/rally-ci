@@ -34,16 +34,3 @@ class RootTestCase(unittest.TestCase):
         self._timeout.cancel()
         self.loop.stop()
         self.loop.close()
-
-    def test_run_stop(self):
-        self.set_timeout(2)
-        r = root.Root(self.loop)
-        r.log = mock.Mock()
-        r.config = mock.Mock()
-        r.config.iter_providers.return_value = []
-        r.start_services = mock.Mock()
-        fut = asyncio.async(r.run(), loop=self.loop)
-        self.loop.call_later(1, r.stop_event.set)
-        self.loop.run_until_complete(fut)
-        r.config.iter_providers.assert_called_once_with()
-        r.log.info.assert_called_once_with("Interrupted.")

@@ -29,7 +29,7 @@ class HttpTestCase(unittest.TestCase):
         asyncio.set_event_loop(None)
         config = {"listen": ("localhost", get_free_port())}
         root = mock.Mock(loop=loop)
-        ss = status.Class(root, **config)
+        ss = status.Service(root, **config)
 
         @asyncio.coroutine
         def test(loop):
