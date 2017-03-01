@@ -458,6 +458,7 @@ class VM:
         self.devices.se("emulator").x.text = "/usr/bin/kvm"
         self.devices.se("controller", type="pci", index="0", model="pci-root")
         self.devices.se("graphics", type="spice", autoport="yes")
+        self.devices.se("serial", type="pty").se("target", port="0")
         mb = self.devices.se("memballoon", model="virtio")
         mb.se("address", type="pci", domain="0x0000", bus="0x00",
               slot="0x09", function="0x0")
